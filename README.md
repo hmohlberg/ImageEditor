@@ -3,6 +3,7 @@
 A versatile Qt6-based image processing tool with JSON-history support, designed to run on Debian Linux and macOS. It supports both a Graphical User Interface and a headless batch mode for server environments.
 
 ## Features
+- Basic interactive image manipulation tools: Provides a few image manipulation tools, the use of which can be fully documented and saved in a JSON project file for later use.
 - Batch Processing: Run transformations via CLI without a GUI.
 - JSON Project Support: Load and apply transformation histories from JSON files.
 - Offscreen Optimized: Perfect for headless servers using the 'minimal' platform plugin.
@@ -63,7 +64,7 @@ cmake --build . --config Release
 
 ## Usage & CLI Options
 
-To run the editor without a GUI (e.g., via SSH on your Debian server), use the --batch flag combined with the -platform minimal Qt option.
+To run the editor without a GUI (e.g., via SSH on your Debian server), use the --batch flag.
 
 ### Command Line Arguments
 
@@ -83,14 +84,14 @@ To run the editor without a GUI (e.g., via SSH on your Debian server), use the -
 **Convert an image to grayscale (Offscreen):**
 
 ```bash
-./ImageEditor -platform minimal --batch -f photo.jpg -o output.png
+./ImageEditor --batch -f photo.jpg -o output.png
 
 ```
 
 **Apply a JSON transformation project:**
 
 ```bash
-./ImageEditor -platform minimal --batch --project task.json -o result.png
+./ImageEditor --batch --project task.json -o result.png
 
 ```
 
@@ -110,12 +111,3 @@ The codebase automatically handles the transition from mirrored() (older Qt6) to
 #endif
 
 ```
-
-### Headless Execution
-
-When running on a server without an X11/Wayland session, always append -platform minimal to prevent QPA connection errors.
-
-```
-
----
-
