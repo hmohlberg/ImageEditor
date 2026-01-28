@@ -43,6 +43,24 @@ make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
 
 ---
 
+### MS Windows (not yet tested)
+1. **Install Qt6**: Download the open-source installer from [qt.io](https://www.qt.io/download). Ensure **CMake** and a compiler (like **MinGW** or **MSVC**) are selected during installation.
+2. **Setup Environment**: Add the Qt `bin` folder to your System PATH (e.g., `C:\Qt\6.x.x\mingw_64\bin`).
+
+**Build via Command Line (PowerShell/CMD):**
+```powershell
+# Create build directory
+mkdir build
+cd build
+
+# Configure (replace the path to your Qt installation if not in PATH)
+cmake .. -DCMAKE_PREFIX_PATH="C:\Qt\6.x.x\msvc2019_64"
+
+# Compile
+cmake --build . --config Release
+```
+---
+
 ## Usage & CLI Options
 
 To run the editor without a GUI (e.g., via SSH on your Debian server), use the --batch flag combined with the -platform minimal Qt option.
