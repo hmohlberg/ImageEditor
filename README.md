@@ -1,7 +1,7 @@
 # ImageEditor
 
 Markdown
-# Qt6 Image Editor
+# Image Editor for histological sections
 
 A high-performance C++ tool for basic editing histological sections and offscreen image transformation, optimized for both **Debian Linux** and **macOS**.
 
