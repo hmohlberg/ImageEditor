@@ -1,4 +1,0 @@
-/localStore/JuBrain/software/ImageEditor/build/CMakeFiles/ImageEditor.dir
-/localStore/JuBrain/software/ImageEditor/build/CMakeFiles/edit_cache.dir
-/localStore/JuBrain/software/ImageEditor/build/CMakeFiles/rebuild_cache.dir
-/localStore/JuBrain/software/ImageEditor/build/CMakeFiles/ImageEditor_autogen.dir
