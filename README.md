@@ -49,6 +49,8 @@ sudo apt install qt6-base-dev qt6-declarative-dev
 sudo apt install build-essential cmake
 ```
 
+Note for older systems: If you are using an unsupported version (like Ubuntu 20.04), you must install Qt6 manually via the Qt Online Installer or use a containerized environment (Docker).
+
 ### macOS
 
 ```bash
