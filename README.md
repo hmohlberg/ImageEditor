@@ -1,5 +1,12 @@
 # ImageEditor
 
+Copyright 2026, Forschungszentrum Jülich GmbH
+
+Authors: Hartmut Mohlberg, Daniel Krötz <br>
+Institute of Neuroscience and Medicine (INM-1), Forschungszentrum Jülich GmbH
+
+---
+
 A versatile Qt6-based image processing tool with JSON-history support, designed to run on Debian Linux and macOS. It supports both a Graphical User Interface and a headless batch mode for server environments.
 
 ## Features
@@ -137,7 +144,6 @@ To run the editor without a GUI (e.g., via SSH on your Debian server), use the -
 ./ImageEditor --batch --project task.json -o result.png
 
 ```
-
 ---
 
 ## Technical Notes
@@ -152,3 +158,22 @@ The codebase automatically handles the transition from mirrored() (older Qt6) to
 #else
     image = image.mirrored(false, true);
 #endif
+```
+---
+
+## Acknowledgements
+This work was funded by Helmholtz Association’s Initiative and Networking Fund through the Helmholtz International BigBrain Analytics and Learning Laboratory (HIBALL) under the Helmholtz International Lab grant agreement InterLabs-0015, the European Union’s Horizon Europe Programme under the Specific Grant Agreement No. 101147319 (EBRAINS 2.0 Project) and No. 945539 (Human Brain Project SGA3).
+
+This project was developed in frame of the [BigBrainProject](https://bigbrainproject.org/index.html) and significantly contributed to the [Julich Brain Atlas](https://julich-brain-atlas.de/).
+
+
+
+| | | | |
+|----|----|----|----|
+|<img height="60" alt="image" src="https://github.com/user-attachments/assets/60deb09b-f10e-480b-9cc8-fc31e5453ded" /> | <img height="60" alt="image" src="https://github.com/user-attachments/assets/44f16600-b2f2-44ff-ae9c-8d2f9bae27ed" /> | <img height="100" alt="image" src="https://github.com/user-attachments/assets/bb0d4599-10ff-49d7-9163-6bc655d4a842" /> | <img height="100" alt="image" src="https://github.com/user-attachments/assets/cd8a7520-1b51-453b-b36c-e209c32bb25d" /> |
+
+
+
+
+
+
