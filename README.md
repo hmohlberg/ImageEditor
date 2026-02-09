@@ -122,10 +122,13 @@ To run the editor without a GUI (e.g., via SSH on your Debian server), use the -
 | --- | --- |
 | -f, --file <file> | Path to the input image file. |
 | --project <json> | Path to an input JSON-project file (history). |
+| --class <file> | Path to input image class file. |
 | -o, --output <file> | Path to the output image file. |
+| --config <file> | Path to config file. |
 | --batch | Run in batch mode (no GUI). |
 | --vulkan | Enable hardware accelerated Vulkan rendering. |
 | --history | Print history of last calls to stdout. |
+| --force | Overwrite existing output file. |
 | -v, --version | Displays version information. |
 | -h, --help | Displays help options. |
 
