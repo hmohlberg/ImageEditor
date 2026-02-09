@@ -1,5 +1,23 @@
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
+
 #include "LassoCutCommand.h"
 #include "EditablePolygonCommand.h"
+#include "../gui/MainWindow.h"
 
 #include <QByteArray>
 #include <QJsonObject>
@@ -18,7 +36,7 @@ LassoCutCommand::LassoCutCommand( LayerItem* originalLayer, LayerItem* newLayer,
           m_backup(originalBackup),
           m_name(name)
 {
-  // std::cout << "LassoCutCommand::LassoCutCommand(): Processing..." << std::endl;
+  qCDebug(logEditor) << "LassoCutCommand::LassoCutCommand(): Processing...";
   {
     newLayer->setPos(bounds.topLeft());
     m_originalLayerId = originalLayer->id();
@@ -38,7 +56,7 @@ LassoCutCommand::LassoCutCommand( LayerItem* originalLayer, LayerItem* newLayer,
 // ---------------------- Undo/Redo ----------------------
 void LassoCutCommand::undo()
 {
- qDebug() << "LassoCutCommand::undo(): Processing...";
+  qCDebug(logEditor) << "LassoCutCommand::undo(): Processing...";
   {
     QImage tempImage = m_originalLayer->image();
     QPainter p(&tempImage);
@@ -63,14 +81,17 @@ void LassoCutCommand::undo()
      }
     }
     m_newLayer->setVisible(false);
+    m_newLayer->setInActive(true);
+    MainWindow *window = dynamic_cast<MainWindow*>(m_newLayer->parent());
+    if ( window != nullptr ) window->updateLayerList();
   }
 }
     
 void LassoCutCommand::redo()
 {
-  qDebug() << "LassoCutCommand::redo(): Processing...";
+  qCDebug(logEditor) << "LassoCutCommand::redo(): Processing...";
   {
-    QColor color = QColor(255,255,255);
+    QColor color = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
     QImage tempImage = m_originalLayer->image();
     for ( int y = 0; y < m_backup.height(); ++y ) {
       for ( int x = 0; x < m_backup.width(); ++x ) {
@@ -85,6 +106,7 @@ void LassoCutCommand::redo()
       m_originalLayer->scene()->addItem(m_newLayer);
     }
     m_newLayer->setVisible(true);
+    m_newLayer->setInActive(false);
     // controller handling
     if ( m_controller != nullptr ) {
      EditablePolygonCommand* editablePolyCommand = dynamic_cast<EditablePolygonCommand*>(m_controller);
@@ -93,6 +115,8 @@ void LassoCutCommand::redo()
      }
     }
     m_originalLayer->update();
+    MainWindow *window = dynamic_cast<MainWindow*>(m_newLayer->parent());
+    if ( window != nullptr ) window->updateLayerList();
   }
 }
 
@@ -115,7 +139,7 @@ QJsonObject LassoCutCommand::toJson() const
 
 LassoCutCommand* LassoCutCommand::fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent )
 {
-  // std::cout << "LassoCutCommand::fromJson(): Processing..." << std::endl;
+  // qDebug() << "LassoCutCommand::fromJson(): Processing...";
   {
     // Original Layer
     const int originalLayerId = obj["originalLayerId"].toInt(-1);

@@ -1,3 +1,20 @@
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
+
 #pragma once
 
 #include <QGraphicsObject>
@@ -12,6 +29,7 @@
 class EditablePolygonItem : public QGraphicsObject
 {
     Q_OBJECT
+    
 public:
     explicit EditablePolygonItem( EditablePolygon* poly, QGraphicsItem* parent = nullptr );
 
@@ -21,8 +39,13 @@ public:
                const QStyleOptionGraphicsItem* opt,
                QWidget* widget ) override;
 
-    // --- Interaktion ---
+    // --- Interaction ---
     void pointMoved( int idx, const QPointF& scenePos );
+    
+    // --- Misc ---
+    EditablePolygon* polygon() const { return m_poly; }
+    int hitTestPolygon( const QPointF& scenePos ) const;
+    void setColor( const QColor& color ) { m_lineColor = color; }
 
 signals:
     // → wird vom ImageView abgefangen und in UndoCommands umgesetzt
@@ -31,7 +54,7 @@ signals:
     void requestRemovePoint( int idx );
 
 protected:
-    // --- Maus-Events ---
+    // --- mouse-Events ---
     void mousePressEvent( QGraphicsSceneMouseEvent* e ) override;
     void mouseMoveEvent( QGraphicsSceneMouseEvent* e ) override;
     void mouseReleaseEvent( QGraphicsSceneMouseEvent* e ) override;
@@ -40,6 +63,7 @@ protected:
 private slots:
     void updateGeometry();
     void onVisibilityChanged();
+    void onSelelctionChanged();
 
 private:
     // --- Hilfsfunktionen ---

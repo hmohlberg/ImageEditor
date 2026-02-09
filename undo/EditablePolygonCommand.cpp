@@ -1,3 +1,20 @@
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
+
 #include "EditablePolygonCommand.h"
 #include "../undo/PolygonMovePointCommand.h"
 #include <iostream>
@@ -12,11 +29,12 @@ EditablePolygonCommand::EditablePolygonCommand( LayerItem *layer, QGraphicsScene
     , m_name(name)
 {
   // qDebug() << "EditablePolygonCommand::EditablePolygonCommand(): name=" << name;
-  setText(QString("Editable %1").arg(name));
-  m_model = new EditablePolygon(m_name);
-  m_model->setPolygon(m_polygon);
-  m_item = new EditablePolygonItem(m_model,m_layer);
-  QByteArray polygonSvg = 
+  {
+    setText(QString("Editable %1").arg(name));
+    m_model = new EditablePolygon(m_name);
+    m_model->setPolygon(m_polygon);
+    m_item = new EditablePolygonItem(m_model,m_layer);
+    QByteArray polygonSvg = 
       "<svg viewBox='0 0 64 64'>"
       "<path d='M15 15 L50 20 L45 50 L10 40 Z' "
       "fill='none' stroke='white' stroke-width='3' stroke-dasharray='4,3' stroke-linejoin='round'/>"
@@ -25,7 +43,8 @@ EditablePolygonCommand::EditablePolygonCommand( LayerItem *layer, QGraphicsScene
       "<circle cx='45' cy='50' r='3' fill='white'/>"
       "<circle cx='10' cy='40' r='3' fill='white'/>"
       "</svg>";
-  setIcon(AbstractCommand::getIconFromSvg(polygonSvg));
+    setIcon(AbstractCommand::getIconFromSvg(polygonSvg));
+  }
 }
 
 // ------------------------ Methods ------------------------
@@ -58,8 +77,11 @@ void EditablePolygonCommand::undo()
 {
   // qDebug() << "EditablePolygonCommand::undo(): Processing...";
   {
-    if ( m_item && m_item->scene() )
+    if ( m_item && m_item->scene() ) {
+    //  INTRODUCED TO HANDLE CRASH EVENT: if ( !m_item->parentItem() ) {
         m_scene->removeItem(m_item);
+    //  }
+    }
   }
 }
 

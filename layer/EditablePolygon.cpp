@@ -1,3 +1,20 @@
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
+
 #include "EditablePolygon.h"
 
 #include "../undo/AbstractCommand.h"
@@ -28,6 +45,12 @@ void EditablePolygon::setVisible( bool isVisible )
     emit visibilityChanged();
 }
 
+void EditablePolygon::setSelected( bool isSelected )
+{
+    m_polygonSelected = isSelected;
+    emit selectionChanged();
+}
+
 // ---------------------------- Tools ----------------------------
 void EditablePolygon::translate( const QPointF& delta )
 {
@@ -56,7 +79,7 @@ void EditablePolygon::smooth()
 // --- reduce number of points (Douglas-Peucker-Algorithmus) ---
 void EditablePolygon::reduce( qreal tolerance )
 {
-  // std::cout << "EditablePolygon::reduce(): tolerance=" << tolerance << std::endl;
+  // qDebug() << "EditablePolygon::reduce(): tolerance=" << tolerance;
   {
     if ( m_polygon.size() > 3 ) {
       QPainterPath path;
@@ -137,11 +160,11 @@ QRectF EditablePolygon::boundingRect() const
 
 void EditablePolygon::printself()
 {
-  qDebug() << "EditablePolygon::printself(): polygon =" << m_polygon; 
-  qDebug() << " + undoStack: size =" << m_undoStack.count();
+  qInfo() << "EditablePolygon::printself(): polygon =" << m_polygon; 
+  qInfo() << " + undoStack: size =" << m_undoStack.count();
   for ( int i = 0; i < m_undoStack.count(); ++i ) {
         auto* cmd = m_undoStack.command(i);
-        qDebug() << "  + text =" << cmd->text();
+        qInfo() << "  + text =" << cmd->text();
   }
 }
 

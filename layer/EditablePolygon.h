@@ -1,3 +1,20 @@
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
+
 #pragma once
 
 #include <QGraphicsObject>
@@ -40,6 +57,8 @@ public:
     void setPolygon( const QPolygonF& poly );
 
     // --- Misc ---
+    bool isSelected() const { return m_polygonSelected; }
+    void setSelected( bool isSelected );
     bool polygonVisible() const { return m_polygonVisible; }
     bool markersVisible() const { return m_markersVisible; }
     QRectF boundingRect() const;
@@ -58,6 +77,7 @@ signals:
 
     void changed();
     void visibilityChanged();
+    void selectionChanged();
 
 private:
 
@@ -66,6 +86,7 @@ private:
     QPolygonF m_polygon;
     QUndoStack m_undoStack;
     
+    bool m_polygonSelected = true;
     bool m_polygonVisible = true;
     bool m_markersVisible = true;
     

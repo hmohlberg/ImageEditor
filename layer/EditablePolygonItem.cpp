@@ -1,5 +1,23 @@
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
+
 #include "EditablePolygonItem.h"
 
+#include "../gui/MainWindow.h"
 #include "../undo/PolygonTranslateCommand.h"
 #include "../undo/PolygonDeletePointCommand.h"
 #include "../undo/PolygonInsertPointCommand.h"
@@ -26,14 +44,19 @@ EditablePolygonItem::EditablePolygonItem( EditablePolygon* poly, QGraphicsItem* 
     setAcceptHoverEvents(true);
     connect(m_poly, &EditablePolygon::changed, this, &EditablePolygonItem::updateGeometry);
     connect(m_poly, &EditablePolygon::visibilityChanged, this, &EditablePolygonItem::onVisibilityChanged);
+    connect(m_poly, &EditablePolygon::selectionChanged, this, &EditablePolygonItem::onSelelctionChanged);
     rebuildHandles();
 }
 
 QRectF EditablePolygonItem::boundingRect() const
 {
-    QRectF r = m_poly->boundingRect();
-    r.adjust(-10, -10, 10, 10); // Platz für Handles
-    return r;
+    QRectF rect = m_poly->boundingRect();
+    if ( rect.width() <= 0 || rect.height() <= 0 ) {
+      rect = QRectF(0, 0, 1, 1);
+    } else {
+      rect.adjust(-10, -10, 10, 10); // space for handles
+    }
+    return rect;
 }
 
 void EditablePolygonItem::paint( QPainter* p, const QStyleOptionGraphicsItem*, QWidget* )
@@ -44,26 +67,37 @@ void EditablePolygonItem::paint( QPainter* p, const QStyleOptionGraphicsItem*, Q
     if ( poly.size() < 2 )
         return;
     p->setRenderHint(QPainter::Antialiasing);
-    // Fill
-    p->setBrush(m_fillColor);
-    p->setPen(QPen(m_lineColor, 1.5));
-    p->drawPolygon(poly);
-    // Outline
-    p->setBrush(Qt::NoBrush);
-    p->setPen(QPen(m_lineColor, 2));
-    p->drawPolyline(poly);
+    if ( m_poly->isSelected() ) {
+      // Fill
+      p->setBrush(m_fillColor);
+      p->setPen(QPen(m_lineColor, 1.5));
+      p->drawPolygon(poly);
+      // Outline
+      p->setBrush(Qt::NoBrush);
+      p->setPen(QPen(m_lineColor, 2,Qt::DashLine));
+      p->drawPolyline(poly);
+    } else {
+      // Fill
+      p->setBrush(m_fillColor);
+      p->setPen(QPen(m_lineColor, 1.5));
+      p->drawPolygon(poly);
+      // Outline
+      p->setBrush(Qt::NoBrush);
+      p->setPen(QPen(m_lineColor, 2,Qt::SolidLine));
+      p->drawPolyline(poly);
+    }
 }
 
 // ---------------- Interaction ----------------
 
 void EditablePolygonItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
 {
-  std::cout << "EditablePolygonItem::mousePressEvent(): m_editable=" << m_editable << std::endl;
+  qCDebug(logEditor) << "EditablePolygonItem::mousePressEvent(): editable =" << m_editable;
   {
     if ( !m_editable )
         return;
     if ( m_layer != nullptr ) {
-      LayerItem::OperationMode mode = m_layer->operationMode();
+      LayerItem::OperationMode mode = m_layer->getPolygonOperationMode();      
       if ( mode == LayerItem::OperationMode::TranslatePolygon ) {
        m_dragStartPos = e->scenePos();
        m_dragMousePressPos = m_dragStartPos;
@@ -78,7 +112,7 @@ void EditablePolygonItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
        }
       }
     } else {
-     std::cout << "EditablePolygonItem::mousePressEvent(): No layer available." << std::endl;
+     qCDebug(logEditor) << "EditablePolygonItem::mousePressEvent(): No layer available.";
     }
     QGraphicsObject::mousePressEvent(e);
   }
@@ -86,11 +120,11 @@ void EditablePolygonItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
 
 void EditablePolygonItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
 {
-  // std::cout << "EditablePolygonItem::mouseMoveEvent(): Processing..." << std::endl;
+  // qDebug() << "EditablePolygonItem::mouseMoveEvent(): Processing...";
   {
     if ( m_layer == nullptr )
       return;
-    LayerItem::OperationMode mode = m_layer->operationMode();
+    LayerItem::OperationMode mode = m_layer->getPolygonOperationMode();
     if ( mode == LayerItem::OperationMode::MovePoint ) {
       if ( m_activePoint >= 0 ) {
         pointMoved(m_activePoint, e->scenePos());
@@ -110,7 +144,7 @@ void EditablePolygonItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* e )
 {
     if ( m_layer == nullptr )
       return;
-    LayerItem::OperationMode mode = m_layer->operationMode();
+    LayerItem::OperationMode mode = m_layer->getPolygonOperationMode();
     if ( mode == LayerItem::OperationMode::MovePoint ) {
       if ( m_activePoint >= 0 ) {
         QPointF endPos = m_poly->point(m_activePoint);
@@ -130,9 +164,9 @@ void EditablePolygonItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* e )
 
 void EditablePolygonItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* e )
 {
- qDebug() << "EditablePolygonItem::mouseDoubleClickEvent(): opMode =" << m_layer->operationMode() << ", id =" << m_layer->id() << ", name ="  << m_layer->name();
+ qCDebug(logEditor) << "EditablePolygonItem::mouseDoubleClickEvent(): opMode =" << m_layer->operationMode() << ", id =" << m_layer->id() << ", name ="  << m_layer->name();
  {
-    LayerItem::OperationMode mode = m_layer->operationMode();
+    LayerItem::OperationMode mode = m_layer->getPolygonOperationMode();
     if ( mode == LayerItem::OperationMode::AddPoint ) {
      int edge = hitTestEdge(e->scenePos());
      if ( edge >= 0 ) {
@@ -148,11 +182,11 @@ void EditablePolygonItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* e )
         e->accept();
         return;
      }
-    } else if ( mode == LayerItem::OperationMode::Reduce ) {
+    } else if ( mode == LayerItem::OperationMode::ReducePolygon ) {
      m_poly->undoStack()->push(new PolygonReduceCommand(m_poly));
      e->accept();
      return;
-    } else if ( mode == LayerItem::OperationMode::Smooth ) {
+    } else if ( mode == LayerItem::OperationMode::SmoothPolygon ) {
      m_poly->undoStack()->push(new PolygonSmoothCommand(m_poly));
      e->accept();
      return;
@@ -205,6 +239,15 @@ int EditablePolygonItem::hitTestEdge( const QPointF& scenePos ) const
     return -1;
 }
 
+int EditablePolygonItem::hitTestPolygon( const QPointF& scenePos ) const
+{
+    const QPolygonF& poly = m_poly->polygon();
+    if ( poly.containsPoint(scenePos, Qt::OddEvenFill) ) {
+      return 1;
+    }
+    return -1;
+}
+
 // ---------------- Geometry sync ----------------
 
 void EditablePolygonItem::updateGeometry()
@@ -223,11 +266,19 @@ void EditablePolygonItem::onVisibilityChanged()
         p->setVisible(m_poly->markersVisible());
 }
 
+void EditablePolygonItem::onSelelctionChanged()
+{
+    // Marker (Control Points)
+    for ( auto* p : m_handles )
+        p->setVisible(m_poly->isSelected());
+}
+
 void EditablePolygonItem::rebuildHandles()
 {
+  // qDebug() << "EditablePolygonItem::rebuildHandles(): Processing...";
+  {
     qDeleteAll(m_handles);
     m_handles.clear();
-
     const QPolygonF& poly = m_poly->polygon();
     for ( const QPointF& p : poly ) {
         auto* h = new QGraphicsEllipseItem(
@@ -236,12 +287,11 @@ void EditablePolygonItem::rebuildHandles()
             2 * m_handleRadius,
             2 * m_handleRadius,
             this);
-
         h->setBrush(m_handleColor);
         h->setPen(Qt::NoPen);
         h->setPos(p);
         h->setZValue(10);
-
         m_handles.push_back(h);
     }
+  }
 }

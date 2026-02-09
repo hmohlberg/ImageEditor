@@ -1,3 +1,20 @@
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
+
 #include <QApplication>
 #include <QImageReader>
 #include <QColorSpace>
@@ -6,17 +23,25 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QFile>
-#include <QDir>
+#include <QSettings>
 #include <QDateTime>
 #include <QString>
+#include <QFile>
+#include <QDir>
 
 #include <iostream>
 
+#include "core/Config.h"
 #include "core/ImageLoader.h"
 #include "core/ImageProcessor.h"
 
 #include "gui/MainWindow.h"
+
+// ---------------------- Init ----------------------
+bool Config::verbose = false;
+bool Config::isWhiteBackgroundImage = true;
+
+Q_LOGGING_CATEGORY(logEditor, "editor.graphics")
 
 // ---------------------- Helper ----------------------
 static void showHistory( int n ) {
@@ -103,11 +128,11 @@ static bool validateFile( const QString &filePath, const QString &optionName, co
 static bool isPathWritable( const QString &path ) {
     QFileInfo checkInfo(path);
     if ( !checkInfo.exists() ) {
-        qDebug() << "Error: Path does not exists: " << path;
+        // qDebug() << "Error: Path does not exists: " << path;
         return false;
     }
     if ( !checkInfo.isWritable() ) {
-        qDebug() << "Error: Path is write-protected or no permission: " << path;
+        // qDebug() << "Error: Path is write-protected or no permission: " << path;
         return false;
     }
     return true;
@@ -124,10 +149,14 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(fileOption);
   QCommandLineOption projectFileOption(QStringList() << "project", "Path to input JSON-project file.", "json");
   parser.addOption(projectFileOption);
+  QCommandLineOption classFileOption(QStringList() << "class", "Path to input image class file.", "file");
+  parser.addOption(classFileOption);
   QCommandLineOption outFileOption(QStringList() << "o" << "output", "Path to output image file.", "file");
   parser.addOption(outFileOption);
   QCommandLineOption batchOption("batch", "Run application in batch mode without running graphical user interface.");
   parser.addOption(batchOption);
+  QCommandLineOption configFileOption(QStringList() << "config", "Path to config file.", "file");
+  parser.addOption(configFileOption);
   QCommandLineOption intermediateOption(QStringList() << "save-intermediate", "In batch mode, path to output an image after each step in the history.", "file");
   parser.addOption(intermediateOption);
   QCommandLineOption vulkanOption("vulkan", "If available enable hardware accelerated Vulkan rendering.");
@@ -136,6 +165,8 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(historyOption);
   QCommandLineOption forceOption("force", "Overwrite an existing output file.");
   parser.addOption(forceOption);
+  QCommandLineOption verboseOption("verbose", "Enable verbose output to stdout.");
+  parser.addOption(verboseOption);
   parser.process(*app);
   
   // --- history ---
@@ -164,6 +195,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
     exit(1);
   }
   obj["outputPath"] = parser.value(outFileOption);
+  obj["classPath"] = parser.value(classFileOption);
   obj["imagePath"] = parser.value(fileOption);
   if ( !validateFile(obj["imagePath"].toString(),"image file",{"png","mnc","mnc2","tif","tiff"}) ) {
    exit(1);
@@ -172,12 +204,14 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   if ( !validateFile(obj["historyPath"].toString(),"project",{"json"}) ) {
    exit(1);
   }
+  obj["configPath"] = parser.value(configFileOption);
   obj["save-intermediate"] = parser.value(intermediateOption);
   if ( parser.isSet(intermediateOption) && !isPathWritable(obj["save-intermediate"].toString()) ) {
    exit(1);
   }
   obj["vulkan"] = parser.isSet(vulkanOption);
   obj["force"] = parser.isSet(forceOption);
+  obj["verbose"] = parser.isSet(verboseOption);
   
   return obj;
 }
@@ -233,6 +267,7 @@ int main( int argc, char *argv[] )
       } else {
        if ( loader.load(imagePath,true) ) {
         saveCurrentCall(argc, argv);
+        Config::isWhiteBackgroundImage = loader.hasWhiteBackground();
         ImageProcessor proc(loader.getImage());
         proc.setIntermediatePath(saveIntermediatePath,outputPath);
         if ( !proc.process(historyPath) ) {
@@ -258,16 +293,16 @@ int main( int argc, char *argv[] )
     app->setApplicationName("ImageEditor");
     app->setApplicationVersion("1.0");
     QJsonObject parsedOptions = parser(app,argc);
-    QString imagePath = parsedOptions.value("imagePath").toString("");
-    QString historyPath = parsedOptions.value("historyPath").toString("");
-    QString outputPath = parsedOptions.value("outputPath").toString("");
-    bool useVulkan = parsedOptions.value("vulkan").toBool();
-    
     // --- create new history entry ---
     saveCurrentCall(argc, argv);
-    
+    // --- load config file ---
+    QString configPath = parsedOptions.value("configPath").toString("");
+    if ( !configPath.isEmpty() ) {
+      EditorStyle::instance().load(configPath);
+      qCDebug(logEditor) << "hi";
+    }
     // --- call main programm ---
-    MainWindow w(imagePath,historyPath,useVulkan);
+    MainWindow w(parsedOptions);
     w.show();
     return app->exec();
     

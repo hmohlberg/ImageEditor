@@ -1,4 +1,23 @@
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
+
 #pragma once
+
+#include "../core/Config.h"
 
 #include <QCoreApplication>
 #include <QComboBox>
@@ -18,15 +37,24 @@ class MainWindow : public QMainWindow
     
 public:
 
-    enum MainOperationMode { Paint, Mask, FreeSelection, Polygon, ImageLayer, CreateLasso, CreatePolygon };
+    enum MainOperationMode { None, Paint, Mask, FreeSelection, Polygon, ImageLayer, CreateLasso, CreatePolygon };
 
-    explicit MainWindow( const QString& imagePath = QString(), const QString& historyPath = QString(), 
-                bool useVulkan = false, QWidget* parent = nullptr );
+    // explicit MainWindow( const QString& imagePath = QString(), const QString& historyPath = QString(), 
+    //            bool useVulkan = false, QWidget* parent = nullptr );
+                
+    explicit MainWindow( const QJsonObject& options, QWidget* parent = nullptr );
+                
+    // --- ---
+    void updateLayerList();
     
     // ----------------- global setter and getter -----------------
     ImageView* getViewer() const { return m_imageView; }
     int getNumberOfCageControlPoints() const { return m_cageControlPointsSpin->value(); }
     void setMainOperationMode( MainOperationMode = ImageLayer );
+    MainOperationMode getOperationMode() const { return m_operationMode; }
+    void setActivePolygon( const QString& polygonName );
+    void setLayerOperationMode( int mode );
+    void setPolygonOperationMode( int mode );
     
 protected:
 
@@ -44,6 +72,7 @@ private slots:
     void deleteLayer();
     void duplicateLayer();
     void renameLayer();
+    void mergeLayer();
     
     void zoom1to1();
     void fitToWindow();
@@ -61,7 +90,7 @@ private slots:
     void updateControlButtonState();
 
 private:
-
+    
     bool loadImage( const QString& );
     void loadHistory( const QString& );
     bool saveProject( const QString& );
@@ -90,6 +119,8 @@ private:
     
     QSpinBox* m_cageControlPointsSpin = nullptr;
     
+    MainOperationMode m_operationMode = Paint;
+    
     QAction* m_saveHistoryAction = nullptr;
     QAction* m_openHistoryAction = nullptr;
     QAction* m_createMaskImageAction = nullptr;
@@ -116,6 +147,10 @@ private:
     QAction* m_lassoAction = nullptr;
     QAction* m_polygonAction = nullptr;
     QAction* m_infoAction = nullptr; 
+    
+    QComboBox* m_polygonIndexBox = nullptr;
+    QComboBox* m_transformLayerItem = nullptr;
+    QComboBox* m_polygonOperationItem = nullptr;
     
     bool m_updatingLayerList = false;
     bool m_saveImageDataInProjectFile = false;

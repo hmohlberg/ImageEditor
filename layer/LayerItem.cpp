@@ -1,7 +1,19 @@
-/*
- * Layer class
- *
- */
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
  
 #include "LayerItem.h"
 #include "Layer.h"
@@ -31,7 +43,7 @@
 // ------------------------ LayerItem ------------------------
 LayerItem::LayerItem( const QPixmap& pixmap, QGraphicsItem* parent ) : QGraphicsPixmapItem(pixmap,parent)
 { 
-  qDebug() << "LayerItem::LayerItem(): Pixmap processing...";
+  qCDebug(logEditor) << "LayerItem::LayerItem(): Pixmap processing...";
   {
     m_image = pixmap.toImage();
     m_originalImage = pixmap.toImage();
@@ -44,7 +56,7 @@ LayerItem::LayerItem( const QImage& image, QGraphicsItem* parent )
       , m_originalImage(image)
       , m_image(image)
 {
-  qDebug() << "LayerItem::LayerItem(): Image processing...";
+  qCDebug(logEditor) << "LayerItem::LayerItem(): Image processing...";
   {
    if ( qobject_cast<QApplication*>(qApp) ) {
     setPixmap(QPixmap::fromImage(m_image));
@@ -98,8 +110,9 @@ void LayerItem::printself( bool debugSave )
   qInfo() << "  + position =" << pos();
   qInfo() << "  + geometry=" << geometry;
   qInfo() << "  + cage: enabled=" << m_cageEnabled << ", edited=" << m_cageEditing;
-  qInfo() << "  + op mode=" << m_operationMode;
+  qInfo() << "  + operation mode=" << m_operationMode;
   qInfo() << "  + bounding box=" << m_showBoundingBox;
+  qInfo() << "  + parent="  << ( m_parent != nullptr ? "null" : "ok" );
   
   if ( debugSave && m_index == 1 ) {
    std::cout << " LayerItem::printself(): Saving image data... " << std::endl;
@@ -112,10 +125,18 @@ void LayerItem::printself( bool debugSave )
 QImage& LayerItem::image( int id ) {
     return id == 1 ? m_originalImage : m_image;
 }
+
+void LayerItem::setInActive( bool isInActive )
+{
+  if ( !m_layer ) return;
+  m_layer->m_active = !isInActive;
+}
+
 void LayerItem::setImage( const QImage &image ) {
     m_image = image;
     updatePixmap();
 }
+
 void LayerItem::setLayer( Layer *layer ) {
     m_layer = layer;
 }
@@ -186,13 +207,12 @@ void LayerItem::updateImageRegion( const QRect& rect ) {
 }
 
 void LayerItem::updateOriginalImage() {
-  qDebug() << "LayerItem::updateOriginalImage(): Processing...";
   m_originalImage = m_image;
 }
 
 // ------------------------ Mirror ------------------------
 void LayerItem::setMirror( int mirrorPlane ) {
-  // std::cout << "LayerItem::setMirror(): mirrorPlane=" << mirrorPlane << std::endl;
+  qCDebug(logEditor) << "LayerItem::setMirror(): mirrorPlane=" << mirrorPlane;
   {
     #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
      QImage flippedImage = m_image.flipped(mirrorPlane == 1 ? Qt::Vertical : Qt::Horizontal);
@@ -239,28 +259,30 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
 // ------------------------ Paint ------------------------
 void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget )
 {
-  // qDebug() << "LayerItem::paint(): Processing " << (m_layer?m_layer->name.toStdString():"unknown") << " ..." << std::endl;
-  QGraphicsPixmapItem::paint(painter,option,widget);
-  if ( isSelected() ) {
-    painter->setPen(m_selectedPen);
-    painter->setBrush(Qt::NoBrush);
-    painter->drawRect(boundingRect());
-  } else if ( m_showBoundingBox ) {
-    painter->setPen(m_lassoPen);
-    painter->setBrush(Qt::NoBrush);
-    painter->drawRect(boundingRect());
-  }
-  // render cage
-  if ( m_cageEnabled ) {
-   painter->setPen(QPen(Qt::red,0));
-   painter->setBrush(Qt::NoBrush);
-   painter->drawPolygon(m_cage.data(), m_cage.size());
+  // qCDebug(logEditor) << "LayerItem::paint(): Processing " << (m_layer?m_layer->name():"unknown") << ", selected = " << isSelected();
+  {
+    QGraphicsPixmapItem::paint(painter,option,widget);
+    if ( isSelected() ) {
+      painter->setPen(m_selectedPen);
+      painter->setBrush(Qt::NoBrush);
+      painter->drawRect(boundingRect());
+    } else if ( m_showBoundingBox ) {
+      painter->setPen(m_lassoPen);
+      painter->setBrush(Qt::NoBrush);
+      painter->drawRect(boundingRect());
+    }
+    // render cage
+    if ( m_cageEnabled ) {
+     painter->setPen(QPen(Qt::red,0));
+     painter->setBrush(Qt::NoBrush);
+     painter->drawPolygon(m_cage.data(), m_cage.size());
+    }
   }
 }
 
 void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QColor &color, int radius, float hardness )
 {
-  // qDebug() << "LayerItem::paintStrokeSegment(): Processing..." << std::endl;
+  // qCDebug(logEditor) << "LayerItem::paintStrokeSegment(): Processing...";
   if ( radius < 0.0 ) return;
   {
     const float spacing = std::max(1.0f, radius * 0.35f);
@@ -295,7 +317,7 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 // ------------------------ Cage ------------------------
 void LayerItem::applyTriangleWarp()
 {
-  // qDebug() << "LayerItem::applyTriangleWarp(): meshActive=" << m_mesh.isActive() << ",  m_cageEnabled=" << m_cageEnabled << ", m_cageEditing=" << m_cageEditing << std::endl;
+  // qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): meshActive=" << m_mesh.isActive() << ",  m_cageEnabled=" << m_cageEnabled << ", m_cageEditing=" << m_cageEditing;
   {
     TriangleWarp::WarpResult warped = TriangleWarp::warp(m_originalImage,m_mesh);
     if ( !warped.image.isNull() ) {
@@ -314,7 +336,7 @@ void LayerItem::applyCageWarp()
 
 void LayerItem::enableCage( int cols, int rows )
 {
-  // std::cout << "LayerItem::enableCage(): cols=" << cols << ", rows=" << rows << ", enabled=" << m_cageEnabled << std::endl;
+  // qCDebug(logEditor) << "LayerItem::enableCage(): cols=" << cols << ", rows=" << rows << ", enabled=" << m_cageEnabled;
   {
     m_mesh.create(boundingRect(), cols, rows);
     m_cageEnabled = true;
@@ -341,7 +363,7 @@ void LayerItem::enableCage( int cols, int rows )
 
 void LayerItem::initCage( const QVector<QPointF>& pts, const QRectF &rect, int nrows, int ncolumns )
 {
-  // qDebug() << "LayerItem::initCage(): rect =" << rect << ", rows =" << nrows << ", ncolumns =" << ncolumns;
+  // qCDebug(logEditor) << "LayerItem::initCage(): rect =" << rect << ", rows =" << nrows << ", ncolumns =" << ncolumns;
   {
     m_mesh.create(rect,nrows,ncolumns);  
     m_mesh.setPoints(pts);
@@ -377,8 +399,7 @@ void LayerItem::disableCage()
 
 void LayerItem::setCageVisible( bool isVisible )
 {
-  // std::cout << "LayerItem::setCageVisible(): isVisible=" << isVisible << std::endl;
-  // m_mesh.printself();
+  qCDebug(logEditor) << "LayerItem::setCageVisible(): isVisible=" << isVisible;
   {
     if ( m_cageOverlay != nullptr ) {
       for ( int i = 0; i < m_handles.size(); ++i ) {
@@ -386,7 +407,7 @@ void LayerItem::setCageVisible( bool isVisible )
       }
       m_cageOverlay->setVisible(isVisible);
     } else {
-     qDebug() << "WARNING: m_cageOverlay is null"; 
+     qCDebug(logEditor) << "WARNING: m_cageOverlay is null."; 
     }
   }
 }
@@ -410,7 +431,7 @@ QVector<QPointF> LayerItem::cagePoints() const {
 
 void LayerItem::updateCagePoint( TransformHandleItem* handle, const QPointF& localPos )
 {
-  // std::cout << "LayerItem::updateCagePoint(): Processing..." << std::endl;
+  qCDebug(logEditor) << "LayerItem::updateCagePoint(): Processing...";
   {
     int idx = m_handles.indexOf(handle);
     if ( idx < 0 ) return;
@@ -421,7 +442,7 @@ void LayerItem::updateCagePoint( TransformHandleItem* handle, const QPointF& loc
 
 void LayerItem::setCagePoint( int idx, const QPointF& pos )
 {
-  // std::cout << "LayerItem::setCagePoint(): index=" << idx << ", pos=(" << pos.x() << ":" << pos.y() << ")..." << std::endl;
+  qCDebug(logEditor) << "LayerItem::setCagePoint(): index=" << idx << ", pos=(" << pos.x() << ":" << pos.y() << ")...";
   {
     QRectF bounds_before = QPolygonF(m_mesh.points()).boundingRect();
     QPointF local = mapFromScene(pos);
@@ -439,7 +460,7 @@ void LayerItem::setCagePoint( int idx, const QPointF& pos )
 
 void LayerItem::commitCageTransform( const QVector<QPointF> &cage )
 {
-  // std::cout << "LayerItem::commitCageTransform(): Processing..." << std::endl;
+  qCDebug(logEditor) << "LayerItem::commitCageTransform(): Processing...";
   {
     if ( m_cage.size() < 4 || m_originalCage.size() < 4 )
         return;
@@ -477,9 +498,27 @@ void LayerItem::endCageEdit( int idx, const QPointF& startPos )
   }
 }
 
+LayerItem::OperationMode LayerItem::getPolygonOperationMode()
+{
+    if ( m_parent != nullptr ) {
+      MainWindow* parent = dynamic_cast<MainWindow*>(m_parent);
+      if ( parent != nullptr ) {
+        return parent->getViewer()->getPolygonOperationMode();
+      }
+    }
+    return LayerItem::OperationMode::None;
+}
+
+void LayerItem::setPolygonOperationMode( OperationMode mode )
+{
+   if ( m_polygonOperationMode == mode )
+      return;
+   m_polygonOperationMode = mode;
+}
+
 void LayerItem::setOperationMode( OperationMode mode ) 
 {
-   // std::cout << "LayerItem::setOperationMode(): index=" << m_index << ", mode=" << m_operationMode << "|" << mode << std::endl;
+   qCDebug(logEditor) << "LayerItem::setOperationMode(): index=" << m_index << ", mode=" << m_operationMode << "|" << mode;
    {
      if ( m_operationMode == mode )
       return;
@@ -492,64 +531,80 @@ void LayerItem::setOperationMode( OperationMode mode )
 
 
 // ------------------------ Mouse events ------------------------
+bool LayerItem::isValidMouseEventOperation()
+{
+    if ( m_parent != nullptr ) {
+      MainWindow* parent = dynamic_cast<MainWindow*>(m_parent);
+      MainWindow::MainOperationMode opMode = parent != nullptr ? parent->getOperationMode(): MainWindow::MainOperationMode::None;
+      return opMode == MainWindow::MainOperationMode::ImageLayer ? true : false;
+    }
+    return false;
+}
+
 void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
 {
-  qDebug() << "LayerItem::mouseDoubleClickEvent(): index=" << m_index << ", mode=" << m_operationMode;
+  qCDebug(logEditor) << "LayerItem::mouseDoubleClickEvent(): index=" << m_index << ", mode=" << m_operationMode;
   {
-    if ( m_operationMode == OperationMode::CageWarp ) {
-      if ( m_cageEnabled == false ) {
-       if ( m_parent != nullptr ) {
-        MainWindow* parent = dynamic_cast<MainWindow*>(m_parent);
-        if ( parent && parent->getViewer() != nullptr ) {
-         parent->getViewer()->setActiveCageLayer(this);
-         int nCagePoints = parent->getNumberOfCageControlPoints();
-         enableCage(nCagePoints,nCagePoints);
-         return;
+    if ( isValidMouseEventOperation() ) {
+      if ( m_operationMode == OperationMode::CageWarp ) {
+        if ( m_cageEnabled == false ) {
+           if ( m_parent != nullptr ) {
+            MainWindow* parent = dynamic_cast<MainWindow*>(m_parent);
+            if ( parent && parent->getViewer() != nullptr ) {
+             parent->getViewer()->setActiveCageLayer(this);
+             int nCagePoints = parent->getNumberOfCageControlPoints();
+             enableCage(nCagePoints,nCagePoints);
+             return;
+            }
+           }
+           enableCage(2,2);
+        } else {
+           disableCage();
         }
-       }
-       enableCage(2,2);
-      } else {
-       disableCage();
+      } else if ( m_operationMode == OperationMode::Perspective ) {
+          qCDebug(logEditor) << " + perpective call +";
+      } else if ( m_operationMode == OperationMode::Flip ) {
+         m_undoStack->push(new MirrorLayerCommand(this, m_index, 1));
+      } else if ( m_operationMode == OperationMode::Flop ) {
+         m_undoStack->push(new MirrorLayerCommand(this, m_index, 2));
       }
-    } else if ( m_operationMode == OperationMode::Perspective ) {
-      qDebug() << " + perpective call +";
-    } else if ( m_operationMode == OperationMode::Flip ) {
-     m_undoStack->push(new MirrorLayerCommand(this, m_index, 1));
-    } else if ( m_operationMode == OperationMode::Flop ) {
-     m_undoStack->push(new MirrorLayerCommand(this, m_index, 2));
     }
-    // setTransformMode(CageEdit);
   }
 }
 
 void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
 {
-  // std::cout << "LayerItem::mousePressEvent(): operationMode=" << m_operationMode << ", active=" << m_mouseOperationActive << std::endl;
+  qCDebug(logEditor) << "LayerItem::mousePressEvent(): operationMode =" << m_operationMode << ", active=" << m_mouseOperationActive;
   {
     if ( event->button() != Qt::LeftButton ) {
      QGraphicsPixmapItem::mousePressEvent(event);
      return;
     }
-    if ( m_operationMode == OperationMode::Translate || m_operationMode == OperationMode::Rotate || m_operationMode == OperationMode::Scale ) {
-      m_mouseOperationActive = true; 
-      m_startPos = pos();
-      m_startTransform = transform();
-      if ( event->modifiers() & Qt::AltModifier )
-        m_operationMode = OperationMode::Rotate;
-      else if ( event->modifiers() & Qt::ControlModifier )
-        m_operationMode = OperationMode::Scale;
-      else
-        m_operationMode = OperationMode::Translate;
-      QGraphicsPixmapItem::mousePressEvent(event);
-    } else {
-      // m_operationMode = OperationMode::None;
-      m_mouseOperationActive = false;
+    if ( isValidMouseEventOperation() ) {
+       if ( m_operationMode == OperationMode::Translate || m_operationMode == OperationMode::Rotate || m_operationMode == OperationMode::Scale ) {
+         m_mouseOperationActive = true; 
+         m_startPos = pos();
+         m_startTransform = transform();
+         /*
+         if ( event->modifiers() & Qt::AltModifier )
+           m_operationMode = OperationMode::Rotate;
+         else if ( event->modifiers() & Qt::ControlModifier )
+           m_operationMode = OperationMode::Scale;
+         else
+           m_operationMode = OperationMode::Translate;
+         */
+         QGraphicsPixmapItem::mousePressEvent(event);
+       } else {
+        // m_operationMode = OperationMode::None;
+        m_mouseOperationActive = false;
+       }
     }
   }
 }
+
 void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
 {
-  // std::cout << "LayerItem::mouseMoveEvent(): mode=" << m_operationMode << std::endl;
+  // qCDebug(logEditor) << "LayerItem::mouseMoveEvent(): mode =" << m_operationMode;
   {
     if ( m_operationMode == OperationMode::Translate ) {
       QGraphicsPixmapItem::mouseMoveEvent(event);
@@ -576,7 +631,7 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
 {
-  // std::cout << "LayerItem::mouseReleaseEvent(): index=" << m_index << ", name=" << name().toStdString() << std::endl;
+  qCDebug(logEditor) << "LayerItem::mouseReleaseEvent(): index=" << m_index << ", name=" << name();
   {
     if ( !m_undoStack ) {
       QGraphicsPixmapItem::mouseReleaseEvent(event);
@@ -606,7 +661,7 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
 // ------------------------ Handles ------------------------
 void LayerItem::updateHandles() 
 {
-  // std::cout << "LayerItem::updateHandles(): Processing..." << std::endl;
+  qCDebug(logEditor) << "LayerItem::updateHandles(): Processing...";
   {
     qDeleteAll(m_handles);
     m_handles.clear();

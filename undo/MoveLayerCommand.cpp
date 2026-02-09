@@ -1,4 +1,22 @@
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
+
 #include "MoveLayerCommand.h"
+#include "../core/Config.h"
 
 #include <QPainter>
 #include <QtMath>
@@ -22,16 +40,20 @@ MoveLayerCommand::MoveLayerCommand( LayerItem* layer, const QPointF& oldPos, con
 // -------------- Undo / redo  -------------- 
 void MoveLayerCommand::undo() 
 { 
-  qDebug() << "void MoveLayerCommand::undo(): old_pos =" << m_oldPos;
-  if ( m_layer ) m_layer->setPos(m_oldPos);
-  else qWarning() << "MoveLayerCommand::undo(): Invalid layer";
+  qCDebug(logEditor) << "MoveLayerCommand::undo(): old_pos =" << m_oldPos;
+  {
+    if ( m_layer ) m_layer->setPos(m_oldPos);
+    else qWarning() << "MoveLayerCommand::undo(): Invalid layer";
+  }
 }
 
 void MoveLayerCommand::redo()
 { 
-  qDebug() << "MoveLayerCommand::redo(): old_pos= " << m_oldPos << " -> new_pos =" << m_newPos;
-  if ( m_layer ) m_layer->setPos(m_newPos); 
-  else qWarning() << "MoveLayerCommand::redo(): Invalid layer";
+  qCDebug(logEditor) << "MoveLayerCommand::redo(): old_pos= " << m_oldPos << " -> new_pos =" << m_newPos;
+  {
+    if ( m_layer ) m_layer->setPos(m_newPos); 
+    else qWarning() << "MoveLayerCommand::redo(): Invalid layer";
+  }
 }
 
 // -------------- history related methods  -------------- 

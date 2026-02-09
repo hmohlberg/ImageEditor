@@ -1,6 +1,25 @@
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
+
 #include "ImageLoader.h"
+#include "../util/QImageUtils.h"
 
 #include <QDebug>
+#include <QApplication>
 
 #include <iostream>
 
@@ -51,13 +70,14 @@ QPixmap ImageLoader::loadMincAsPixmap( const QString& filePath )
 
 bool ImageLoader::load( const QString& filePath, bool asImage )
 {
- // std::cout << "ImageLoader::load(): filePath='" << filePath.toStdString() <<  "'" << std::endl;
+ // qDebug() << "ImageLoader::load(): filePath='" << filePath;
  {
   if ( filePath.isEmpty() ) 
    return false;
   if ( filePath.endsWith(".mnc", Qt::CaseInsensitive) || filePath.endsWith(".mnc2", Qt::CaseInsensitive) ) {
    if ( asImage ) {
     m_image = loadMincImage(filePath);
+    m_hasImage = true;
    } else {
     m_pixmap = loadMincAsPixmap(filePath);
    }
@@ -67,6 +87,7 @@ bool ImageLoader::load( const QString& filePath, bool asImage )
     if ( m_image.format() == QImage::Format_Indexed8 || m_image.format() == QImage::Format_Mono ) {
      m_image = m_image.convertToFormat(QImage::Format_ARGB32);
     }
+    m_hasImage = true;
    } else {
     m_pixmap.load(filePath);
    }
@@ -87,4 +108,17 @@ bool ImageLoader::saveAs( const QImage& image, const QString& filePath )
   }
   return false;
  }
+}
+
+bool ImageLoader::hasWhiteBackground()
+{
+  if ( m_hasImage ) {
+    return !QImageUtils::hasBlackBackground(m_image);
+  } else {
+    if ( qobject_cast<QApplication*>(qApp) ) {
+      QImage img = m_pixmap.toImage();
+      return !QImageUtils::hasBlackBackground(img);
+    }
+  }
+  return false;
 }

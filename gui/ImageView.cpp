@@ -1,6 +1,24 @@
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
+
 #include "ImageView.h"
 #include "MainWindow.h"
 
+#include "../core/Config.h"
 #include "../layer/LayerItem.h"
 #include "../layer/MaskLayerItem.h"
 #include "../layer/EditablePolygon.h"
@@ -58,6 +76,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
 		m_parent(parent)
 {   
     m_scene = new QGraphicsScene(this);
+    m_scene->setItemIndexMethod(QGraphicsScene::NoIndex); // Hack to prevent crash
     // setup 
     setMouseTracking(true);
     setRenderHint(QPainter::Antialiasing);
@@ -80,26 +99,63 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
 // ------------------------ Self info -------------------------------------
 void ImageView::printself() 
 {
-  std::cout << "ImageView::printself(): Info..." << std::endl;
+  qInfo() << " ImageView::printself():";
+  qInfo() << "  + Pixmap items in scene:" << getScene()->items().count();
+  auto items = getScene()->items();
+  for ( QGraphicsItem* item : items ) {
+    if ( auto pixmapItem = qgraphicsitem_cast<QGraphicsPixmapItem*>(item) ) {
+        qInfo() << "   + Pixmap found: Size =" << pixmapItem->pixmap().size() << ", position =" << item->pos() << ", visible =" << item->isVisible();
+    } else if ( auto polyItem = qgraphicsitem_cast<QGraphicsPolygonItem*>(item) ) {
+        qInfo() << "   + Polygon found with " << polyItem->polygon().size() << "points, " << ", visible =" << item->isVisible();
+    } else if ( auto lineItem = qgraphicsitem_cast<QGraphicsLineItem*>(item) ) {
+        qInfo() << "   + Line found";
+    } else if ( auto ellipseItem = qgraphicsitem_cast<QGraphicsEllipseItem*>(item) ) {
+        QGraphicsEllipseItem* ellipse = qgraphicsitem_cast<QGraphicsEllipseItem*>(item);
+        if ( ellipse ) {
+          qInfo() << "   + Ellipse found: rect =" << ellipse->rect() << ", position =" << item->pos() << ", visible =" << item->isVisible();
+        }
+    } else if ( auto pathItem = qgraphicsitem_cast<QGraphicsPathItem*>(item) ) {
+        qInfo() << "   + Path found";
+    } else if ( auto rectItem = qgraphicsitem_cast<QGraphicsRectItem*>(item) ) {
+        qInfo() << "   + Rect found";
+    } else if ( auto textItem = qgraphicsitem_cast<QGraphicsTextItem*>(item) ) {
+        qInfo() << "   + Text found";
+    } else if ( item->type() == 65536 ) {
+        QGraphicsObject* obj = item->toGraphicsObject();
+        if ( obj ) {
+          QString name = obj->objectName().isEmpty() ? "none" : obj->objectName();
+          const char* className = typeid(*obj).name();
+          qInfo() << "   + QGraphicsObject (65536):" << " name =" << name << ", class (mangled) = " << className
+                       << ", position =" << obj->pos() << ", visible =" << item->isVisible();
+        }
+    } else {
+        qInfo() << "   + Unknown item found: " << item->type();
+    }
+  }
 }
 
 // ------------------------ Update -------------------------------------
 void ImageView::forcedUpdate()
 {
-  std::cout << "ImageView::forcedUpdate(): Processing..." << std::endl;
+  qCDebug(logEditor) << "ImageView::forcedUpdate(): Processing...";
   {
     if ( m_selectedLayer != nullptr ) {
      m_selectedLayer->disableCage();
     } else {
-     std::cout << " - no selected layer found" << std::endl;
+     qInfo() << " - no selected layer found";
     }
   }
+}
+
+void ImageView::rebuildUndoStack()
+{
+  qCDebug(logEditor) << "ImageView::rebuildUndoStack(): Processing...";
 }
 
 // ------------------------ Mask layer -------------------------------------
 void ImageView::createMaskLayer( const QSize& size )
 {
-   // std::cout << "ImageView::createMaskLayer(): size=" << size.width() << "x" << size.height() << std::endl;
+   qCDebug(logEditor) << "ImageView::createMaskLayer(): size =" << size;
    {
     // delete old mask
     if ( m_maskItem ) {
@@ -123,7 +179,7 @@ void ImageView::createMaskLayer( const QSize& size )
     m_maskItem = new MaskLayerItem(m_maskLayer);
     m_maskItem->setZValue(1000);
     m_maskItem->setOpacityFactor(0.4);
-    // m_maskItem->setLabelColors(defaultMaskColors());
+    m_maskItem->setLabelColors(defaultMaskColors());
     scene()->addItem(m_maskItem);
    }
 }
@@ -148,12 +204,12 @@ void ImageView::saveMaskImage( const QString& filename ) {
 void ImageView::loadMaskImage( const QString& filename ) {
   QImage img(filename);
   if ( img.isNull() ) {
-   qDebug() << "Fehler: Bild konnte nicht geladen werden!";
+   qCDebug(logEditor) << "Error: Could not load image!";
    return;
   }
   QSize size = baseLayer()->image().size();
   if ( img.size() != size ) {
-   qDebug() << "Fehler: Size mismatch could not load file!";
+   qCDebug(logEditor) << "Error: Size mismatch could not load file!";
    return;
   }
   if ( m_maskLayer != nullptr ) {
@@ -192,8 +248,18 @@ void ImageView::setMaskTool( MaskTool t ) {
  }
 }
 
-void ImageView::setMaskCutTool( MaskCutTool t ) { 
+void ImageView::setMaskCutTool( const QString &maskLabelName, MaskCutTool t ) { 
  m_maskCutTool = t == m_maskCutTool ? MaskCutTool::Ignore : t;
+ m_maskLabelTypeNames[maskLabelName] = t;
+}
+
+int ImageView::getMaskCutToolType( const QString& name )
+{
+  if ( m_maskLabelTypeNames.contains(name) ) {
+    return m_maskLabelTypeNames[name];
+  }
+  m_maskLabelTypeNames[name] = MaskCutTool::Ignore;
+  return 0;
 }
 
 // ------------------------ Layer tools -------------------------------------
@@ -214,7 +280,7 @@ LayerItem* ImageView::currentLayer() const {
 // ------------------------ Colortable tools -------------------------------------
 void ImageView::setColorTable( const QVector<QRgb> &lut )
 {
-  std::cout << "ImageView::setColorTable(): Processing..." << std::endl;
+  qCDebug(logEditor) << "ImageView::setColorTable(): Processing...";
   LayerItem* layer = currentLayer();
   if ( !layer ) return;
   m_undoStack->push(new InvertLayerCommand(layer,lut));
@@ -228,21 +294,73 @@ void ImageView::enablePipette( bool enabled ) {
 // ------------------------ ------------------------ ------------------------
 // ------------------------       Event tools        ------------------------
 // ------------------------ ------------------------ ------------------------
-void ImageView::keyPressEvent( QKeyEvent* e )
+void ImageView::keyPressEvent( QKeyEvent* event )
 {
-  // qDebug() << "ImageView::keyPressEvent(): key =" << e->key();
+  qCDebug(logEditor) << "ImageView::keyPressEvent(): key =" << event->key();
   {
-    if ( m_polygonEnabled && ( e->key() == Qt::Key_Return || e->key() == Qt::Key_Escape ) ) {
-     setPolygonEnabled(false);
-     return;
+    MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+    if ( mainWindow != nullptr ) {
+      MainWindow::MainOperationMode opMode = mainWindow->getOperationMode();
+      if ( opMode == MainWindow::MainOperationMode::Polygon ) {
+        if ( m_polygonEnabled && ( event->key() == Qt::Key_Return || event->key() == Qt::Key_Escape ) ) {
+         setPolygonEnabled(false);
+         return;
+        } else if ( event->modifiers() & Qt::ControlModifier ) {
+           LayerItem::OperationMode polygonTransformMode = LayerItem::OperationMode::None;
+           if ( event->key() == Qt::Key_A ) {
+              polygonTransformMode = LayerItem::OperationMode::AddPoint;
+           } else if ( event->key() == Qt::Key_D ) {
+              polygonTransformMode = LayerItem::OperationMode::DeletePoint;
+           } else if ( event->key() == Qt::Key_M ) {
+              polygonTransformMode = LayerItem::OperationMode::MovePoint;
+           } else if ( event->key() == Qt::Key_R ) {
+              polygonTransformMode = LayerItem::OperationMode::ReducePolygon;
+           } else if ( event->key() == Qt::Key_S ) {
+              polygonTransformMode = LayerItem::OperationMode::SmoothPolygon;
+           } else if ( event->key() == Qt::Key_T ) {
+              polygonTransformMode = LayerItem::OperationMode::TranslatePolygon;
+           } else {
+              QGraphicsView::keyPressEvent(event);
+              return;
+           }
+           mainWindow->setPolygonOperationMode(polygonTransformMode);
+           setPolygonOperationMode(polygonTransformMode);
+        }
+      } else if ( opMode == MainWindow::MainOperationMode::ImageLayer ) {
+        if ( event->modifiers() & Qt::ControlModifier ) {
+          LayerItem::OperationMode transformMode = LayerItem::OperationMode::None;
+          if ( event->key() == Qt::Key_T ) {
+             transformMode = LayerItem::OperationMode::Translate;  
+          } else if ( event->key() == Qt::Key_S ) {
+             transformMode = LayerItem::OperationMode::Scale;
+          } else if ( event->key() == Qt::Key_R ) {
+             transformMode = LayerItem::OperationMode::Rotate;
+          } else if ( event->key() == Qt::Key_V ) {
+             transformMode = LayerItem::OperationMode::Flip; 
+          } else if ( event->key() == Qt::Key_F ) {
+             transformMode = LayerItem::OperationMode::Flop; 
+          } else if ( event->key() == Qt::Key_W ) {
+             transformMode = LayerItem::OperationMode::CageWarp; 
+          } else if ( event->key() == Qt::Key_P ) {
+             transformMode = LayerItem::OperationMode::Perspective; 
+          } else {
+             QGraphicsView::keyPressEvent(event);
+             return;
+          }
+          mainWindow->setLayerOperationMode(transformMode);
+          setLayerOperationMode(transformMode);
+        } 
+      }
     }
-    QGraphicsView::keyPressEvent(e);
+    QGraphicsView::keyPressEvent(event);
   }
 }
 
 void ImageView::mousePressEvent( QMouseEvent* event )
 {
-  // std::cout << "ImageView::mousePressEvent(): m_polygonEnabled=" << m_polygonEnabled << std::endl;
+  MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+  if ( mainWindow == nullptr ) return;  
+  qCDebug(logEditor) << "ImageView::mousePressEvent(): operationMode = " << mainWindow->getOperationMode() << ", polygonEnabled =" << m_polygonEnabled;
   {
     if ( !scene() )
         return;     
@@ -262,34 +380,6 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         setCursor(Qt::ClosedHandCursor);
         return; // kein weiteres Event behandeln
     }
-    
-    // --- Check whether a layer has been clicked
-    LayerItem* clickedItem = nullptr;
-    auto itemsUnderCursor = m_scene->items(scenePos);
-    // std::cout << " checking for layer click at position (" << scenePos.x() << ":" << scenePos.y() << ")..." << std::endl;
-    for ( auto* item : itemsUnderCursor ) {
-        auto* layer = dynamic_cast<LayerItem*>(item);
-        if ( layer ) {
-            // std::cout << "  found layer " << layer->name().toStdString() << std::endl;
-            clickedItem = layer;
-            break;
-        }
-    }
-    if ( clickedItem ) {
-        // Alle anderen Layer deselektieren
-        for ( auto* item : m_scene->items() ) {
-            auto* layer = dynamic_cast<LayerItem*>(item);
-            if ( layer && layer != clickedItem )
-                layer->setSelected(false);
-        }
-        clickedItem->setSelected(true); // roter Rahmen
-        if ( clickedItem->isCageWarp() && clickedItem->cageMesh().isActive() ) {
-         std::cout << " hello cage warp " << std::endl;
-         m_activeLayer = clickedItem;
-         m_selectedLayer = clickedItem;
-         m_cageBefore = m_activeLayer->cageMesh().points(); // here it is empty
-        }
-    }
 
     // --- Pipette ---
     if ( m_pipette ) {
@@ -305,9 +395,42 @@ void ImageView::mousePressEvent( QMouseEvent* event )
             return;
         }
     }
+    
+    // --- Layer ---
+    if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::ImageLayer ) {
+      // --- Check whether a layer has been clicked ---
+      LayerItem* clickedItem = nullptr;
+      auto itemsUnderCursor = m_scene->items(scenePos);
+      for ( auto* item : itemsUnderCursor ) {
+        auto* layer = dynamic_cast<LayerItem*>(item);
+        if ( layer ) {
+            clickedItem = layer;
+            break;
+        }
+      }
+      if ( clickedItem ) {
+        clickedItem->setOperationMode(m_layerOperationMode);
+        if ( clickedItem->isSelected() == true ) {
+          clickedItem->setSelected(false);  // NO effect. Why?
+        } else {
+          for ( auto* item : m_scene->items() ) {
+            auto* layer = dynamic_cast<LayerItem*>(item);
+            if ( layer && layer != clickedItem )
+                layer->setSelected(false);
+          }
+          clickedItem->setSelected(true);
+        }
+        if ( clickedItem->isCageWarp() && clickedItem->cageMesh().isActive() ) {
+           m_activeLayer = clickedItem;
+           m_selectedLayer = clickedItem;
+           m_cageBefore = m_activeLayer->cageMesh().points();
+        }
+      }
+    }
 
     // --- Painting ---
-    if ( m_paintToolEnabled ) {
+    if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::Paint ) {
+      if ( m_paintToolEnabled ) {
         auto itemsUnderCursor = scene()->items(scenePos);
         for ( auto* item : itemsUnderCursor ) {
             auto* layer = dynamic_cast<LayerItem*>(item);
@@ -324,26 +447,33 @@ void ImageView::mousePressEvent( QMouseEvent* event )
             viewport()->update();
             break;
         }
+      }
     }
     
     // --- Mask Painting ---
-    if ( m_maskTool != MaskTool::None && (event->button() == Qt::LeftButton || event->button() == Qt::RightButton) ) {
+    if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::Mask ) {
+      if ( m_maskTool != MaskTool::None && (event->button() == Qt::LeftButton || event->button() == Qt::RightButton) ) {
         // NEW: m_maskStrokeActive = true;
         // NEW: m_currentMaskStroke.clear();
         m_maskPainting = true;
         m_maskStrokePoints.clear();
         m_maskStrokePoints << mapToScene(event->pos()).toPoint();
         return;
+      }
     }
-
-    // --- Lasso starten ---
-    if ( m_lassoEnabled ) {
+    // --- Free selection event ---
+    if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::FreeSelection ) {
+      if ( m_lassoEnabled ) {
         m_lassoPolygon.clear();
         m_lassoPolygon << scenePos.toPoint();
-        if ( !m_lassoPreview  )
+        if ( !m_lassoPreview ) {
             m_lassoPreview = scene()->addPolygon(QPolygonF(m_lassoPolygon));
-        else
+            m_lassoPreview->setPen(QPen(EditorStyle::instance().lassoColor(), EditorStyle::instance().lassoWidth()));
+            // QColor lassoColor = EditorStyle::instance().lassoColor();
+            // m_lassoPreview->setPen(QPen(Qt::yellow, 0));
+        } else {
             m_lassoPreview->setPolygon(QPolygonF(m_lassoPolygon));
+        }
         QRectF br = QPolygonF(m_lassoPolygon).boundingRect();
         if ( !m_lassoBoundingBox ) {
             QPen pen(Qt::green);
@@ -354,15 +484,19 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         } else {
             m_lassoBoundingBox->setRect(br);
         }
-        return; // fertig, kein weiteres Event
+        return;
+      }
     }
     
-    // --- Polygon starten ---
-    if ( m_polygonEnabled && event->button() == Qt::LeftButton ) {
-       if ( m_activePolygon != nullptr ) {
-         m_activePolygon->addPoint(scenePos);
-         return;
-       }
+    // --- polygon events ---
+    if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::Polygon ) {
+      // --- Add a new point to polygon ---
+      if ( m_polygonEnabled && event->button() == Qt::LeftButton ) {
+         if ( m_activePolygon != nullptr ) {
+           m_activePolygon->addPoint(scenePos);
+           return;
+         }
+      }
     }
 
     QGraphicsView::mousePressEvent(event);
@@ -372,15 +506,40 @@ void ImageView::mousePressEvent( QMouseEvent* event )
 
 void ImageView::mouseDoubleClickEvent( QMouseEvent* event )
 {
-  // std::cout << "ImageView::mouseDoubleClickEvent(): Processing..." << std::endl;
+  qCDebug(logEditor) << "ImageView::mouseDoubleClickEvent(): Processing...";
   {
+    MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+    if ( mainWindow != nullptr && mainWindow->getOperationMode() == MainWindow::MainOperationMode::Polygon ) {
+       // check whether a polygon has been double clicked
+       QPointF scenePos = mapToScene(event->pos());
+       EditablePolygonItem* clickedItem = nullptr;
+       auto itemsUnderCursor = m_scene->items(scenePos);
+       for ( auto* item : itemsUnderCursor ) {
+         auto* editablePolygon = dynamic_cast<EditablePolygonItem*>(item);  //  EditablePolygonItem
+         if ( editablePolygon != nullptr  && editablePolygon->polygon() != nullptr ) {
+           if ( editablePolygon->hitTestPolygon(scenePos) > 0 ) {
+            editablePolygon->polygon()->setSelected(!editablePolygon->polygon()->isSelected());
+            if ( editablePolygon->polygon()->isSelected() ) mainWindow->setActivePolygon(editablePolygon->polygon()->name());
+            clickedItem = editablePolygon;
+            break;
+           }
+         }
+       }
+       if ( clickedItem != nullptr ) {
+         for ( auto* item : m_scene->items() ) {
+           auto* editablePolygon = dynamic_cast<EditablePolygonItem*>(item);
+           if ( editablePolygon && editablePolygon != clickedItem )
+               editablePolygon->polygon()->setSelected(false);
+         }
+       }
+    }
     QGraphicsView::mouseDoubleClickEvent(event);
   }
 }
 
 void ImageView::mouseMoveEvent( QMouseEvent* event )
 {
-    // std::cout << "ImageView::mouseMoveEvent(): m_painting=" << m_maskPainting << ", m_paintToolEnabled " << m_paintToolEnabled << std::endl;
+    //  qCDebug(logEditor) << "ImageView::mouseMoveEvent(): m_painting=" << m_maskPainting << ", m_paintToolEnabled " << m_paintToolEnabled;
     if ( !scene() )
         return;
         
@@ -407,14 +566,14 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
     if ( !colorFound )
         emit cursorColorChanged(Qt::transparent);
 
-    // --- Shift-Pan: nur wenn Shift gedr√ºckt & linke Maustaste ---
+    // --- Shift-Pan: nur wenn Shift gedrückt & linke Maustaste ---
     // std::cout << "shift-pan: processing: shift=" << (event->modifiers() & Qt::ShiftModifier) << "..." << std::endl;
     if ( (event->modifiers() & Qt::ShiftModifier) && (event->buttons() & Qt::LeftButton) ) {
         QPoint delta = event->pos() - m_lastMousePos;
         horizontalScrollBar()->setValue(horizontalScrollBar()->value() - delta.x());
         verticalScrollBar()->setValue(verticalScrollBar()->value() - delta.y());
         m_lastMousePos = event->pos();
-        return; // ‚ùó Qt bekommt KEIN Event
+        return;
     }
 
     // --- Painting ---
@@ -448,14 +607,13 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
         int y = int(scenePos.y());
         if( !(x < 0 || y < 0 || x >= m_maskLayer->width() || y >= m_maskLayer->height()) ) {
          int r = m_maskBrushRadius;
+         int rr = r*r;
          uchar newValue = isRightButton ? (m_maskTool == MaskTool::MaskErase ? m_currentMaskLabel : 0) : (m_maskTool == MaskTool::MaskErase ? 0 : m_currentMaskLabel);
          for( int dy = -r; dy <= r; ++dy ) {
           for( int dx = -r; dx <= r; ++dx ) {
             int px = x+dx;
             int py = y+dy;
-            if( px<0 || py<0 || px>=m_maskLayer->width() || py>=m_maskLayer->height() )
-                continue;
-            if( dx*dx + dy*dy > r*r ) continue; // Kreis
+            if( dx*dx + dy*dy > rr ) continue; // Kreis
             // NEW: uchar oldValue = m_maskLayer->pixel(x,y);
             // NEW: if ( oldValue == newValue ) continue;
             // NEW: m_currentMaskStroke.push_back({x,y,oldValue,newValue});
@@ -471,10 +629,11 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
     // --- Lasso-Zeichnung ---
     if ( m_lassoEnabled && (event->buttons() & Qt::LeftButton) ) {
         m_lassoPolygon << scenePos.toPoint();
-        if ( !m_lassoPreview )
+        if ( !m_lassoPreview ) {
             m_lassoPreview = scene()->addPolygon(QPolygonF(m_lassoPolygon));
-        else
+        } else {
             m_lassoPreview->setPolygon(QPolygonF(m_lassoPolygon));
+        }
         QRectF br = QPolygonF(m_lassoPolygon).boundingRect();
         if ( !m_lassoBoundingBox ) {
             QPen pen(Qt::green);
@@ -505,7 +664,7 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
 
 void ImageView::mouseReleaseEvent( QMouseEvent* event )
 {
-  // std::cout << "ImageView::mouseReleaseEvent(): Processing..." << std::endl;
+  qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): Processing...";
   {
     if ( !scene() )
         return;
@@ -514,7 +673,7 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
         QVector<QPointF> cageAfter = m_selectedCageLayer->cageMesh().points();
         QVector<QPointF> cageBefore = m_selectedCageLayer->cageMesh().originalPoints();    
         std::cout << "ImageView::mouseReleaseEvent(): layer=" << m_selectedCageLayer->name().toStdString() << ": cageAfter=" << cageAfter.size() << ", cageBefore=" << m_cageBefore.size() << std::endl;
-        // Pr√ºfen, ob Cage ver√§ndert wurde
+        // Prüfen, ob Cage verändert wurde
         if ( cageAfter != m_cageBefore ) {
          std::cout << " Cage has been modified " << std::endl;
          if ( m_cageWarpCommand == nullptr ) {
@@ -609,17 +768,29 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
   }
 }
 
+// IMPORTANT: Security-Check: Prevents extrem small zoom values (potential crash source!)
+//    If newScale will be too small (e.g. < 0.001), the BSP-Tree crashed.
 void ImageView::wheelEvent( QWheelEvent* event )
 {
+  // qCDebug(logEditor) << "ImageView::wheelEvent(): currentScale =" << transform().m11();
+  {
     if ( !scene() || scene()->items().isEmpty() ) {
       event->ignore();
       return;
     }
     constexpr qreal zoomFactor = 1.15;
     qreal factor = (event->angleDelta().y() > 0) ? zoomFactor : 1.0 / zoomFactor;
+    qreal currentScale = transform().m11();
+    qreal newScale = currentScale * factor;
+    if ( newScale < 0.01 || newScale > 100.0 ) {
+      event->ignore();
+      return;
+    }
+    emit scaleChanged(transform().m11());
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     scale(factor, factor);
     event->accept();
+  }
 }
 
 // --------------------------------- drawing ---------------------------------
@@ -748,10 +919,19 @@ LayerItem* ImageView::getSelectedItem()
     return nullptr;
 }
 
+void ImageView::setPolygonOperationMode( LayerItem::OperationMode mode )
+{
+  qCDebug(logEditor) << "ImageView::setPolygonOperationMode(): mode =" << mode << ", m_polygonEnabled =" << m_polygonEnabled;
+  {
+    m_polygonOperationMode = mode; 
+  }
+}
+
 void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
 {
-  // qDebug() << "ImageView::setLayerOperationMode(): mode =" << mode << ", m_polygonEnabled =" << m_polygonEnabled;
+  qCDebug(logEditor) << "ImageView::setLayerOperationMode(): mode =" << mode << ", m_polygonEnabled =" << m_polygonEnabled;
   {
+    m_layerOperationMode = mode; 
     if ( m_polygonEnabled ) {
       setPolygonEnabled(false);
     }
@@ -777,7 +957,7 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
 
 void ImageView::setNumberOfCageControlPoints( int nControlPoints ) 
 {
-  // std::cout << "ImageView::setNumberOfCageControlPoints(): nControlPoints=" << nControlPoints << std::endl;
+  // qCDebug(logEditor) << "ImageView::setNumberOfCageControlPoints(): nControlPoints=" << nControlPoints;
   {
     for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
       auto* layer = dynamic_cast<LayerItem*>(item);
@@ -793,7 +973,7 @@ void ImageView::setNumberOfCageControlPoints( int nControlPoints )
 
 void ImageView::setCageWarpRelaxationSteps( int nRelaxationSteps )
 {
-  // std::cout << "ImageView::setCageWarpRelaxationSteps(): nRelaxationSteps=" << nRelaxationSteps << std::endl;
+  // qCDebug(logEditor) << "ImageView::setCageWarpRelaxationSteps(): nRelaxationSteps=" << nRelaxationSteps;
   {
     for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
       auto* layer = dynamic_cast<LayerItem*>(item);
@@ -830,7 +1010,7 @@ void ImageView::createLassoLayer()
 
 LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QString &name )
 {
-  // std::cout << "ImageView::createNewLayer(): name=" << name.toStdString() << ",  polygon_size=" << polygon.size() << std::endl;
+  qCDebug(logEditor) << "ImageView::createNewLayer(): name=" << name << ",  polygon_size=" << polygon.size() << ", operationMode= " << m_layerOperationMode;
   {
     // --- switch to layer operation mode ---
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
@@ -843,6 +1023,7 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
         return nullptr;
     QImage& src = base->image();
     // --- prepare ---
+    QColor backgroundColor = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
     QPolygonF polyF = QPolygonF(polygon.begin(), polygon.end());
     QRectF boundsF = polyF.boundingRect();
     QRect bounds = boundsF.toAlignedRect(); // ganzzahlig
@@ -852,7 +1033,7 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     mask.fill(0);
     QPainter pm(&mask);
     pm.setRenderHint(QPainter::Antialiasing);
-    pm.setBrush(Qt::white);
+    pm.setBrush(backgroundColor); // Qt::white);
     pm.setPen(Qt::NoPen);
     // Polygon relativ zur Bounding-Box verschieben
     QPolygonF relativePoly = polyF;
@@ -875,11 +1056,11 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
        unsigned int xpos = bounds.left() + x;
        QPoint imgPos(xpos, ypos);
        QColor c = src.pixelColor(imgPos);
-       if ( c != m_backgroundColor && m[x] > 0 && m_maskLayer->pixel(xpos,ypos) == 0 ) {
+       if ( c != backgroundColor && m[x] > 0 && m_maskLayer->pixel(xpos,ypos) == 0 ) {
          c.setAlpha(m[x]); 
          cut.setPixelColor(x,y,c);
          if ( m[x] == 255 )
-            src.setPixelColor(imgPos, m_backgroundColor);
+            src.setPixelColor(imgPos, backgroundColor);
        }
       }
      }
@@ -891,11 +1072,11 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
        unsigned int xpos = bounds.left() + x;
        QPoint imgPos(xpos, ypos);
        QColor c = src.pixelColor(imgPos);
-       if ( c != m_backgroundColor && m[x] > 0 && m_maskLayer->pixel(xpos,ypos) != 0 ) {
+       if ( c != backgroundColor && m[x] > 0 && m_maskLayer->pixel(xpos,ypos) != 0 ) {
          c.setAlpha(m[x]); 
          cut.setPixelColor(x,y,c);
          if ( m[x] == 255 )
-            src.setPixelColor(imgPos, m_backgroundColor);
+            src.setPixelColor(imgPos, backgroundColor);
        }
       }
      }
@@ -906,14 +1087,15 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
       for ( int x=0; x<bounds.width(); ++x ) {
         QPoint imgPos(bounds.left() + x, ypos);
         QColor c = src.pixelColor(imgPos);
-        if ( c != m_backgroundColor && m[x] > 0 ) {
+        if ( c != backgroundColor && m[x] > 0 ) {
          c.setAlpha(m[x]); 
          cut.setPixelColor(x,y,c);
-         //if ( m[x] > 0 )
-           //  src.setPixelColor(imgPos, m_backgroundColor);
+         // if ( m[x] > 0 )
+         //  src.setPixelColor(imgPos, backgroundColor);
         }
       }
      }
+     
     }
     // --- Neues LayerItem ---
     int nidx = m_layers.size()+1;
@@ -930,7 +1112,7 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     newLayer->setZValue(base->zValue()+1);
     newLayer->setSelected(true);
     // newLayer->setShowGreenBorder(true); // falls vorhanden
-    m_scene->addItem(newLayer);
+    // ITEM ALREADY IN SCENE: m_scene->addItem(newLayer);
     base->updatePixmap();
     layer->m_item = newLayer;
     m_layers.push_back(layer);
@@ -985,7 +1167,7 @@ void ImageView::redoPolygonOperation()
 
 void ImageView::createPolygonLayer()
 {
-  qDebug() << "ImageView::createPolygonLayer(): Processing...";
+  qCDebug(logEditor) << "ImageView::createPolygonLayer(): Processing...";
   {
     if ( m_activePolygon != nullptr ) {
       LayerItem *layer = baseLayer();
@@ -1003,7 +1185,7 @@ void ImageView::createPolygonLayer()
     EditablePolygon *editablePolygon = polyCmd->model();
     if ( editablePolygon != nullptr ) {
      int index = m_layers.size()+1;
-     LassoCutCommand *layerCut = createNewLayer(editablePolygon->polygon(),QString("Polygon %1 layer").arg(index));
+     LassoCutCommand *layerCut = createNewLayer(editablePolygon->polygon(),QString("Polygon %1 Layer").arg(index));
      if ( layerCut != nullptr ) {
       layerCut->setController(polyCmd);
       editablePolygon->setVisible(false);
@@ -1015,7 +1197,7 @@ void ImageView::createPolygonLayer()
 
 void ImageView::finishPolygonDrawing( LayerItem* layer )
 {
-  // std::cout << "ImageView::finishPolygonDrawing(): Processing..." << std::endl;
+  qCDebug(logEditor) << "ImageView::finishPolygonDrawing(): Processing...";
   {
     if ( !m_activePolygon || m_activePolygon->pointCount() < 3 )
         return;
@@ -1025,7 +1207,7 @@ void ImageView::finishPolygonDrawing( LayerItem* layer )
     }
     QPolygonF poly = m_activePolygon->polygon();
     scene()->removeItem(m_activePolygonItem);
-    delete m_activePolygonItem;
+    m_activePolygonItem->deleteLater(); // Instead of 'delete m_activePolygonItem;'
     delete m_activePolygon;
     m_activePolygonItem = nullptr;
     m_activePolygon = nullptr;
@@ -1035,17 +1217,16 @@ void ImageView::finishPolygonDrawing( LayerItem* layer )
 
 void ImageView::setPolygonEnabled( bool enabled )
 { 
-  // std::cout << "ImageView::setPolygonEnabled(): npolygons=" << m_editablePolygons.size() << ", enabled=" << enabled << std::endl;
+  qCDebug(logEditor) << "ImageView::setPolygonEnabled(): npolygons=" << m_editablePolygons.size() << ", enabled=" << enabled;
   {
    LayerItem *layer = baseLayer();
    if ( layer != nullptr ) {
-    layer->printself();
     m_polygonEnabled = enabled;
     if ( m_polygonEnabled ) {
      m_activePolygon = new EditablePolygon(QString("Polygon %1").arg(1+m_editablePolygons.size()),this);
      m_editablePolygons.push_back(m_activePolygon);
      m_activePolygonItem = new EditablePolygonItem(m_activePolygon,layer);
-     m_scene->addItem(m_activePolygonItem);
+     m_activePolygonItem->setColor(QColor(255,0,0)); // set polygon color here
     } else {
      finishPolygonDrawing(layer);
      // m_activePolygonItem = nullptr;

@@ -1,3 +1,20 @@
+/* 
+* Copyright 2026 Forschungszentrum Jülich
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    https://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
+
 #pragma once
 
 #include <QGraphicsView>
@@ -10,6 +27,7 @@
 #include <QPainterPath>
 #include <QUndoStack>
 #include <QPolygon>
+#include <QHash>
 
 #include "../layer/Layer.h"
 #include "../layer/LayerItem.h"
@@ -39,7 +57,7 @@ class ImageView : public QGraphicsView
 public:
 
     enum MaskTool { None, MaskPaint, MaskErase };
-    enum MaskCutTool { Ignore, Mask, OnlyMask };
+    enum MaskCutTool { Ignore, Mask, OnlyMask, Copy, Inpainting };
     
     explicit ImageView( QWidget* parent = nullptr );
 
@@ -74,6 +92,9 @@ public:
       setColorTable(lut);
     }
     
+    LayerItem::OperationMode getPolygonOperationMode() const { return m_polygonOperationMode; }
+    LayerItem::OperationMode getLayerOperationMode() const { return m_layerOperationMode; }
+    
     LayerItem* getSelectedItem();
     LayerItem* currentLayer() const;
     LayerItem* baseLayer();
@@ -86,6 +107,7 @@ public:
       if ( !m_maskItem ) return Qt::transparent;
       return m_maskItem->labelColor(label);
     }
+    int getMaskCutToolType( const QString& name );
     
     void setBrushRadius( int r ) { m_brushRadius = r; }
     void setMaskBrushRadius( int r ) { m_maskBrushRadius = r; }
@@ -98,13 +120,15 @@ public:
     void setPolygonIndex( quint8 index ) { m_polygonIndex = index; }
     void setActiveCageLayer( LayerItem *item ) { m_selectedCageLayer = item; }
     void setLayerOperationMode( LayerItem::OperationMode mode );
+    void setPolygonOperationMode( LayerItem::OperationMode mode );
     void setNumberOfCageControlPoints( int nControlPoints );
     void setCageWarpRelaxationSteps( int nRelaxationSteps );
     void setMaskTool( MaskTool t );
-    void setMaskCutTool( MaskCutTool t );
+    void setMaskCutTool( const QString&, MaskCutTool t );
     void createMaskLayer( const QSize& size );
     void saveMaskImage( const QString& filename );
     void loadMaskImage( const QString& filename );
+    void rebuildUndoStack();
     void forcedUpdate();
     
     void undoPolygonOperation();
@@ -144,6 +168,9 @@ private:
     LayerItem* m_selectedCageLayer = nullptr;
     LayerItem* m_paintLayer = nullptr;
     
+    LayerItem::OperationMode m_layerOperationMode = LayerItem::OperationMode::Translate;
+    LayerItem::OperationMode m_polygonOperationMode = LayerItem::OperationMode::MovePoint;
+    
     EditablePolygon* m_activePolygon = nullptr;
     EditablePolygonItem* m_activePolygonItem = nullptr;
     
@@ -151,6 +178,7 @@ private:
     MaskLayerItem* m_maskItem = nullptr;
     MaskTool m_maskTool = MaskTool::None;
     MaskCutTool m_maskCutTool = MaskCutTool::Ignore;
+    QHash<QString, MaskCutTool> m_maskLabelTypeNames;
     
     CageWarpCommand* m_cageWarpCommand = nullptr;
 
