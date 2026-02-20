@@ -26,7 +26,7 @@
 class TransformLayerCommand : public AbstractCommand
 {
 
-public:
+ public:
 
     enum LayerTransformType { None, Scale, Rotate };
 
@@ -40,7 +40,12 @@ public:
         const LayerTransformType& trafoType = LayerTransformType::Rotate,
         QUndoCommand* parent = nullptr
     );
+    TransformLayerCommand( LayerItem* layer, const QTransform& oldTransform,
+        const QTransform& newTransform, QUndoCommand* parent = nullptr );
     
+    AbstractCommand* clone() const override { return new TransformLayerCommand(m_layer, m_oldPos, m_newPos, m_oldTransform, m_newTransform, m_name); }
+    
+    void setTransform( const QTransform& transform ) { m_newTransform = transform; } 
     QString type() const override { return "TransformLayer"; }
     LayerItem* layer() const override { return m_layer; }
     LayerTransformType trafoType() const { return m_trafoType; } 
@@ -48,13 +53,12 @@ public:
 
     void undo() override;
     void redo() override;
-    
     bool mergeWith( const QUndoCommand *other ) override;
     
     QJsonObject toJson() const override;
     static TransformLayerCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent = nullptr );
 
-private:
+ private:
 
     int m_layerId = -1;
     LayerItem* m_layer = nullptr;

@@ -19,6 +19,13 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QBrush>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QLabel>
+#include <QStyle>
+#include <QApplication>
 
 namespace QWidgetUtils
 {
@@ -40,5 +47,56 @@ namespace QWidgetUtils
     p.end();
     return QBrush(pix);
   }
+  
+  int showIconDialog( QWidget *parent, const QString &title, const QString &labeltext ) {
+    QDialog dialog(parent);
+    dialog.setWindowTitle(title);
+    dialog.setMinimumWidth(600);
+
+    QVBoxLayout *mainLayout = new QVBoxLayout(&dialog);
+
+    // 1. Bereich: Icon und Text nebeneinander
+    QHBoxLayout *contentLayout = new QHBoxLayout();
+    
+    // Icon vom System laden (z.B. Information, Warning oder Question)
+    QLabel *iconLabel = new QLabel(&dialog);
+    QIcon icon = QApplication::style()->standardIcon(QStyle::SP_MessageBoxInformation);
+    iconLabel->setPixmap(icon.pixmap(64, 64)); 
+    iconLabel->setAlignment(Qt::AlignTop);   
+    iconLabel->setContentsMargins(0, 10, 0, 0);  
+    
+    QLabel *textLabel = new QLabel(labeltext, &dialog);
+    textLabel->setWordWrap(true);
+    
+    contentLayout->addWidget(iconLabel);
+    contentLayout->addSpacing(15); 
+    contentLayout->addWidget(textLabel, 1); 
+    
+    mainLayout->addLayout(contentLayout);
+    mainLayout->addSpacing(20); 
+
+    // 2. Bereich: Rechtsbündige Buttons
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch(); 
+
+    QPushButton *btnOk = new QPushButton("Revoke", &dialog);
+    QPushButton *btnIgnore = new QPushButton("Delete", &dialog);
+    QPushButton *btnCancel = new QPushButton("Cancel", &dialog);
+
+    buttonLayout->addWidget(btnOk);
+    buttonLayout->addWidget(btnIgnore);
+    buttonLayout->addWidget(btnCancel);
+
+    mainLayout->addLayout(buttonLayout);
+
+    // Rückgabewerte
+    int result = 0;
+    QObject::connect(btnOk, &QPushButton::clicked, [&]() { result = 1; dialog.accept(); });
+    QObject::connect(btnIgnore, &QPushButton::clicked, [&]() { result = 2; dialog.accept(); });
+    QObject::connect(btnCancel, &QPushButton::clicked, [&]() { result = 3; dialog.reject(); });
+
+    dialog.exec();
+    return result;
+}
 
 }

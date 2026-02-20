@@ -25,10 +25,11 @@ class LayerItem;
 class PolygonMovePointCommand : public AbstractCommand
 {
 
-public:
-    PolygonMovePointCommand( EditablePolygon* poly, int idx,
-                            const QPointF& oldPos, const QPointF& newPos,
-                            QUndoCommand* parent = nullptr );
+  public:
+  
+    PolygonMovePointCommand( EditablePolygon* poly, int idx, const QPointF& oldPos, const QPointF& newPos, QUndoCommand* parent = nullptr );
+                            
+    AbstractCommand* clone() const override { return new PolygonMovePointCommand(m_poly,m_idx,m_oldPos,m_newPos); }
 
     QString type() const override { return "MovePolygonPoint"; }
     LayerItem* layer() const override { return nullptr; }
@@ -40,7 +41,7 @@ public:
     QJsonObject toJson() const override;
     static PolygonMovePointCommand* fromJson( const QJsonObject& obj, EditablePolygon* poly );
 
-private:
+  private:
 
     EditablePolygon* m_poly;
     int m_idx;

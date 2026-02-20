@@ -18,27 +18,39 @@
 #pragma once
 
 #include <QGraphicsEllipseItem>
+#include <QPointF>
 
+#include "TransformOverlay.h"
+#include "PerspectiveOverlay.h"
+
+class TransformOverlay;
 class LayerItem;
 class QUndoStack;
 
 class TransformHandleItem : public QGraphicsEllipseItem
 {
-public:
+ public:
 
-    enum Role { Scale, Rotate };
+    enum Role { Scale, Rotate, Perspective };
 
     TransformHandleItem( LayerItem* layer, Role role );
+    TransformHandleItem( HandleType type, TransformOverlay* overlay );
+    TransformHandleItem( HandleType type, PerspectiveOverlay* overlay );
 
-protected:
+ protected:
 
     void mousePressEvent( QGraphicsSceneMouseEvent* ) override;
     void mouseMoveEvent( QGraphicsSceneMouseEvent* ) override;
     void mouseReleaseEvent( QGraphicsSceneMouseEvent* ) override;
 
-private:
+ private:
 
-    LayerItem* m_layer;
+    LayerItem* m_layer = nullptr;
+    
+    TransformOverlay* m_overlay = nullptr;
+    PerspectiveOverlay* m_perspectiveOverlay = nullptr;
+    
+    HandleType m_type;
     Role m_role;
     QPointF m_pressScenePos;
     QTransform m_startTransform;

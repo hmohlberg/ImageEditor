@@ -50,6 +50,8 @@ void PerspectiveTransform::setTargetPoint( int idx, const QPointF& p )
 
 void PerspectiveTransform::applyConstraints( int idx )
 {
+  qDebug() << "PerspectiveTransform::applyConstraints(): index =" << idx;
+  {
     if ( m_constraints.testFlag(KeepInBounds) ) {
         QRectF bounds = QPolygonF(m_src).boundingRect();
         QPointF& pt = m_dst[idx];
@@ -81,20 +83,27 @@ void PerspectiveTransform::applyConstraints( int idx )
             m_dst[2].setX(x);
         }
     }
+  }
 }
 
 void PerspectiveTransform::setSourceQuad( const QVector<QPointF>& src )
 {
+  qDebug() << "PerspectiveTransform::setSourceQuad(): source =" << src;
+  {
     if ( src.size() != 4 ) return;
     m_src = src;
     emit changed();
+  }
 }
 
 void PerspectiveTransform::setTargetQuad( const QVector<QPointF>& dst )
 {
+  qDebug() << "PerspectiveTransform::setTargetQuad(): destination =" << dst;
+  {
     if ( dst.size() != 4 ) return;
     m_dst = dst;
     emit changed();
+  }
 }
 
 bool PerspectiveTransform::isValid() const
@@ -104,15 +113,20 @@ bool PerspectiveTransform::isValid() const
 
 QTransform PerspectiveTransform::transform() const
 {
+  qDebug() << "PerspectiveTransform::transform(): Processing...";
+  {
     QTransform t;
     if ( !isValid() )
         return t;
     QTransform::quadToQuad(m_src, m_dst, t);
     return t;
+  }
 }
 
 QImage PerspectiveTransform::apply( const QImage& srcImage ) const
 {
+  qDebug() << "PerspectiveTransform::apply(): Processing...";
+  {
     if ( !isValid() )
         return srcImage;
     QTransform t = transform();
@@ -126,4 +140,5 @@ QImage PerspectiveTransform::apply( const QImage& srcImage ) const
     p.drawImage(QPointF(0, 0), srcImage);
     p.end();
     return result;
+  }
 }

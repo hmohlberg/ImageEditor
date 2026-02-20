@@ -32,6 +32,8 @@ class Layer;
 class CageOverlayItem;
 class CageControlPointItem;
 class TransformHandleItem;
+class TransformOverlay;
+class PerspectiveOverlay;
 
 // ---
 class LayerItem : public QGraphicsPixmapItem
@@ -40,7 +42,7 @@ class LayerItem : public QGraphicsPixmapItem
   public:
 
     enum LayerType { MainImage, LassoLayer };
-    enum OperationMode { None, Info, CageEdit, Translate, Rotate, Scale, Flip, Flop, CageWarp, Perspective,
+    enum OperationMode { None, Info, CageEdit, Translate, Rotate, Scale, Flip, Flop, Perspective, CageWarp, 
                           Select, MovePoint, AddPoint, DeletePoint, TranslatePolygon, SmoothPolygon, ReducePolygon, DeletePolygon };
 
     LayerItem( const QPixmap& pixmap, QGraphicsItem* parent = nullptr );
@@ -70,7 +72,7 @@ class LayerItem : public QGraphicsPixmapItem
     void beginCageEdit();
     void disableCage();
     bool cageEnabled() const;
-    void setCageVisible( bool isVisible );
+    void setCageVisible( LayerItem::OperationMode mode, bool isVisible );
     void setInActive( bool isInActive );
     
     int id() const { return m_index; }
@@ -87,6 +89,9 @@ class LayerItem : public QGraphicsPixmapItem
     bool hasActiveCage() const { return m_cageEnabled; }
     PerspectiveTransform& perspective() { return m_perspective; }
     
+    void applyPerspectiveQuad( const QVector<QPointF>& quad );
+    
+    void changeNumberOfActiveCagePoints( int step );
     void setNumberOfActiveCagePoints( int nControlPoints );
     void setCageWarpRelaxationSteps( int nRelaxationsSteps );
     
@@ -111,6 +116,9 @@ class LayerItem : public QGraphicsPixmapItem
     void updateHandles();
     void updateOriginalImage();
     void updateImageRegion( const QRect& rect );
+    void notifyGeometryChange() {
+        prepareGeometryChange();
+    }
     
     void printself( bool debugSave = false );
 

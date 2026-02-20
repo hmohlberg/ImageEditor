@@ -47,7 +47,18 @@ MirrorLayerCommand::MirrorLayerCommand( LayerItem* layer, const int idx, int mir
      setIcon(AbstractCommand::getIconFromSvg(horizontalFlipSvg));
     }
 }
-    
+ 
+// -------------- Merge  --------------    
+bool MirrorLayerCommand::mergeWith( const QUndoCommand* other )
+{
+   if ( other->id() != id() )
+        return false;
+    auto* cmd = static_cast<const MirrorLayerCommand*>(other);
+    if ( cmd->m_layer != m_layer || cmd->m_mirrorPlane != m_mirrorPlane )
+        return false;
+    m_mirrorPlane = cmd->m_mirrorPlane;
+    return true;
+}
 
 // -------------- history related methods  -------------- 
 QJsonObject MirrorLayerCommand::toJson() const

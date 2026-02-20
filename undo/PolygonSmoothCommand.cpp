@@ -36,7 +36,7 @@ void PolygonSmoothCommand::undo()
 
 void PolygonSmoothCommand::redo()
 {
-    if ( !m_poly )
+    if ( m_silent || !m_poly )
       return; 
     m_poly->smooth();
 }

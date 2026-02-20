@@ -48,6 +48,29 @@ EditablePolygonCommand::EditablePolygonCommand( LayerItem *layer, QGraphicsScene
 }
 
 // ------------------------ Methods ------------------------
+void EditablePolygonCommand::setColor( const QColor& color )
+{
+    if ( m_item != nullptr ) {
+      m_item->setColor(color);
+    }
+}
+
+
+bool EditablePolygonCommand::isSelected() const
+{
+  if ( m_item != nullptr ) {
+    return m_item->polygon()->isSelected();
+  }
+  return false;
+}
+
+void EditablePolygonCommand::setSelected( bool isSelected )
+{
+    if ( m_model != nullptr ) {
+      m_model->setSelected(isSelected);
+    }
+}
+
 void EditablePolygonCommand::setVisible( bool isVisible )
 {
   // qDebug() << "EditablePolygonCommand::setVisible(): isVisible=" << isVisible;
@@ -60,16 +83,20 @@ void EditablePolygonCommand::setVisible( bool isVisible )
 
 void EditablePolygonCommand::redo()
 {
-   // qDebug() << "EditablePolygonCommand::redo(): Processing...";
+   // qDebug() << "EditablePolygonCommand::redo(): name =" << m_name;
    {
+    if ( m_silent ) return;
     if ( !m_model ) {
-        m_model = new EditablePolygon(m_name);
-        m_model->setPolygon(m_polygon);
-        m_item = new EditablePolygonItem(m_model,m_layer);
+      m_model = new EditablePolygon(m_name);
+      m_model->setPolygon(m_polygon);
+      m_item = new EditablePolygonItem(m_model,m_layer);
     }
     m_model->setVisible(true);
-    if ( !m_item->scene() )
+    if ( m_item != nullptr ) { 
+      m_item->setName(m_name);
+      if ( !m_item->scene() )
         m_scene->addItem(m_item);
+    }
    }
 }
 

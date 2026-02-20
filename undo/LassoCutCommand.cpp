@@ -41,7 +41,7 @@ LassoCutCommand::LassoCutCommand( LayerItem* originalLayer, LayerItem* newLayer,
     newLayer->setPos(bounds.topLeft());
     m_originalLayerId = originalLayer->id();
     m_newLayerId = newLayer->id(); 
-    setText(QString("%1 Cut").arg(name));    
+    setText(QString("%1 %2 Cut").arg(name).arg(index));    
     QByteArray rectSelectionSvg = 
       "<svg viewBox='0 0 64 64'>"
       "<rect x='10' y='14' width='44' height='36' "
@@ -56,7 +56,8 @@ LassoCutCommand::LassoCutCommand( LayerItem* originalLayer, LayerItem* newLayer,
 // ---------------------- Undo/Redo ----------------------
 void LassoCutCommand::undo()
 {
-  qCDebug(logEditor) << "LassoCutCommand::undo(): Processing...";
+  // qCDebug(logEditor) 
+  qDebug() << "LassoCutCommand::undo(): Processing...";
   {
     QImage tempImage = m_originalLayer->image();
     QPainter p(&tempImage);
@@ -89,15 +90,17 @@ void LassoCutCommand::undo()
     
 void LassoCutCommand::redo()
 {
-  qCDebug(logEditor) << "LassoCutCommand::redo(): Processing...";
+  // qCDebug(logEditor) 
+  qDebug() << "LassoCutCommand::redo(): Processing...";
   {
+    if ( m_silent ) return;
     QColor color = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
     QImage tempImage = m_originalLayer->image();
     for ( int y = 0; y < m_backup.height(); ++y ) {
       for ( int x = 0; x < m_backup.width(); ++x ) {
         QColor maskPixel = m_backup.pixelColor(x, y);
-        if ( maskPixel.alpha() > 0 ) {
-          tempImage.setPixelColor(m_bounds.x()+x,m_bounds.y()+y,color);
+        if ( maskPixel.alpha() > 128 ) {
+          tempImage.setPixelColor(m_bounds.x()+x,m_bounds.y()+y,color); // hier wird im orignal image ge-cuttet
         }
       }
     }

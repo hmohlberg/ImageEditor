@@ -38,6 +38,7 @@ public:
                          const QImage& originalBackup, const int index, const QString& name, QUndoCommand* parent=nullptr );
     
     QString type() const override { return "LassoCut"; }
+    AbstractCommand* clone() const override { return new LassoCutCommand(m_originalLayer, m_newLayer, m_bounds, m_backup, m_newLayerId, m_name); }
     
     void undo() override;
     void redo() override;

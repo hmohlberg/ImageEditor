@@ -18,35 +18,38 @@
 #pragma once
 
 #include "AbstractCommand.h"
-#include "../layer/EditablePolygon.h"
+#include <QVector>
+#include <QPointF>
 
 class LayerItem;
 
-class PolygonTranslateCommand : public AbstractCommand
+class PerspectiveWarpCommand : public AbstractCommand
 {
 
   public:
   
-    PolygonTranslateCommand( EditablePolygon* poly, const QPointF& start, const QPointF& end, QUndoCommand* parent = nullptr );
-                            
-    AbstractCommand* clone() const override { return new PolygonTranslateCommand(m_poly,m_start,m_end); }
+    PerspectiveWarpCommand( LayerItem* layer, const QVector<QPointF>& before, const QVector<QPointF>& after, QUndoCommand* parent = nullptr );
+                           
+    AbstractCommand* clone() const override { return new PerspectiveWarpCommand(m_layer,m_before,m_after); }
 
-    QString type() const override { return "TranslatePolygon"; }
+    void setAfterQuad( const QVector<QPointF>& after ) { m_after = after; }
+    QString type() const override { return "PerspectiveWarp"; }
     LayerItem* layer() const override { return nullptr; }
-    int id() const override { return 1008; }
+    int id() const override { return 1031; }
     
     void undo() override;
     void redo() override;
 
     QJsonObject toJson() const override;
-    static PolygonTranslateCommand* fromJson( const QJsonObject& obj, EditablePolygon* poly );
+    static PerspectiveWarpCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent = nullptr );
 
   private:
-
-    EditablePolygon* m_poly;
+  
+    int m_layerId = -1;
+    LayerItem* m_layer = nullptr;
+    QString m_name;
     
-    bool m_redo = false;
-    QPointF m_start;
-    QPointF m_end;
+    QVector<QPointF> m_before;
+    QVector<QPointF> m_after;
     
 };

@@ -25,10 +25,11 @@ class LayerItem;
 class PolygonReduceCommand : public AbstractCommand
 {
 
-public:
-    PolygonReduceCommand( EditablePolygon* poly,
-                            QUndoCommand* parent = nullptr );
+  public:
+  
+    PolygonReduceCommand( EditablePolygon* poly, QUndoCommand* parent = nullptr );
 
+    AbstractCommand* clone() const override { return new PolygonReduceCommand(m_poly); }
     QString type() const override { return "ReducePolygon"; }
     
     LayerItem* layer() const override { return nullptr; }
@@ -40,7 +41,7 @@ public:
     QJsonObject toJson() const override;
     static PolygonReduceCommand* fromJson( const QJsonObject& obj, EditablePolygon* poly );
 
-private:
+  private:
 
     EditablePolygon* m_poly;
     

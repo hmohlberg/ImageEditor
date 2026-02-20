@@ -33,9 +33,12 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer,
       , m_name(name)
       , m_trafoType(trafoType)
 {
+  qDebug() << "TransformLayerCommand::TransformLayerCommand(): trafotype =" << m_trafoType << ", name =" << m_name;
+  {
     m_layerId = layer->id();
     setText(name);
     if ( m_trafoType == LayerTransformType::Rotate ) {
+      qDebug() << " rotate ";
       QByteArray rotateLayerSvg = 
          "<svg viewBox='0 0 64 64'>"
          "<path d='M32 12 C43.05 12 52 20.95 52 32 C52 43.05 43.05 52 32 52 C20.95 52 12 43.05 12 32 C12 26.5 14.2 21.5 17.8 17.8' "
@@ -44,16 +47,52 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer,
          "</svg>";
       setIcon(AbstractCommand::getIconFromSvg(rotateLayerSvg));
     } else {
-      QByteArray scaleLayerSvg = 
-         "<svg viewBox='0 0 64 64'>"
-         "<rect x='12' y='12' width='40' height='40' fill='none' stroke='white' stroke-width='2' stroke-dasharray='4,2'/>"
-         "<path d='M42 12 H52 V22 M52 52 L38 38 M12 42 V52 H22' "
-         "fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/>"
-         "<rect x='48' y='8' width='8' height='8' fill='white'/>"
-         "<rect x='8' y='48' width='8' height='8' fill='white'/>"
-         "</svg>";
-      setIcon(AbstractCommand::getIconFromSvg(scaleLayerSvg));
+      qDebug() << " scale  ";
+      QByteArray scaleAxesLayerSvg = 
+        "<svg viewBox='0 0 64 64'>"
+        "<path d='M18 18h28v28H18z' fill='none' stroke='#666' stroke-dasharray='2,2' stroke-width='1'/>"
+        "<rect x='10' y='24' width='44' height='16' rx='1' fill='rgba(0, 200, 255, 0.25)' stroke='#00e5ff' stroke-width='2.5'/>"
+        "<path d='M4 32h6M54 32h6' stroke='#ffffff' stroke-width='2' stroke-linecap='round'/>"
+        "<path d='M8 28l-4 4 4 4M56 28l4 4-4 4' stroke='#ffffff' stroke-width='2' fill='none'/>"
+        "<path d='M32 4v6M32 54v6' stroke='#ffffff' stroke-width='2' stroke-linecap='round'/>"
+        "<path d='M28 8l4-4 4 4M28 56l4 4-4-4' stroke='#ffffff' stroke-width='2' fill='none'/>"
+        "<circle cx='32' cy='24' r='2.5' fill='#ffffff'/>"
+        "<circle cx='32' cy='40' r='2.5' fill='#ffffff'/>"
+        "<circle cx='10' cy='32' r='2.5' fill='#ffffff'/>"
+        "<circle cx='54' cy='32' r='2.5' fill='#ffffff'/>"
+        "</svg>";
+      setIcon(AbstractCommand::getIconFromSvg(scaleAxesLayerSvg));
     } 
+  }
+}
+
+TransformLayerCommand::TransformLayerCommand( LayerItem* layer, const QTransform& oldTransform,
+    const QTransform& newTransform, QUndoCommand* parent )
+    : AbstractCommand(parent)
+      , m_layer(layer)
+      , m_oldTransform(oldTransform)
+      , m_newTransform(newTransform)
+{
+  qDebug() << "TransformLayerCommand::TransformLayerCommand(): Base...";
+  {
+    m_layerId = layer->id();
+    m_name = QString("Scale Transform Layer %1").arg(m_layerId);
+    setText(m_name);
+    QByteArray scaleAxesLayerSvg = 
+      "<svg viewBox='0 0 64 64'>"
+      "<path d='M18 18h28v28H18z' fill='none' stroke='#666' stroke-dasharray='2,2' stroke-width='1'/>"
+      "<rect x='10' y='24' width='44' height='16' rx='1' fill='rgba(0, 200, 255, 0.25)' stroke='#00e5ff' stroke-width='2.5'/>"
+      "<path d='M4 32h6M54 32h6' stroke='#ffffff' stroke-width='2' stroke-linecap='round'/>"
+      "<path d='M8 28l-4 4 4 4M56 28l4 4-4 4' stroke='#ffffff' stroke-width='2' fill='none'/>"
+      "<path d='M32 4v6M32 54v6' stroke='#ffffff' stroke-width='2' stroke-linecap='round'/>"
+      "<path d='M28 8l4-4 4 4M28 56l4 4-4-4' stroke='#ffffff' stroke-width='2' fill='none'/>"
+      "<circle cx='32' cy='24' r='2.5' fill='#ffffff'/>"
+      "<circle cx='32' cy='40' r='2.5' fill='#ffffff'/>"
+      "<circle cx='10' cy='32' r='2.5' fill='#ffffff'/>"
+      "<circle cx='54' cy='32' r='2.5' fill='#ffffff'/>"
+      "</svg>";
+    setIcon(AbstractCommand::getIconFromSvg(scaleAxesLayerSvg));
+  }
 }
 
 // -------------------------------- Merge transforms --------------------------------
@@ -70,20 +109,26 @@ bool TransformLayerCommand::mergeWith( const QUndoCommand *other )
 }
 
 // -------------------------------- Undo/Redo --------------------------------
-void TransformLayerCommand::undo() {
+void TransformLayerCommand::undo() 
+{
   qDebug() << "TransformLayerCommand::undo(): m_oldTransform =" << m_oldTransform;
   {
     if ( m_layer )
       m_layer->resetTotalTransform();
       m_layer->setImageTransform(m_oldTransform);
+      m_layer->setCageVisible(LayerItem::OperationMode::Scale,false);
   }
 }
 
-void TransformLayerCommand::redo() {
+void TransformLayerCommand::redo() 
+{
   qDebug() << "TransformLayerCommand::redo(): m_newTransform =" << m_newTransform;
   {
-    if ( m_layer )
+    if ( m_silent ) return;
+    if ( m_layer ) {
       m_layer->setImageTransform(m_newTransform);
+      m_layer->setCageVisible(LayerItem::OperationMode::Scale,true);
+    }
   }
 }
 
@@ -93,7 +138,7 @@ QJsonObject TransformLayerCommand::toJson() const
     QJsonObject obj = AbstractCommand::toJson();
     
     // core
-    obj["type"] = "TransformLayerCommand";
+    obj["type"] = "TransformLayer";
     obj["layerId"] = m_layer ? m_layer->id() : -1;
     obj["name"] = m_name;
     obj["trafoType"] = m_trafoType == LayerTransformType::Rotate ? "rotate" : "scale";
@@ -141,7 +186,7 @@ TransformLayerCommand* TransformLayerCommand::fromJson( const QJsonObject& obj, 
     
     // core
     QString name = obj.value("name").toString("Unknown");
-    LayerTransformType trafoType = obj.value("name").toString("Unknown") == "scale" ? LayerTransformType::Scale : LayerTransformType::Rotate;
+    LayerTransformType trafoType = obj.value("trafoType").toString("Unknown") == "scale" ? LayerTransformType::Scale : LayerTransformType::Rotate;
     
     // points
     QJsonObject oldPointObj = obj["oldPosition"].toObject();

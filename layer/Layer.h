@@ -28,6 +28,7 @@ class Layer {
   
     int id() const { return m_id; }
     float opacity() const { return m_opacity; }
+    QPointF pos() const { return m_item != nullptr ? m_item->pos() : QPointF(0,0); }
     QString name() const { return m_name; }
     QImage image() const { return m_image; }
 

@@ -30,53 +30,141 @@ TransformHandleItem::TransformHandleItem( LayerItem* layer, Role role )
       m_layer(layer),
       m_role(role)
 {
-std::cout << "TransformHandleItem::TransformHandleItem(): Processing..." << std::endl;
+  qDebug() << "TransformHandleItem::TransformHandleItem(): Processing...";
+  {
     setBrush(role == Rotate ? Qt::yellow : Qt::white);
     setPen(QPen(Qt::black, 0));
     setFlag(ItemIgnoresTransformations);
     setCursor(Qt::SizeAllCursor);
     setZValue(2000);
+  }
 }
 
+TransformHandleItem::TransformHandleItem( HandleType type, TransformOverlay* overlay )
+    : QGraphicsEllipseItem(-6, -6, 12, 12)
+    , m_type(type)
+    , m_overlay(overlay)
+{
+     setBrush(Qt::red);
+     QPen pen(Qt::black);
+     pen.setWidth(1);
+     setPen(pen);
+     setZValue(9999999);
+     setFlag(QGraphicsItem::ItemIsMovable, false);
+     setAcceptedMouseButtons(Qt::LeftButton);
+     switch ( m_type ) {
+        case HandleType::Side_Left:
+        case HandleType::Side_Right:
+            setCursor(Qt::SizeHorCursor);
+            break;
+        case HandleType::Side_Top:
+        case HandleType::Side_Bottom:
+            setCursor(Qt::SizeVerCursor);
+            break;
+        case HandleType::Corner_BL:
+        case HandleType::Corner_TR:
+           setCursor(Qt::SizeBDiagCursor);
+           break;
+        default:
+            setCursor(Qt::SizeFDiagCursor);
+            break;
+    }
+}
+
+TransformHandleItem::TransformHandleItem( HandleType type, PerspectiveOverlay* overlay )
+    : QGraphicsEllipseItem(-6, -6, 12, 12)
+    , m_type(type)
+    , m_perspectiveOverlay(overlay)
+{
+    setBrush(Qt::cyan);
+    setPen(QPen(Qt::black, 1));
+    setZValue(9999999);
+    setFlag(QGraphicsItem::ItemIsMovable, false);
+    setAcceptedMouseButtons(Qt::LeftButton);
+    switch ( m_type ) {
+        case HandleType::Corner_BL:
+        case HandleType::Corner_TR:
+           setCursor(Qt::SizeBDiagCursor);
+           break;
+        default:
+           setCursor(Qt::SizeFDiagCursor);
+           break;
+    }
+}
+
+// --------------------- Mouse events ---------------------
 void TransformHandleItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
 {
-    m_pressScenePos = e->scenePos();
+ // qDebug() << "TransformHandleItem::mousePressEvent(): overlay=" << (m_overlay?"ok":"null") 
+ //                << ", perspective=" << (m_perspectiveOverlay?"ok":"null")
+ //                << ", layer=" << (m_layer?"ok":"null");
+ {
+   m_pressScenePos = e->scenePos();
+   if ( m_overlay ) {
+    m_overlay->beginTransform();
+   } else if ( m_perspectiveOverlay ) {
+    m_perspectiveOverlay->beginWarp();
+   } else if ( m_layer ) {
     m_startTransform = m_layer->transform();
+   }
+   e->accept();
+ }
 }
 
-void TransformHandleItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
+void TransformHandleItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
 {
-    QPointF deltaScene = event->scenePos() - m_pressScenePos;
+  // qDebug() << "TransformHandleItem::mouseMoveEvent(): Processing...";
+  {
+   QPointF delta = e->scenePos() - m_pressScenePos;
+   if ( m_overlay ) {
+    m_pressScenePos = e->scenePos();
+    m_overlay->applyHandleDrag(m_type, delta);
+   } else if ( m_perspectiveOverlay ) {
+    m_pressScenePos = e->scenePos();
+    switch ( m_type ) {
+            case HandleType::Corner_TL:
+                m_perspectiveOverlay->moveCorner(PerspectiveCorner::TL, e->scenePos());
+                break;
+            case HandleType::Corner_TR:
+                m_perspectiveOverlay->moveCorner(PerspectiveCorner::TR, e->scenePos());
+                break;
+            case HandleType::Corner_BR:
+                m_perspectiveOverlay->moveCorner(PerspectiveCorner::BR, e->scenePos());
+                break;
+            case HandleType::Corner_BL:
+                m_perspectiveOverlay->moveCorner(PerspectiveCorner::BL, e->scenePos());
+                break;
+            default:
+                break;
+    }
+   } else if ( m_layer ) {
     QPointF deltaLocal =
-        m_layer->mapFromScene(deltaScene + m_layer->scenePos())
+        m_layer->mapFromScene(delta + m_layer->scenePos())
         - m_layer->mapFromScene(m_layer->scenePos());
     QPointF newPos = m_pressScenePos + deltaLocal;
     setPos(newPos);
     m_layer->updateCagePoint(this, newPos);
-    event->accept();
-
-/*
-    QPointF delta = e->scenePos() - m_pressScenePos;
-    QPointF c = m_layer->boundingRect().center();
-    QTransform t = m_startTransform;
-    t.translate(c.x(), c.y());
-    if ( m_role == Rotate )
-        t.rotate(delta.x());
-    else {
-        qreal s = qMax(0.1, 1.0 + delta.y() * 0.005);
-        t.scale(s, s);
-    }
-    t.translate(-c.x(), -c.y());
-    m_layer->setTransform(t);
-*/
+   }
+   e->accept();
+  }
 }
 
-void TransformHandleItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* )
+void TransformHandleItem::mouseReleaseEvent( QGraphicsSceneMouseEvent *e )
 {
-std::cout << "TransformHandleItem::mouseReleaseEvent(): Processing..." << std::endl;
-    if ( m_layer->undoStack() && m_startTransform != m_layer->transform() ) {
+  // qDebug() << "TransformHandleItem::mouseReleaseEvent(): Processing...";
+  {
+    if ( m_overlay ) {
+      m_overlay->endTransform();
+      e->accept();
+    } else if ( m_perspectiveOverlay ) {
+      m_perspectiveOverlay->endWarp();
+      e->accept();
+    } else if ( m_layer ) {
+      if ( m_layer->undoStack() && m_startTransform != m_layer->transform() ) {
         m_layer->undoStack()->push(
             new TransformLayerCommand(
                 m_layer, m_pressScenePos, m_pressScenePos, m_startTransform, m_layer->transform()));
+      }
     }
+  }
 }

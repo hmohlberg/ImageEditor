@@ -19,36 +19,33 @@
 
 #include <QUndoCommand>
 #include <QPointF>
-#include <QVector>
 
 #include "AbstractCommand.h"
 #include "../layer/LayerItem.h"
 
-// -----------------  ----------------- 
-class PerspectiveTransformCommand : public AbstractCommand
+class DeleteLayerCommand : public AbstractCommand
 {
 
 public:
 
-    PerspectiveTransformCommand( LayerItem* layer,
-                                const QVector<QPointF>& before,
-                                const QVector<QPointF>& after,
-                                QUndoCommand* parent = nullptr );
-
+    DeleteLayerCommand( LayerItem* layer, const QPointF& pos, const int idx=0, QUndoCommand* parent = nullptr );
+    
+    AbstractCommand* clone() const override { return new DeleteLayerCommand(m_layer, m_pos, m_layerId); }
+    
+    QString type() const override { return "DeleteLayer"; }
     LayerItem* layer() const override { return m_layer; }
-    QString type() const override { return "PerspectiveTransform"; }
+    int id() const override { return 1055; }
     
     void undo() override;
     void redo() override;
-
+    
     QJsonObject toJson() const override;
-    static PerspectiveTransformCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers );
+    static DeleteLayerCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers );
 
 private:
 
-    LayerItem* m_layer = nullptr;
-    int m_layerId = -1;
+    int m_layerId;
+    LayerItem* m_layer;
+    QPointF m_pos;
     
-    QVector<QPointF> m_before;
-    QVector<QPointF> m_after;
 };

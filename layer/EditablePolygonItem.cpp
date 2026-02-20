@@ -92,11 +92,15 @@ void EditablePolygonItem::paint( QPainter* p, const QStyleOptionGraphicsItem*, Q
 
 void EditablePolygonItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
 {
-  qCDebug(logEditor) << "EditablePolygonItem::mousePressEvent(): editable =" << m_editable;
+  qCDebug(logEditor) << "EditablePolygonItem::mousePressEvent(): name =" << m_name << ", editable =" << m_editable;
   {
-    if ( !m_editable )
+    if ( !m_editable || !m_poly || !m_poly->isSelected() )
         return;
     if ( m_layer != nullptr ) {
+      // --- show polygon name in polygon toolbar ---
+      MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_layer->parent());
+      if ( mainWindow != nullptr ) mainWindow->setActivePolygon(m_name);
+      // --- ---
       LayerItem::OperationMode mode = m_layer->getPolygonOperationMode();      
       if ( mode == LayerItem::OperationMode::TranslatePolygon ) {
        m_dragStartPos = e->scenePos();
@@ -122,7 +126,7 @@ void EditablePolygonItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
 {
   // qDebug() << "EditablePolygonItem::mouseMoveEvent(): Processing...";
   {
-    if ( m_layer == nullptr )
+    if ( !m_layer || !m_poly || !m_poly->isSelected() )
       return;
     LayerItem::OperationMode mode = m_layer->getPolygonOperationMode();
     if ( mode == LayerItem::OperationMode::MovePoint ) {
@@ -142,7 +146,9 @@ void EditablePolygonItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
 
 void EditablePolygonItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* e )
 {
-    if ( m_layer == nullptr )
+  qCDebug(logEditor) << "EditablePolygonItem::mouseReleaseEvent(): Processing...";
+  {
+    if ( !m_layer || !m_poly || !m_poly->isSelected()  )
       return;
     LayerItem::OperationMode mode = m_layer->getPolygonOperationMode();
     if ( mode == LayerItem::OperationMode::MovePoint ) {
@@ -160,12 +166,15 @@ void EditablePolygonItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* e )
         return;
     }
     QGraphicsObject::mouseReleaseEvent(e);
+  }
 }
 
 void EditablePolygonItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* e )
 {
  qCDebug(logEditor) << "EditablePolygonItem::mouseDoubleClickEvent(): opMode =" << m_layer->operationMode() << ", id =" << m_layer->id() << ", name ="  << m_layer->name();
  {
+    if ( !m_layer || !m_poly || !m_poly->isSelected() )
+      return;
     LayerItem::OperationMode mode = m_layer->getPolygonOperationMode();
     if ( mode == LayerItem::OperationMode::AddPoint ) {
      int edge = hitTestEdge(e->scenePos());

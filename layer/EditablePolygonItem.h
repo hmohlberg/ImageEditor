@@ -46,6 +46,7 @@ public:
     EditablePolygon* polygon() const { return m_poly; }
     int hitTestPolygon( const QPointF& scenePos ) const;
     void setColor( const QColor& color ) { m_lineColor = color; }
+    void setName( const QString& name ) { m_name = name; } 
 
 signals:
     // → wird vom ImageView abgefangen und in UndoCommands umgesetzt
@@ -90,5 +91,6 @@ private:
     QColor m_fillColor   = QColor(0, 255, 0, 40);
     QColor m_handleColor = QColor(255, 0, 0);
 
+    QString m_name = "";
     bool m_editable = true;
 };

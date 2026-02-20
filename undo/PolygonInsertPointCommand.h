@@ -25,12 +25,11 @@ class LayerItem;
 class PolygonInsertPointCommand : public AbstractCommand
 {
 
-public:
+  public:
 
-    PolygonInsertPointCommand( EditablePolygon* poly,
-                              int idx,
-                              const QPointF& p,
-                              QUndoCommand* parent = nullptr );
+    PolygonInsertPointCommand( EditablePolygon* poly, int idx, const QPointF& p, QUndoCommand* parent = nullptr );
+    
+    AbstractCommand* clone() const override { return new PolygonInsertPointCommand(m_poly,m_idx,m_point); }
 
     QString type() const override { return "InsertPolygonPoint"; }
     LayerItem* layer() const override { return nullptr; }
@@ -40,10 +39,9 @@ public:
     void redo() override;
 
     QJsonObject toJson() const override;
-    static PolygonInsertPointCommand* fromJson( const QJsonObject& obj,
-                                               EditablePolygon* poly );
+    static PolygonInsertPointCommand* fromJson( const QJsonObject& obj, EditablePolygon* poly );
 
-private:
+  private:
 
     EditablePolygon* m_poly;
     int m_idx;

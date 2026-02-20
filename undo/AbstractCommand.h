@@ -37,12 +37,13 @@ class ImageView;
 class AbstractCommand : public QUndoCommand
 {
 
-public:
+  public:
 
     explicit AbstractCommand( QUndoCommand* parent = nullptr );
     virtual ~AbstractCommand() override = default;
 
     // ---- Serialisierung ----
+    virtual AbstractCommand* clone() const = 0;
     virtual int id() const override = 0;
     virtual LayerItem* layer() const = 0;
     virtual QString type() const = 0;
@@ -57,6 +58,7 @@ public:
     static AbstractCommand* fromJson( const QJsonObject& obj, ImageView* view );
     
     // --- ---
+    void setSilent( bool silent ) { m_silent = silent; }
     QString timeString() const { return m_timestamp.toString("HH:mm"); }
     void setIcon( const QIcon &icon ) { m_icon = icon; }
     QIcon icon() const { return m_icon; }
@@ -65,7 +67,11 @@ public:
     static LayerItem* getLayerItem( const QList<LayerItem*>& layers, int layerId = 0 );
     static QIcon getIconFromSvg( const QByteArray &svgData );
     
-private:
+  protected:
+  
+    bool m_silent = false;
+    
+  private:
 
     QIcon m_icon;
     QDateTime m_timestamp;

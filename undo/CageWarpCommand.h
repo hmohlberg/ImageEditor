@@ -35,6 +35,7 @@ public:
                     const QVector<QPointF>& after, const QRectF& rect, int rows, int columns, QUndoCommand* parent = nullptr );
 
     QString type() const override { return "LassoCut"; }
+    AbstractCommand* clone() const override { return new CageWarpCommand(m_layer, m_before, m_after, m_rect, m_rows, m_columns); }
     
     void undo() override;
     void redo() override;

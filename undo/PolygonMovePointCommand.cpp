@@ -33,6 +33,7 @@ void PolygonMovePointCommand::undo()
 
 void PolygonMovePointCommand::redo()
 {
+    if ( m_silent ) return;
     m_poly->setPoint(m_idx, m_newPos);
 }
 

@@ -26,21 +26,24 @@
 class MirrorLayerCommand : public AbstractCommand
 {
 
-public:
+  public:
 
     MirrorLayerCommand( LayerItem* layer, const int idx, int mirrorPlane, QUndoCommand* parent = nullptr );
+    
+    AbstractCommand* clone() const override { return new MirrorLayerCommand(m_layer,m_layerId,m_mirrorPlane); }
     
     LayerItem* layer() const override { return m_layer; }
     int id() const override { return 1006; }
     
     QString type() const override { return "MirrorLayer"; }
     void undo() override { if ( m_layer ) m_layer->setMirror(m_mirrorPlane); }
-    void redo() override { if ( m_layer ) m_layer->setMirror(m_mirrorPlane); }
+    void redo() override { if ( m_layer && !m_silent ) m_layer->setMirror(m_mirrorPlane); }
+    bool mergeWith( const QUndoCommand* other ) override;
     
     QJsonObject toJson() const override;
     static MirrorLayerCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers );
 
-private:
+  private:
 
     int m_layerId;
     int m_mirrorPlane;

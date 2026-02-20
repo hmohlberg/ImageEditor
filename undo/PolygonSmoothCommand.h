@@ -25,10 +25,11 @@ class LayerItem;
 class PolygonSmoothCommand : public AbstractCommand
 {
 
-public:
+  public:
     PolygonSmoothCommand( EditablePolygon* poly,
                             QUndoCommand* parent = nullptr );
 
+    AbstractCommand* clone() const override { return new PolygonSmoothCommand(m_poly); }
     QString type() const override { return "SmoothPolygon"; }
     
     LayerItem* layer() const override { return nullptr; }
@@ -40,10 +41,9 @@ public:
     QJsonObject toJson() const override;
     static PolygonSmoothCommand* fromJson( const QJsonObject& obj, EditablePolygon* poly );
 
-private:
+  private:
 
-    EditablePolygon* m_poly;
-    
+    EditablePolygon* m_poly;  
     QPolygonF m_before;
     
 };

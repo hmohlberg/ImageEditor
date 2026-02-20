@@ -37,10 +37,22 @@ MoveLayerCommand::MoveLayerCommand( LayerItem* layer, const QPointF& oldPos, con
     setIcon(AbstractCommand::getIconFromSvg(moveLayerSvg));
 }
 
+// -------------- Merge  -------------- 
+bool MoveLayerCommand::mergeWith( const QUndoCommand* other )
+{
+   if ( other->id() != id() )
+        return false;
+    auto* cmd = static_cast<const MoveLayerCommand*>(other);
+    if ( cmd->m_layer != m_layer )
+        return false;
+    m_newPos = cmd->m_newPos;
+    return true;
+}
+
 // -------------- Undo / redo  -------------- 
 void MoveLayerCommand::undo() 
 { 
-  qCDebug(logEditor) << "MoveLayerCommand::undo(): old_pos =" << m_oldPos;
+  qDebug() << "MoveLayerCommand::undo(): old_pos =" << m_oldPos;
   {
     if ( m_layer ) m_layer->setPos(m_oldPos);
     else qWarning() << "MoveLayerCommand::undo(): Invalid layer";
@@ -49,8 +61,9 @@ void MoveLayerCommand::undo()
 
 void MoveLayerCommand::redo()
 { 
-  qCDebug(logEditor) << "MoveLayerCommand::redo(): old_pos= " << m_oldPos << " -> new_pos =" << m_newPos;
+  qDebug() << "MoveLayerCommand::redo(): old_pos= " << m_oldPos << " -> new_pos =" << m_newPos;
   {
+    if ( m_silent ) return;
     if ( m_layer ) m_layer->setPos(m_newPos); 
     else qWarning() << "MoveLayerCommand::redo(): Invalid layer";
   }

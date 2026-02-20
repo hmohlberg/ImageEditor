@@ -32,6 +32,7 @@ public:
     PaintStrokeCommand( LayerItem* layer, const QVector<QPoint>& strokePoints, const QColor& color, int radius, float hardness, QUndoCommand* parent = nullptr );
 
     QString type() const override { return "PaintStroke"; }
+    AbstractCommand* clone() const override { return new PaintStrokeCommand(m_layer, m_pos, m_color, m_radius, m_hardness); }
     
     void undo() override;
     void redo() override;

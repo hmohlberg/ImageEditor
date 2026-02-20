@@ -40,6 +40,7 @@ void PolygonTranslateCommand::undo()
 
 void PolygonTranslateCommand::redo()
 {
+    if ( m_silent ) return;
     if ( m_redo == false ) {
       m_redo = true;
       return;

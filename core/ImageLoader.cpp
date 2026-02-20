@@ -21,6 +21,13 @@
 #include <QDebug>
 #include <QApplication>
 
+#ifdef HASITK
+  #include "itkImage.h"
+  #include "itkImageFileReader.h"
+  #include "itkImageFileWriter.h"
+  #include "itkRescaleIntensityImageFilter.h"
+#endif
+
 #include <iostream>
 
 // -------------------------- ImageLoader --------------------------
@@ -43,7 +50,7 @@ QImage ImageLoader::loadMincImage( const QString& filePath )
         rescaleFilter->Update();
      } catch ( const itk::ExceptionObject& e ) {
         qDebug() << "ITK Error:" << e.GetDescription();
-        return QPixmap();
+        return QImage();
      }
      VisualImageType::Pointer itkImage = rescaleFilter->GetOutput();
      auto region = itkImage->GetLargestPossibleRegion();
@@ -52,7 +59,7 @@ QImage ImageLoader::loadMincImage( const QString& filePath )
      // QImage erstellt eine Ansicht auf den ITK-Buffer
      QImage qImg(itkImage->GetBufferPointer(), width, height, QImage::Format_Grayscale8);
      // .copy() ist wichtig, da der ITK-Buffer am Ende dieser Funktion gelöscht wird!
-     qImg.copy();
+     return qImg.copy();
    #else
      return QImage();
    #endif

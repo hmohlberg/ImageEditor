@@ -33,6 +33,8 @@
 #include "../layer/LayerItem.h"
 #include "../layer/MaskLayerItem.h"
 #include "../layer/EditablePolygonItem.h"
+#include "../layer/TransformOverlay.h"
+#include "../layer/PerspectiveOverlay.h"
 #include "../undo/EditablePolygonCommand.h"
 #include "../undo/MaskPaintCommand.h"
 #include "../undo/CageWarpCommand.h"
@@ -67,6 +69,7 @@ public:
     void createLassoLayer();
     void createPolygonLayer();
     void centerOnLayer( Layer* layer );
+    void deleteLayer( Layer* layer );
     void enablePipette( bool enabled );
     void setCrosshairVisible( bool visible ) { 
       m_crosshairVisible = visible; 
@@ -98,7 +101,7 @@ public:
     LayerItem* getSelectedItem();
     LayerItem* currentLayer() const;
     LayerItem* baseLayer();
-    EditablePolygonCommand* getPolygonUndoCommand( const QString& name = "" );
+    EditablePolygonCommand* getPolygonUndoCommand( const QString& name = "", bool isSelected = false );
     QImage& getImage() { return m_image; };
     QGraphicsScene* getScene() const { return m_scene; }
     QUndoStack* undoStack() const { return m_undoStack; }
@@ -120,14 +123,19 @@ public:
     void setPolygonIndex( quint8 index ) { m_polygonIndex = index; }
     void setActiveCageLayer( LayerItem *item ) { m_selectedCageLayer = item; }
     void setLayerOperationMode( LayerItem::OperationMode mode );
+    void setOnlySelectedPolygon( const QString& name );
     void setPolygonOperationMode( LayerItem::OperationMode mode );
     void setNumberOfCageControlPoints( int nControlPoints );
+    void setDecreaseNumberOfCageControlPoints();
+    void setIncreaseNumberOfCageControlPoints();
     void setCageWarpRelaxationSteps( int nRelaxationSteps );
+    void setCageVisible( LayerItem* layer, LayerItem::OperationMode mode, bool isVisible );
     void setMaskTool( MaskTool t );
     void setMaskCutTool( const QString&, MaskCutTool t );
     void createMaskLayer( const QSize& size );
     void saveMaskImage( const QString& filename );
     void loadMaskImage( const QString& filename );
+    void removeOperationsByIdUndoStack( int id = -1 );
     void rebuildUndoStack();
     void forcedUpdate();
     
@@ -158,6 +166,10 @@ protected:
 private:
 
     LassoCutCommand* createNewLayer( const QPolygonF& polygon, const QString& name );
+    void setEnableTransformMode( LayerItem* layer );
+    void disableTransformMode();
+    void setEnablePerspectiveWarp( LayerItem* layer );
+    void disablePerspectiveWarp();
 
     QList<Layer*> m_layers;
     QList<EditablePolygon*> m_editablePolygons;
@@ -179,6 +191,9 @@ private:
     MaskTool m_maskTool = MaskTool::None;
     MaskCutTool m_maskCutTool = MaskCutTool::Ignore;
     QHash<QString, MaskCutTool> m_maskLabelTypeNames;
+    
+    TransformOverlay* m_transformOverlay = nullptr;
+    PerspectiveOverlay* m_perspectiveOverlay = nullptr;
     
     CageWarpCommand* m_cageWarpCommand = nullptr;
 
@@ -209,6 +224,7 @@ private:
     int m_brushRadius = 5;
     int m_maskBrushRadius = 5;
     int m_lassoFeatherRadius = 0;
+    int m_lastIndex = 0;
     
     QPointF m_cursorPos;
     QPoint m_lastMousePos;
@@ -220,5 +236,5 @@ private:
     QVector<QPoint> m_maskStrokePoints;
     QVector<QRgb> m_lut;
     QVector<QPointF> m_cageBefore;
-};
 
+};

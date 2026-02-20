@@ -43,6 +43,7 @@ public:
     //            bool useVulkan = false, QWidget* parent = nullptr );
                 
     explicit MainWindow( const QJsonObject& options, QWidget* parent = nullptr );
+    ~MainWindow();
                 
     // --- ---
     void updateLayerList();
@@ -52,9 +53,10 @@ public:
     int getNumberOfCageControlPoints() const { return m_cageControlPointsSpin->value(); }
     void setMainOperationMode( MainOperationMode = ImageLayer );
     MainOperationMode getOperationMode() const { return m_operationMode; }
-    void setActivePolygon( const QString& polygonName );
+    int setActivePolygon( const QString& polygonName );
     void setLayerOperationMode( int mode );
     void setPolygonOperationMode( int mode );
+    void setSelectedLayer( const QString &name );
     
 protected:
 
@@ -91,6 +93,7 @@ private slots:
 
 private:
     
+    bool checkUnsavedData();
     bool loadImage( const QString& );
     void loadHistory( const QString& );
     bool saveProject( const QString& );
@@ -121,8 +124,10 @@ private:
     
     MainOperationMode m_operationMode = Paint;
     
+    QAction* m_quitAction = nullptr;
     QAction* m_saveHistoryAction = nullptr;
     QAction* m_openHistoryAction = nullptr;
+    QAction* m_sortHistoryAction = nullptr;
     QAction* m_createMaskImageAction = nullptr;
     QAction* m_openMaskImageAction = nullptr;
     QAction* m_saveMaskImageAction = nullptr;
@@ -151,6 +156,7 @@ private:
     QComboBox* m_polygonIndexBox = nullptr;
     QComboBox* m_transformLayerItem = nullptr;
     QComboBox* m_polygonOperationItem = nullptr;
+    QComboBox* m_selectLayerItem = nullptr;
     
     bool m_updatingLayerList = false;
     bool m_saveImageDataInProjectFile = false;

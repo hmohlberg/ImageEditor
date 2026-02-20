@@ -23,12 +23,14 @@
 #include "../layer/MaskLayerItem.h"
 #include "../layer/EditablePolygon.h"
 #include "../layer/EditablePolygonItem.h"
+#include "../layer/TransformOverlay.h"
 #include "../undo/EditablePolygonCommand.h"
 #include "../undo/PaintCommand.h"
 #include "../undo/CageWarpCommand.h"
 #include "../undo/MaskStrokeCommand.h"
 #include "../undo/PaintStrokeCommand.h"
 #include "../undo/InvertLayerCommand.h"
+#include "../undo/DeleteLayerCommand.h"
 #include "../undo/LassoCutCommand.h"
 #include "../util/QImageUtils.h"
 #include "../util/MaskUtils.h"
@@ -36,6 +38,7 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QFileInfo>
 #include <QGraphicsScene>
 #include <QScrollBar>
 #include <QWheelEvent>
@@ -87,7 +90,70 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
       setWindowModified(!isClean);
       setWindowTitle(QString("Mein Editor[*]"));
     });
-    
+    // --- history control ---
+    connect(m_undoStack, &QUndoStack::indexChanged, this, [this](int currentIndex) {
+      qDebug() << "ImageView::ImageView(): lastIndex =" << m_lastIndex << ", currentIndex =" << currentIndex;
+      if ( currentIndex > 0 ) {
+        const QUndoCommand* justFinishedCommand = m_undoStack->command(currentIndex - 1);
+        if ( justFinishedCommand != nullptr ) {
+          qDebug() << "Actual command: " << justFinishedCommand->text();
+          if ( currentIndex > 1 ) {
+            const QUndoCommand* previousActiveCommand = m_undoStack->command(currentIndex - 2);
+            if ( previousActiveCommand != nullptr ) {
+              qDebug() << "Command before: " << previousActiveCommand->text();
+              if ( previousActiveCommand->text().startsWith("Scale Transform") ) {
+                if ( m_transformOverlay != nullptr ) {
+                  m_transformOverlay->setVisible(false);
+                  // cleanupCommand(previousActiveCommand);
+                }
+              }
+            }
+          }
+          // >>>
+          MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+          QRegularExpression re("(\\d+)");
+          QRegularExpressionMatch match = re.match(justFinishedCommand->text());
+          if ( match.hasMatch() && mainWindow != nullptr ) {
+            int layerId = match.captured(1).toInt();
+            mainWindow->setSelectedLayer(QString("Layer %1").arg(layerId));
+          }
+          if ( justFinishedCommand->text().startsWith("Scale Transform") ) {
+            qDebug() << " *** handle scale transform operation ***";
+            mainWindow->setLayerOperationMode(LayerItem::OperationMode::Scale);
+            if ( m_transformOverlay != nullptr ) {
+              m_transformOverlay->setVisible(true);
+            }
+          } else if ( justFinishedCommand->text().startsWith("Delete Layer") ) {
+            if ( mainWindow != nullptr ) {
+              mainWindow->updateLayerList();
+            }
+          } else if ( justFinishedCommand->text().startsWith("Move Layer") ) {
+            mainWindow->setLayerOperationMode(LayerItem::OperationMode::Translate);
+          } else if ( justFinishedCommand->text().startsWith("Rotate Layer") ) {
+            mainWindow->setLayerOperationMode(LayerItem::OperationMode::Rotate);
+          } else if ( justFinishedCommand->text().startsWith("Mirror Vertical") ) {
+            mainWindow->setLayerOperationMode(LayerItem::OperationMode::Flip);
+          } else if ( justFinishedCommand->text().startsWith("Mirror Horizontal") ) {
+            mainWindow->setLayerOperationMode(LayerItem::OperationMode::Flop);
+          } else if ( justFinishedCommand->text().startsWith("Perspective") ) {
+            mainWindow->setLayerOperationMode(LayerItem::OperationMode::Perspective);
+          } else if ( justFinishedCommand->text().startsWith("Cage") ) {
+            mainWindow->setLayerOperationMode(LayerItem::OperationMode::CageWarp);
+          } 
+          // Going-back in undo stack actions
+          const QUndoCommand* previousCommand = m_undoStack->command(m_lastIndex-1);
+          if ( previousCommand != nullptr ) {
+           if ( previousCommand->text().startsWith("Delete Layer") ) {
+            MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+            if ( mainWindow != nullptr ) {
+              mainWindow->updateLayerList();
+            }
+           }
+          }
+        }
+      }
+      m_lastIndex = currentIndex;
+    });
    /** 
     setDragMode(QGraphicsView::NoDrag);
     setMouseTracking(true);
@@ -149,7 +215,81 @@ void ImageView::forcedUpdate()
 
 void ImageView::rebuildUndoStack()
 {
-  qCDebug(logEditor) << "ImageView::rebuildUndoStack(): Processing...";
+  qDebug() << "ImageView::rebuildUndoStack(): Processing...";
+  {
+    // sort and put a given index (=1) to the end
+    int targetIdToEnd = 1;
+    struct CommandEntry {
+      const QUndoCommand* cmd;
+      int id;
+      int originalIndex;
+    };
+    QList<QUndoCommand*> sortedCommands;
+    QList<int> sortedLayerIdents;
+    std::vector<CommandEntry> entries;
+    for ( int i = 0; i < m_undoStack->count(); ++i ) {
+      const QUndoCommand* base = m_undoStack->command(i);
+      auto* cmd = dynamic_cast<const AbstractCommand*>(base);
+      if ( cmd && cmd->layer() ) {
+        entries.push_back({base, cmd->layer()->id(), i});
+      }  
+    }
+    std::stable_sort(entries.begin(), entries.end(), [targetIdToEnd](const CommandEntry& a, const CommandEntry& b) {
+      if (a.id == targetIdToEnd && b.id != targetIdToEnd) return false;
+      if (a.id != targetIdToEnd && b.id == targetIdToEnd) return true;
+      return a.id < b.id;
+    });
+    for ( const auto& entry : entries ) {
+      sortedLayerIdents.append(entry.originalIndex);
+    }
+    for ( int i = 0; i < sortedLayerIdents.count(); ++i ) {
+      const QUndoCommand* base = m_undoStack->command(sortedLayerIdents[i]);
+      auto* cmd = dynamic_cast<const AbstractCommand*>(base);
+      if ( cmd && cmd->layer() ) {
+        sortedCommands.append(cmd->clone());
+      }
+    }
+    m_undoStack->clear();
+    for ( auto* base : sortedCommands ) {
+      auto* cmd = dynamic_cast<AbstractCommand*>(base);
+      if ( cmd ) {
+        // cmd->setSilent(true);
+        m_undoStack->push(cmd);
+        // cmd->setSilent(false);
+      }
+    }
+    
+  }
+}
+
+void ImageView::removeOperationsByIdUndoStack( int id )
+{
+  qDebug() << "ImageView::removeOperationsByIdUndoStack(): id =" << id;
+  {
+    QList<QUndoCommand*> allCommands;
+    for ( int i = 0; i < m_undoStack->count(); ++i ) {
+        allCommands.append(const_cast<QUndoCommand*>(m_undoStack->command(i)));
+    }
+    for ( int i = allCommands.size() - 1; i >= 0; --i ) {
+        auto* cmd = dynamic_cast<AbstractCommand*>(allCommands[i]);
+        if ( cmd && cmd->layer() && cmd->layer()->id() == id ) {
+            cmd->undo();
+        }
+    }
+    QList<AbstractCommand*> remainingCommands;
+    for ( auto* base : allCommands ) {
+        auto* cmd = dynamic_cast<AbstractCommand*>(base);
+        if ( cmd && (!cmd->layer() || cmd->layer()->id() != id) ) {
+            remainingCommands.append(cmd->clone());
+        }
+    }
+    m_undoStack->clear();
+    for ( auto* clone : remainingCommands ) {
+        // clone->setSilent(true);
+        m_undoStack->push(clone);
+        // clone->setSilent(false);
+    }
+  }
 }
 
 // ------------------------ Mask layer -------------------------------------
@@ -185,60 +325,107 @@ void ImageView::createMaskLayer( const QSize& size )
 }
 
 void ImageView::saveMaskImage( const QString& filename ) {
-  if ( m_maskLayer != nullptr ) {
-   QImage indexedImage = m_maskLayer->image().convertToFormat(QImage::Format_Indexed8);
-   QList<QRgb> colorTable;
-   colorTable.reserve(256);
-   QVector<QColor> maskColors = defaultMaskColors();
-   for ( const QColor &c : maskColors ) {
-    colorTable.append(c.rgb());
-   }
-   for ( int i=maskColors.size() ; i < 256 ; ++i ) {
-    colorTable.append(qRgb(i, 255 - i, 0));
-   }
-   indexedImage.setColorTable(colorTable);
-   indexedImage.save(filename,"PNG");
+  qDebug() << "ImageView::saveMaskImage(): filename =" << filename;
+  {
+    if ( m_maskLayer != nullptr ) {
+     // --- save index class file ---
+     QImage indexedImage = m_maskLayer->image().convertToFormat(QImage::Format_Indexed8);
+     QList<QRgb> colorTable;
+     colorTable.reserve(256);
+     QVector<QColor> maskColors = defaultMaskColors();
+     for ( const QColor &c : maskColors ) {
+      colorTable.append(c.rgb());
+     }
+     for ( int i=maskColors.size() ; i < 256 ; ++i ) {
+      colorTable.append(qRgb(i, 255 - i, 0));
+     }
+     indexedImage.setColorTable(colorTable);
+     indexedImage.save(filename,"PNG");
+     // --- save index file ---
+     QFileInfo info(filename);
+     QString ext = info.suffix().toLower();
+     if ( ext == "png" || ext == "mnc" ) {
+       QString infoFileName = info.path() + "/" + info.completeBaseName() + ".json";
+       QJsonObject mainObject;
+       QHashIterator<QString, MaskCutTool> i(m_maskLabelTypeNames);
+       while ( i.hasNext() ) {
+        i.next();
+        mainObject.insert(i.key(),static_cast<int>(i.value()));
+       }
+       QJsonDocument doc(mainObject);
+       QFile file(infoFileName);
+       if ( file.open(QIODevice::WriteOnly) ) {
+        file.write(doc.toJson(QJsonDocument::Indented));
+        file.close();
+       }
+     }
+    }
   }
 }
 
 void ImageView::loadMaskImage( const QString& filename ) {
-  QImage img(filename);
-  if ( img.isNull() ) {
-   qCDebug(logEditor) << "Error: Could not load image!";
-   return;
-  }
-  QSize size = baseLayer()->image().size();
-  if ( img.size() != size ) {
-   qCDebug(logEditor) << "Error: Size mismatch could not load file!";
-   return;
-  }
-  if ( m_maskLayer != nullptr ) {
-    QMessageBox::StandardButton reply;
-    reply = QMessageBox::question(this, "Please confirm operation", 
+  qDebug() << "ImageView::loadMaskImage(): maskfile =" << filename;
+  {
+    // --- load mask image ---
+    QImage img(filename);
+    if ( img.isNull() ) {
+     qInfo() << "Error: Could not load image!";
+     return;
+    }
+    QSize size = baseLayer()->image().size();
+    if ( img.size() != size ) {
+     qInfo() << "Error: Size mismatch could not load file!";
+     return;
+    }
+    if ( m_maskLayer != nullptr ) {
+      QMessageBox::StandardButton reply;
+      reply = QMessageBox::question(this, "Please confirm operation", 
                      "A label mask already exists. Are you sure you want to load a new one? The old data will be lost?",
                      QMessageBox::Yes | QMessageBox::No);
-    if ( reply == QMessageBox::No ) {
-      return;
+      if ( reply == QMessageBox::No ) {
+        return;
+      }
+    } else {
+     m_maskLayer = new MaskLayer(size);
+     m_maskItem = new MaskLayerItem(m_maskLayer);
+     m_maskItem->setZValue(1000);
+     m_maskItem->setOpacityFactor(0.4);
+     scene()->addItem(m_maskItem);
     }
-  } else {
-   m_maskLayer = new MaskLayer(size);
-   m_maskItem = new MaskLayerItem(m_maskLayer);
-   m_maskItem->setZValue(1000);
-   m_maskItem->setOpacityFactor(0.4);
-   scene()->addItem(m_maskItem);
+    if ( img.format() != QImage::Format_Indexed8 ) {
+     m_maskLayer->setImage(img.convertToFormat(QImage::Format_Grayscale8));
+    } else {
+     QImage grayImg(img.size(),QImage::Format_Grayscale8);
+     for ( int y = 0; y < img.height(); ++y ) {
+      const uchar* srcLine = img.scanLine(y);
+      uchar* dstLine = grayImg.scanLine(y);
+      memcpy(dstLine, srcLine, img.width());
+     }
+     m_maskLayer->setImage(grayImg);
+    }
+    // --- load json file ---
+    QFileInfo info(filename);
+    QString infoFileName = info.path() + "/" + info.completeBaseName() + ".json";
+    QFile file(infoFileName);
+    if ( file.open(QIODevice::ReadOnly) ) {
+      QByteArray data = file.readAll();
+      file.close();
+      QJsonDocument doc = QJsonDocument::fromJson(data);
+      if ( !doc.isObject() ) {
+        qWarning() << "Error: Invalid JSON format!";
+        return;
+      }
+      QJsonObject mainObject = doc.object();
+      m_maskLabelTypeNames.clear();
+      for ( auto it = mainObject.begin(); it != mainObject.end(); ++it ) {
+        QString key = it.key();
+        MaskCutTool toolValue = static_cast<MaskCutTool>(it.value().toInt());
+        m_maskLabelTypeNames.insert(key, toolValue);
+    }
+    }
+    // --- update ---
+    viewport()->update();
   }
-  if ( img.format() != QImage::Format_Indexed8 ) {
-   m_maskLayer->setImage(img.convertToFormat(QImage::Format_Grayscale8));
-  } else {
-   QImage grayImg(img.size(),QImage::Format_Grayscale8);
-   for ( int y = 0; y < img.height(); ++y ) {
-    const uchar* srcLine = img.scanLine(y);
-    uchar* dstLine = grayImg.scanLine(y);
-    memcpy(dstLine, srcLine, img.width());
-   }
-   m_maskLayer->setImage(grayImg);
-  }
-  viewport()->update();
 }
 
 void ImageView::setMaskTool( MaskTool t ) { 
@@ -255,20 +442,25 @@ void ImageView::setMaskCutTool( const QString &maskLabelName, MaskCutTool t ) {
 
 int ImageView::getMaskCutToolType( const QString& name )
 {
-  if ( m_maskLabelTypeNames.contains(name) ) {
-    return m_maskLabelTypeNames[name];
+  qCDebug(logEditor) << "ImageView::getMaskCutToolType(): name =" << name;
+  {
+    if ( m_maskLabelTypeNames.contains(name) ) {
+      return m_maskLabelTypeNames[name];
+    }
+    m_maskLabelTypeNames[name] = MaskCutTool::Ignore;
+    return 0;
   }
-  m_maskLabelTypeNames[name] = MaskCutTool::Ignore;
-  return 0;
 }
 
 // ------------------------ Layer tools -------------------------------------
-void ImageView::centerOnLayer( Layer* layer ) {
+void ImageView::centerOnLayer( Layer* layer ) 
+{
  if ( !layer || !layer->m_item ) return;
  centerOn(layer->m_item); // QGraphicsView::centerOn
 }
 
-LayerItem* ImageView::currentLayer() const {
+LayerItem* ImageView::currentLayer() const 
+{
   auto items = m_scene->items(Qt::DescendingOrder);
   for ( QGraphicsItem* item : items ) {
     if ( auto* layer = dynamic_cast<LayerItem*>(item) )
@@ -277,10 +469,16 @@ LayerItem* ImageView::currentLayer() const {
   return nullptr;
 }
 
+void ImageView::deleteLayer( Layer* layer )
+{
+   if ( layer == nullptr || layer->m_item == nullptr ) return;
+   LayerItem *imageLayer = dynamic_cast<LayerItem*>(layer->m_item);
+   m_undoStack->push(new DeleteLayerCommand(imageLayer,imageLayer->pos(),layer->id()));
+}
+
 // ------------------------ Colortable tools -------------------------------------
 void ImageView::setColorTable( const QVector<QRgb> &lut )
 {
-  qCDebug(logEditor) << "ImageView::setColorTable(): Processing...";
   LayerItem* layer = currentLayer();
   if ( !layer ) return;
   m_undoStack->push(new InvertLayerCommand(layer,lut));
@@ -294,6 +492,7 @@ void ImageView::enablePipette( bool enabled ) {
 // ------------------------ ------------------------ ------------------------
 // ------------------------       Event tools        ------------------------
 // ------------------------ ------------------------ ------------------------
+
 void ImageView::keyPressEvent( QKeyEvent* event )
 {
   qCDebug(logEditor) << "ImageView::keyPressEvent(): key =" << event->key();
@@ -349,7 +548,25 @@ void ImageView::keyPressEvent( QKeyEvent* event )
           }
           mainWindow->setLayerOperationMode(transformMode);
           setLayerOperationMode(transformMode);
-        } 
+        } else if ( m_layerOperationMode == LayerItem::OperationMode::Scale && m_transformOverlay != nullptr ) {
+          if ( event->key() == Qt::Key_Q ) {
+            disableTransformMode();
+          } else if ( event->key() == Qt::Key_R ) {
+            m_transformOverlay->reset();
+          } 
+        } else if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
+          if ( event->key() == Qt::Key_Q ) {
+            qDebug() << "ImageView::keyPressEvent(): CageWarp quit...";
+          } else if ( event->key() == Qt::Key_R ) {
+            qDebug() << "ImageView::keyPressEvent(): CageWarp reset...";
+          }
+        } else if ( m_layerOperationMode == LayerItem::OperationMode::Perspective ) {
+           if ( event->key() == Qt::Key_Q ) {
+             qDebug() << "ImageView::keyPressEvent(): Perspective quit...";
+           } else if ( event->key() == Qt::Key_R ) {
+             qDebug() << "ImageView::keyPressEvent(): Perspective reset...";
+           }
+        }  
       }
     }
     QGraphicsView::keyPressEvent(event);
@@ -419,11 +636,17 @@ void ImageView::mousePressEvent( QMouseEvent* event )
                 layer->setSelected(false);
           }
           clickedItem->setSelected(true);
+          mainWindow->setSelectedLayer(QString("Layer %1").arg(clickedItem->id()));
         }
         if ( clickedItem->isCageWarp() && clickedItem->cageMesh().isActive() ) {
            m_activeLayer = clickedItem;
            m_selectedLayer = clickedItem;
            m_cageBefore = m_activeLayer->cageMesh().points();
+        } else if ( m_layerOperationMode == LayerItem::OperationMode::Scale ||
+                     m_layerOperationMode == LayerItem::OperationMode::Perspective ||
+                     m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
+           m_activeLayer = clickedItem;
+           m_selectedLayer = clickedItem;
         }
       }
     }
@@ -506,10 +729,12 @@ void ImageView::mousePressEvent( QMouseEvent* event )
 
 void ImageView::mouseDoubleClickEvent( QMouseEvent* event )
 {
-  qCDebug(logEditor) << "ImageView::mouseDoubleClickEvent(): Processing...";
+  // qCDebug(logEditor) << "ImageView::mouseDoubleClickEvent(): Processing...";
   {
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
-    if ( mainWindow != nullptr && mainWindow->getOperationMode() == MainWindow::MainOperationMode::Polygon ) {
+    if ( mainWindow != nullptr ) {
+      if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::Polygon &&
+           ( m_polygonOperationMode == LayerItem::OperationMode::Select || event->modifiers() & Qt::ControlModifier ) ) {
        // check whether a polygon has been double clicked
        QPointF scenePos = mapToScene(event->pos());
        EditablePolygonItem* clickedItem = nullptr;
@@ -519,7 +744,15 @@ void ImageView::mouseDoubleClickEvent( QMouseEvent* event )
          if ( editablePolygon != nullptr  && editablePolygon->polygon() != nullptr ) {
            if ( editablePolygon->hitTestPolygon(scenePos) > 0 ) {
             editablePolygon->polygon()->setSelected(!editablePolygon->polygon()->isSelected());
-            if ( editablePolygon->polygon()->isSelected() ) mainWindow->setActivePolygon(editablePolygon->polygon()->name());
+            if ( editablePolygon->polygon()->isSelected() ) {
+              int index = mainWindow->setActivePolygon(editablePolygon->polygon()->name());
+              if ( index >= 0 ) {
+               QVector<QColor> colors = defaultMaskColors();
+               editablePolygon->setColor(colors[(index+1)%colors.length()]);
+              }
+            } else {
+              editablePolygon->setColor(QColor(128,128,128));
+            }
             clickedItem = editablePolygon;
             break;
            }
@@ -528,10 +761,19 @@ void ImageView::mouseDoubleClickEvent( QMouseEvent* event )
        if ( clickedItem != nullptr ) {
          for ( auto* item : m_scene->items() ) {
            auto* editablePolygon = dynamic_cast<EditablePolygonItem*>(item);
-           if ( editablePolygon && editablePolygon != clickedItem )
+           if ( editablePolygon && editablePolygon != clickedItem ) {
                editablePolygon->polygon()->setSelected(false);
+               editablePolygon->setColor(QColor(128,128,128)); // best color for white or black background images ?
+           }
          }
        }
+      } else if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::ImageLayer &&
+                    m_layerOperationMode == LayerItem::OperationMode::Scale ) {
+          setEnableTransformMode(m_selectedLayer);
+      } else if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::ImageLayer &&
+                    m_layerOperationMode == LayerItem::OperationMode::Perspective ) {
+          setEnablePerspectiveWarp(m_selectedLayer);
+      }
     }
     QGraphicsView::mouseDoubleClickEvent(event);
   }
@@ -712,7 +954,6 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
     }
     // --- Painting beenden ---
     if ( m_painting && event->button() == Qt::LeftButton ) {
-       std::cout << "stop painting of " <<  m_currentStroke.size() << " points..." << std::endl;
         if ( m_currentStroke.size() > 1 ) {
             m_undoStack->push(new PaintStrokeCommand(m_paintLayer,m_currentStroke,m_brushColor,
                                     m_brushRadius,m_brushHardness));
@@ -772,7 +1013,7 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
 //    If newScale will be too small (e.g. < 0.001), the BSP-Tree crashed.
 void ImageView::wheelEvent( QWheelEvent* event )
 {
-  // qCDebug(logEditor) << "ImageView::wheelEvent(): currentScale =" << transform().m11();
+  qCDebug(logEditor) << "ImageView::wheelEvent(): currentScale =" << transform().m11();
   {
     if ( !scene() || scene()->items().isEmpty() ) {
       event->ignore();
@@ -929,8 +1170,15 @@ void ImageView::setPolygonOperationMode( LayerItem::OperationMode mode )
 
 void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
 {
-  qCDebug(logEditor) << "ImageView::setLayerOperationMode(): mode =" << mode << ", m_polygonEnabled =" << m_polygonEnabled;
+  // qCDebug(logEditor) 
+  qDebug() << "ImageView::setLayerOperationMode(): mode =" << mode << ", m_polygonEnabled =" << m_polygonEnabled;
   {
+    if ( m_layerOperationMode == LayerItem::OperationMode::Scale ) {
+      qDebug() << " + clean-up scale mode...";
+      disableTransformMode();
+    } else if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
+      qDebug() << " + clean-up cage-warp mode...";
+    }
     m_layerOperationMode = mode; 
     if ( m_polygonEnabled ) {
       setPolygonEnabled(false);
@@ -955,9 +1203,22 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
   }
 }
 
+void ImageView::setIncreaseNumberOfCageControlPoints() 
+{
+ qDebug() << " m_selectedLayer = " << (m_selectedLayer ? "ok" : "null" );
+   if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() ) return;
+   m_selectedLayer->changeNumberOfActiveCagePoints(+1);
+}
+
+void ImageView::setDecreaseNumberOfCageControlPoints() 
+{
+   if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() ) return;
+   m_selectedLayer->changeNumberOfActiveCagePoints(-1);
+}
+
 void ImageView::setNumberOfCageControlPoints( int nControlPoints ) 
 {
-  // qCDebug(logEditor) << "ImageView::setNumberOfCageControlPoints(): nControlPoints=" << nControlPoints;
+  qCDebug(logEditor) << "ImageView::setNumberOfCageControlPoints(): nControlPoints=" << nControlPoints;
   {
     for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
       auto* layer = dynamic_cast<LayerItem*>(item);
@@ -1032,14 +1293,14 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     QImage mask(bounds.size(), QImage::Format_Alpha8);
     mask.fill(0);
     QPainter pm(&mask);
-    pm.setRenderHint(QPainter::Antialiasing);
-    pm.setBrush(backgroundColor); // Qt::white);
-    pm.setPen(Qt::NoPen);
-    // Polygon relativ zur Bounding-Box verschieben
-    QPolygonF relativePoly = polyF;
-    for ( int i=0; i<relativePoly.size(); ++i )
+     pm.setRenderHint(QPainter::Antialiasing);
+     pm.setBrush(backgroundColor); // Qt::white);
+     pm.setPen(Qt::NoPen);
+     // Polygon relativ zur Bounding-Box verschieben
+     QPolygonF relativePoly = polyF;
+     for ( int i=0; i<relativePoly.size(); ++i )
       relativePoly[i] -= bounds.topLeft();
-    pm.drawPolygon(relativePoly);
+     pm.drawPolygon(relativePoly);
     pm.end();
     // --- lasso fear ---
     if ( m_lassoFeatherRadius > 0 ) {
@@ -1059,8 +1320,6 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
        if ( c != backgroundColor && m[x] > 0 && m_maskLayer->pixel(xpos,ypos) == 0 ) {
          c.setAlpha(m[x]); 
          cut.setPixelColor(x,y,c);
-         if ( m[x] == 255 )
-            src.setPixelColor(imgPos, backgroundColor);
        }
       }
      }
@@ -1071,15 +1330,41 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
       for ( int x=0; x<bounds.width(); ++x ) {
        unsigned int xpos = bounds.left() + x;
        QPoint imgPos(xpos, ypos);
-       QColor c = src.pixelColor(imgPos);
+       QColor c = src.pixelColor(imgPos); 
        if ( c != backgroundColor && m[x] > 0 && m_maskLayer->pixel(xpos,ypos) != 0 ) {
          c.setAlpha(m[x]); 
          cut.setPixelColor(x,y,c);
-         if ( m[x] == 255 )
-            src.setPixelColor(imgPos, backgroundColor);
        }
       }
      }
+    } else if ( m_maskCutTool == MaskCutTool::Copy && m_maskLayer != nullptr ) {
+     qDebug() << " *** processing ***";
+     // --- testing ---
+     // src  = mainImage
+     // mask = m = maskImage -> area under polygon
+     // m_maskLayer = class data
+     // cut = the cut layer itself
+     for ( int y=0; y<bounds.height(); ++y ) {
+      uchar* m = mask.scanLine(y);
+      unsigned int ypos = bounds.top() + y;
+      for ( int x=0; x<bounds.width(); ++x ) {
+       unsigned int xpos = bounds.left() + x;
+       QPoint imgPos(xpos, ypos);
+       QColor c = src.pixelColor(imgPos);
+       if ( c != backgroundColor && m[x] > 0 ) {
+         if ( m_maskLayer->pixel(xpos,ypos) != 0 ) {
+          int index = m_maskLayer->pixel(xpos,ypos);
+          int alpha = index == 1 ? 0 : ( index > 2 ? 128 : 255 );  // 1 := cut, >2 := copy 
+          c.setAlpha(alpha);
+          cut.setPixelColor(x,y,c);
+         } else {
+          c.setAlpha(m[x]); 
+          cut.setPixelColor(x,y,c);
+         }
+       }
+      }
+     }
+     // --- --- --- --- ---
     } else {
      for ( int y=0; y<bounds.height(); ++y ) {
       uchar* m = mask.scanLine(y);
@@ -1090,8 +1375,6 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
         if ( c != backgroundColor && m[x] > 0 ) {
          c.setAlpha(m[x]); 
          cut.setPixelColor(x,y,c);
-         // if ( m[x] > 0 )
-         //  src.setPixelColor(imgPos, backgroundColor);
         }
       }
      }
@@ -1123,9 +1406,19 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
 // ---------------------------- --------------- -----------------------------
 // ---------------------------- Polygon methods -----------------------------
 // ---------------------------- --------------- -----------------------------
-EditablePolygonCommand* ImageView::getPolygonUndoCommand( const QString& name )
+EditablePolygonCommand* ImageView::getPolygonUndoCommand( const QString& name, bool isSelected )
 {
   if ( name == "" ) {
+   if ( isSelected == true ) {
+     for ( int i = 0; i < m_undoStack->count(); ++i ) {
+        const QUndoCommand* baseCmd = m_undoStack->command(i);
+        auto polyCmd = dynamic_cast<const EditablePolygonCommand*>(baseCmd);
+        if ( polyCmd && polyCmd->isSelected() ) {
+         return const_cast<EditablePolygonCommand*>(polyCmd);
+        }
+     }
+     return nullptr;
+   }
    const QUndoCommand* cmd = m_undoStack->command(m_undoStack->index() - 1);
    EditablePolygonCommand* polyCmd = const_cast<EditablePolygonCommand*>(
         dynamic_cast<const EditablePolygonCommand*>(cmd)
@@ -1179,9 +1472,11 @@ void ImageView::createPolygonLayer()
     if ( mainWindow != nullptr ) {
       mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
     }
-    EditablePolygonCommand* polyCmd = ImageView::getPolygonUndoCommand();
+    // get active polygon
+    EditablePolygonCommand* polyCmd = ImageView::getPolygonUndoCommand("",true);
     if ( polyCmd == nullptr )
       return;
+    // process polygon
     EditablePolygon *editablePolygon = polyCmd->model();
     if ( editablePolygon != nullptr ) {
      int index = m_layers.size()+1;
@@ -1201,17 +1496,40 @@ void ImageView::finishPolygonDrawing( LayerItem* layer )
   {
     if ( !m_activePolygon || m_activePolygon->pointCount() < 3 )
         return;
+    QColor color = QColor(255,0,0);
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow != nullptr ) {
       mainWindow->setMainOperationMode(MainWindow::MainOperationMode::CreatePolygon);
+      int index = mainWindow->setActivePolygon(m_activePolygon->name());
+      if ( index >= 0 ) {
+        QVector<QColor> colors = defaultMaskColors();
+        color = colors[(index+1)%colors.length()];
+      }
     }
+    setOnlySelectedPolygon(m_activePolygon->name());
     QPolygonF poly = m_activePolygon->polygon();
     scene()->removeItem(m_activePolygonItem);
     m_activePolygonItem->deleteLater(); // Instead of 'delete m_activePolygonItem;'
     delete m_activePolygon;
-    m_activePolygonItem = nullptr;
     m_activePolygon = nullptr;
-    m_undoStack->push(new EditablePolygonCommand(layer,scene(),poly,QString("Polygon %1").arg(m_editablePolygons.size())));
+    m_activePolygonItem = nullptr;
+    EditablePolygonCommand *polyCmd = new EditablePolygonCommand(layer,scene(),poly,QString("Polygon %1").arg(m_editablePolygons.size()));
+    polyCmd->setColor(color);
+    m_undoStack->push(polyCmd);
+  }
+}
+
+void ImageView::setOnlySelectedPolygon( const QString& name )
+{
+  qCDebug(logEditor) << "ImageView::setOnlySelectedPolygon(): name =" << name;
+  {
+     for ( int i = m_undoStack->count() - 1; i >= 0; --i ) {
+      const QUndoCommand* cmd = m_undoStack->command(i);
+      EditablePolygonCommand *polyCmd = const_cast<EditablePolygonCommand*>(dynamic_cast<const EditablePolygonCommand*>(cmd));
+      if ( polyCmd != nullptr ) {
+        polyCmd->setSelected(cmd->text() == name ? true : false);
+      }
+     }
   }
 }
 
@@ -1223,10 +1541,12 @@ void ImageView::setPolygonEnabled( bool enabled )
    if ( layer != nullptr ) {
     m_polygonEnabled = enabled;
     if ( m_polygonEnabled ) {
-     m_activePolygon = new EditablePolygon(QString("Polygon %1").arg(1+m_editablePolygons.size()),this);
+     QString name = QString("Polygon %1").arg(1+m_editablePolygons.size());
+     m_activePolygon = new EditablePolygon(name,this);
      m_editablePolygons.push_back(m_activePolygon);
      m_activePolygonItem = new EditablePolygonItem(m_activePolygon,layer);
      m_activePolygonItem->setColor(QColor(255,0,0)); // set polygon color here
+     m_activePolygonItem->setName(name);
     } else {
      finishPolygonDrawing(layer);
      // m_activePolygonItem = nullptr;
@@ -1234,4 +1554,91 @@ void ImageView::setPolygonEnabled( bool enabled )
     }
    }
   }
+}
+
+// ---------------------------- --------------- -----------------------------
+// ---------------------------- Perspective free scale ----------------------
+// ---------------------------- --------------- -----------------------------
+void ImageView::setCageVisible( LayerItem* layer, LayerItem::OperationMode mode, bool isVisible )
+{
+  qDebug() << "ImageView::setCageVisible(): mode =" << mode << ", visible =" << isVisible;	
+  {
+    if ( mode == LayerItem::OperationMode::Scale ) {
+      if ( m_transformOverlay == nullptr && isVisible == true ) {
+        m_transformOverlay = new TransformOverlay(layer,m_undoStack);
+        scene()->addItem(m_transformOverlay);
+        m_transformOverlay->updateOverlay();
+      }
+      if ( m_transformOverlay != nullptr ) {
+        m_transformOverlay->setVisible(isVisible);
+      }
+    } else if ( mode == LayerItem::OperationMode::Perspective ) {
+      if ( m_perspectiveOverlay != nullptr ) {
+        m_perspectiveOverlay->setVisible(isVisible);
+      }
+    }
+  }
+}
+
+// ---------------------------- --------------- -----------------------------
+// ---------------------------- Perspective free scale ----------------------
+// ---------------------------- --------------- -----------------------------
+void ImageView::setEnableTransformMode( LayerItem* layer )
+{
+  // qCDebug(logEditor) 
+  qDebug() << "ImageView::setEnableTransformMode(): layer =" << (layer != nullptr ? layer->name() : "NULL");
+  {
+    if ( !scene() || !layer )
+        return;
+    if ( m_transformOverlay ) {
+        scene()->removeItem(m_transformOverlay);
+        delete m_transformOverlay;
+        m_transformOverlay = nullptr;
+    }
+    m_transformOverlay = new TransformOverlay(layer,m_undoStack);
+    scene()->addItem(m_transformOverlay);
+    m_transformOverlay->updateOverlay();
+  }
+}
+
+void ImageView::disableTransformMode()
+{
+  qDebug() << "ImageView::disableTransformMode(): Processing...";
+  {
+    if ( !m_transformOverlay )
+        return;
+    scene()->removeItem(m_transformOverlay);
+    delete m_transformOverlay;
+    m_transformOverlay = nullptr;
+  }
+}
+
+// ---------------------------- --------------- -----------------------------
+// ---------------------------- Perspective warp -------------------------
+// ---------------------------- --------------- -----------------------------
+
+void ImageView::setEnablePerspectiveWarp( LayerItem* layer )
+{
+  qDebug() << "ImageView::setEnablePerspectiveWarp(): layer =" << (layer != nullptr ? layer->name() : "NULL");
+  {
+    if ( !scene() || !layer )
+        return;
+    if ( m_perspectiveOverlay ) {
+        scene()->removeItem(m_perspectiveOverlay);
+        delete m_perspectiveOverlay;
+        m_perspectiveOverlay = nullptr;
+    }
+    m_perspectiveOverlay = new PerspectiveOverlay(layer, m_undoStack);
+    scene()->addItem(m_perspectiveOverlay);
+    m_perspectiveOverlay->updateOverlay();
+  }
+}
+
+void ImageView::disablePerspectiveWarp()
+{
+    if ( !m_perspectiveOverlay )
+        return;
+    scene()->removeItem(m_perspectiveOverlay);
+    delete m_perspectiveOverlay;
+    m_perspectiveOverlay = nullptr;
 }

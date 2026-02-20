@@ -26,16 +26,19 @@
 #include <QSettings>
 #include <QDateTime>
 #include <QString>
+#include <QtGlobal>
 #include <QFile>
 #include <QDir>
 
 #include <iostream>
+#include <unistd.h>
 
 #include "core/Config.h"
 #include "core/ImageLoader.h"
 #include "core/ImageProcessor.h"
 
 #include "gui/MainWindow.h"
+
 
 // ---------------------- Init ----------------------
 bool Config::verbose = false;
@@ -155,10 +158,14 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(outFileOption);
   QCommandLineOption batchOption("batch", "Run application in batch mode without running graphical user interface.");
   parser.addOption(batchOption);
+  QCommandLineOption guiOption("gui", "Run application in gui mode even if no input was given.");
+  parser.addOption(guiOption);
   QCommandLineOption configFileOption(QStringList() << "config", "Path to config file.", "file");
   parser.addOption(configFileOption);
   QCommandLineOption intermediateOption(QStringList() << "save-intermediate", "In batch mode, path to output an image after each step in the history.", "file");
   parser.addOption(intermediateOption);
+  QCommandLineOption concatOption("concatenate", "Concatenate image transformations in batch mode.");
+  parser.addOption(concatOption);
   QCommandLineOption vulkanOption("vulkan", "If available enable hardware accelerated Vulkan rendering.");
   parser.addOption(vulkanOption);
   QCommandLineOption historyOption("history", "Print history of last calls to stdout. Optional: last <n> entries.");
@@ -185,7 +192,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   }
   
   // --- Check required options ---
-  if ( !parser.isSet(fileOption) && !parser.isSet(projectFileOption) ) {
+  if ( !parser.isSet(fileOption) && !parser.isSet(projectFileOption) && !parser.isSet(guiOption)) {
    qCritical() << "Error: Missing path to image file and history file. Need at least one!";
    parser.showHelp();
   }
@@ -209,6 +216,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   if ( parser.isSet(intermediateOption) && !isPathWritable(obj["save-intermediate"].toString()) ) {
    exit(1);
   }
+  obj["concatenate"] = parser.isSet(concatOption);
   obj["vulkan"] = parser.isSet(vulkanOption);
   obj["force"] = parser.isSet(forceOption);
   obj["verbose"] = parser.isSet(verboseOption);
@@ -218,7 +226,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
 
 // ---------------------- Main ----------------------
 int main( int argc, char *argv[] )
-{
+{   
     // --- prepare (required for Linux.Debian systems in batch mode) ---
     if ( getenv("DISPLAY") == nullptr ) {
       setenv("QT_QPA_PLATFORM", "offscreen", 1);
@@ -226,13 +234,15 @@ int main( int argc, char *argv[] )
     QImageReader::setAllocationLimit(0); // dangerous
     
     // --- check first for gui option ---
-    bool batchProcssing = false;
+    bool batchProcessing = false;
+    bool guiProcessing = false;
     for ( int i=0 ; i<argc ; ++i ) {
-     if ( QString(argv[i]) == "--batch" ) batchProcssing = true;
+     if ( QString(argv[i]) == "--batch" ) batchProcessing = true;
+     if ( QString(argv[i]) == "--gui" ) guiProcessing = true;
     }
     
     // --- check whether batch processing is requested ---
-    if ( batchProcssing ) {
+    if ( batchProcessing ) {
       QCoreApplication *app = new QCoreApplication(argc,argv);
       app->setApplicationName("ImageEditor");
       app->setApplicationVersion("1.0");
@@ -292,6 +302,7 @@ int main( int argc, char *argv[] )
     QApplication *app = new QApplication(argc, argv);
     app->setApplicationName("ImageEditor");
     app->setApplicationVersion("1.0");
+    app->setQuitOnLastWindowClosed(true);
     QJsonObject parsedOptions = parser(app,argc);
     // --- create new history entry ---
     saveCurrentCall(argc, argv);
@@ -301,9 +312,14 @@ int main( int argc, char *argv[] )
       EditorStyle::instance().load(configPath);
       qCDebug(logEditor) << "hi";
     }
-    // --- call main programm ---
-    MainWindow w(parsedOptions);
-    w.show();
-    return app->exec();
-    
+    int result = 0;
+    {
+      // --- call main programm ---
+      MainWindow w(parsedOptions);
+      w.show();
+      result = app->exec();
+    }
+    _exit(result);
+    // qInstallMessageHandler([](QtMsgType, const QMessageLogContext&, const QString&){});
+    // return result;
 }

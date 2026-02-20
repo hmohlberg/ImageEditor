@@ -84,7 +84,7 @@ void InvertLayerCommand::undo()
 
 void InvertLayerCommand::redo()
 {   
-    if ( !m_layer ) return;
+    if ( m_silent || !m_layer ) return;
     QImage& img = m_layer->image();
     const QImage& original = m_layer->originalImage(); // das Ausgangsbild
     if ( original.format() != QImage::Format_ARGB32 ) {

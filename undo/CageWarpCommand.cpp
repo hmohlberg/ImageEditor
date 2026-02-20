@@ -66,7 +66,7 @@ void CageWarpCommand::undo()
     // m_layer->cageMesh().setPoints(m_before);
     // Triangle Warp auf Bild anwenden
     // ??? m_layer->applyTriangleWarp();
-    m_layer->setCageVisible(false);
+    m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,false);
     m_layer->resetPixmap();
   }
 }
@@ -75,7 +75,7 @@ void CageWarpCommand::redo()
 {
   std::cout << "CageWarpCommand::redo() Processing..." << std::endl;
   {
-    if ( !m_layer ) return;
+    if ( m_silent || !m_layer ) return;
     // Cage auf Endposition setzen
     
     m_layer->initCage(m_after,m_rect,m_rows,m_columns);
@@ -85,7 +85,7 @@ void CageWarpCommand::redo()
     
     // m_layer->cageMesh().setPoints(m_after);
     // Triangle Warp auf Bild anwenden
-    m_layer->setCageVisible(true);
+    m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,true);
     m_layer->applyTriangleWarp();
   }
 }

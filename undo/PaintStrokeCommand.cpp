@@ -114,7 +114,7 @@ void PaintStrokeCommand::redo()
 {
   // std::cout << "PaintStrokeCommand::redo(): Processing..." << std::endl;
   {
-    if ( !m_layer || m_points.isEmpty() )
+    if ( m_silent || !m_layer || m_points.isEmpty() )
       return;
     QImage& img = m_layer->image();
     paint(img);

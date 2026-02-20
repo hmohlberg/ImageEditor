@@ -19,6 +19,7 @@
  #define CONFIG_H
  
  #include <QColor>
+ #include <QString>
  #include <QSettings>
  #include <QLoggingCategory>
  
@@ -50,6 +51,7 @@
       QSettings settings(path, QSettings::IniFormat);
       // qDebug() << "Verfügbare Schlüssel:" << settings.allKeys();
       // qDebug output
+      m_windowSize = settings.value("Main/windowSize","default").toString();
       m_loggingIsEnabled = settings.value("Main/enableLogging", false).toBool();
       if ( m_loggingIsEnabled ) {
         QLoggingCategory::setFilterRules("editor.graphics.debug=true");
@@ -68,14 +70,16 @@
       }
     }
     QColor lassoColor() const { return m_lassoColor; }
+    QString windowSize() const { return m_windowSize; }
     int lassoWidth() const { return m_lassoWidth; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
 
    private:
    
-    EditorStyle() : m_lassoColor(Qt::yellow), m_lassoWidth(0), m_loggingIsEnabled(true) {}
+    EditorStyle() : m_lassoColor(Qt::yellow), m_lassoWidth(0), m_loggingIsEnabled(true), m_windowSize("default") {}
     
     QColor m_lassoColor;
+    QString m_windowSize;
     int m_lassoWidth;
     bool m_loggingIsEnabled;
     

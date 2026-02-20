@@ -25,12 +25,11 @@ class LayerItem;
 class PolygonDeletePointCommand : public AbstractCommand
 {
 
-public:
+  public:
 
-    PolygonDeletePointCommand( EditablePolygon* poly,
-                              int idx,
-                              const QPointF& p,
-                              QUndoCommand* parent = nullptr );
+    PolygonDeletePointCommand( EditablePolygon* poly, int idx, const QPointF& p, QUndoCommand* parent = nullptr );
+    
+    AbstractCommand* clone() const override { return new PolygonDeletePointCommand(m_poly,m_idx,m_point); }
 
     QString type() const override { return "DeletePolygonPoint"; }
     LayerItem* layer() const override { return nullptr; }
@@ -42,7 +41,7 @@ public:
     QJsonObject toJson() const override;
     static PolygonDeletePointCommand* fromJson( const QJsonObject& obj, EditablePolygon* poly );
 
-private:
+  private:
 
     EditablePolygon* m_poly;
     int m_idx;

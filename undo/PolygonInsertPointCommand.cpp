@@ -31,6 +31,7 @@ PolygonInsertPointCommand::PolygonInsertPointCommand( EditablePolygon* poly,
 
 void PolygonInsertPointCommand::redo()
 {
+    if ( m_silent ) return;
     m_poly->insertPoint(m_idx, m_point);
 }
 

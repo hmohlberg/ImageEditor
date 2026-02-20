@@ -33,6 +33,7 @@ public:
                                      QUndoCommand* parent = nullptr );
 
     QString type() const override { return "InvertLayer"; }
+    AbstractCommand* clone() const override { return new InvertLayerCommand(m_layer, m_lut, m_layerId); }
     
     void undo() override;
     void redo() override;

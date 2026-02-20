@@ -25,6 +25,7 @@
 #include "../undo/AbstractCommand.h"
 #include "../undo/PaintStrokeCommand.h"
 #include "../undo/TransformLayerCommand.h"
+#include "../undo/PerspectiveWarpCommand.h"
 #include "../undo/LassoCutCommand.h"
 #include "../undo/MirrorLayerCommand.h"
 #include "../undo/MoveLayerCommand.h"
@@ -35,13 +36,12 @@
 #include "../util/QWidgetUtils.h"
 
 #ifdef HASITK
- #include <itkImage.h>
- #include <itkImageFileReader.h>
- #include <itkRescaleIntensityImageFilter.h>
+ #include "itkMultiThreaderBase.h"
 #endif 
 
 #include <QCloseEvent>
 #include <QMessageBox>
+#include <QWidgetAction>
 #include <QStyledItemDelegate>
 #include <QStandardItemModel>
 #include <QJsonDocument>
@@ -62,23 +62,6 @@
 #include <QPushButton>
 #include <QDockWidget>
 #include <QColorDialog>
-/* 
-* Copyright 2026 Forschungszentrum Jülich
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*    https://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*
-*/
-
 #include <QInputDialog>
 #include <QDateTime>
 #include <QLineEdit>
@@ -141,34 +124,56 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     createDockWidgets();
 
     // >>>
+    bool hasMainImage = false;
     if ( !imagePath.isEmpty() && historyPath.isEmpty() ) {
-     loadImage(imagePath);
+     hasMainImage = loadImage(imagePath);
     } else if ( imagePath.isEmpty() && !historyPath.isEmpty() ) {
-     loadProject(historyPath, false);
+     hasMainImage = loadProject(historyPath, false);
     } else if ( !imagePath.isEmpty() && !historyPath.isEmpty() ) {
-     loadImage(imagePath);
+     hasMainImage = loadImage(imagePath);
      loadProject(historyPath, true);
     }
     if ( !classPath.isEmpty() ) {
      m_imageView->loadMaskImage(classPath); 
     }
+    
+    // >>>
+    if ( EditorStyle::instance().windowSize() == "maximum" ) {
+       this->showMaximized();
+    } else if ( EditorStyle::instance().windowSize() == "fullscreen" ) {
+       this->showFullScreen();
+    } else if ( hasMainImage == false) {
+       this->setMinimumSize(800, 600);
+    }
   }    
 }
+
+MainWindow::~MainWindow() {
+  #ifdef HASITK
+    std::cout << "MainWindow::~MainWindow(): Delete all..." << std::endl;
+    itk::MultiThreaderBase::SetGlobalDefaultNumberOfThreads(1);
+    // delete ui;
+  #endif
+}
+
 // ---------------------- Catch close/exit event ----------------------
-void MainWindow::closeEvent( QCloseEvent *event ) 
+bool MainWindow::checkUnsavedData()
 {
-    if ( !m_imageView->undoStack()->isClean() ) {
-        QMessageBox::StandardButton resBtn = QMessageBox::question( this, "ImageEditor",
+    if ( m_imageView->undoStack()->isClean() )
+      return true;
+    auto reply = QMessageBox::question( this, "ImageEditor",
                             tr("There are unsaved changes.\nDo you really want to quit the program?"),
                             QMessageBox::Cancel | QMessageBox::No | QMessageBox::Yes,QMessageBox::Yes);
-        if ( resBtn != QMessageBox::Yes )  {
-            event->ignore();
-        } else {
-            event->accept();
-        }
-    } else {
-        event->accept();
+    return (reply == QMessageBox::Yes);
+}
+
+void MainWindow::closeEvent( QCloseEvent *event ) 
+{
+    if ( checkUnsavedData() ) {
+      event->accept();
+      return;
     }
+    event->ignore();
 }
 
 // ---------------------- Load and Save ----------------------
@@ -211,6 +216,13 @@ void MainWindow::openImage()
                         tr("Images (*.png *.jpg *.bmp)"));
     if ( fileName.isEmpty() )
       return;
+    if ( isMaskImage ) {
+      m_imageView->loadMaskImage(fileName);
+    } else {
+      loadImage(fileName);
+    }
+      
+/*
     QPixmap pix(fileName);
     if ( !pix.isNull() ) {
       if ( isMaskImage ) {
@@ -220,7 +232,10 @@ void MainWindow::openImage()
         m_layerItem->setParent(this);
         m_imageView->getScene()->addItem(m_layerItem);
       }
+      fitToWindow();
     }
+*/
+
 }
 
 void MainWindow::saveAsImage()
@@ -271,6 +286,7 @@ void MainWindow::saveAsImage()
 }
 
 // --------------------------- History ---------------------------
+
 void MainWindow::saveHistory()
 {
     QString fileName = QFileDialog::getSaveFileName(this,
@@ -445,8 +461,12 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
            cmd = MirrorLayerCommand::fromJson(cmdObj, layers);
         } else if ( type == "CageWarp" ) {
            cmd = CageWarpCommand::fromJson(cmdObj, layers);
-        } else if ( type == "TransformLayerCommand" ) {
+        } else if ( type == "TransformLayer" || type == "TransformLayerCommand" ) {
            cmd = TransformLayerCommand::fromJson(cmdObj, layers);
+        } else if ( type == "PerspectiveTransform" ) {
+           // cmd = PerspectiveTransformCommand::fromJson(cmdObj, layers);
+        } else if ( type == "PerspectiveWarp" ) {
+           cmd = PerspectiveWarpCommand::fromJson(cmdObj, layers);
         } else if ( type == "EditablePolygonCommand" ) {
            cmd = EditablePolygonCommand::fromJson(cmdObj, layers);
            editablePolyCommand = dynamic_cast<EditablePolygonCommand*>(cmd);
@@ -649,20 +669,22 @@ void MainWindow::toggleLayerVisibility(  QListWidgetItem* item )
 
 void MainWindow::updateLayerList()
 {
+   qDebug() << "MainWindow::updateLayerList(): Processing...";
    rebuildLayerList();
 }
 
 void MainWindow::rebuildLayerList()
 {
-  qCDebug(logEditor) << "MainWindow::rebuildLayerList(): Rebuild layer list...";
+  qDebug() << "MainWindow::rebuildLayerList(): Rebuild layer list...";
   {
+    // updating layer list in docks widget
     m_updatingLayerList = true;
     m_layerList->clear();
     const auto& layers = m_imageView->layers();
     for ( int i = layers.size()-1; i >= 0; --i ) {
         Layer* layer = layers[i];
         if ( !layer || !layer->m_item || !layer->m_active ) continue;
-        QListWidgetItem* item = new QListWidgetItem(layer->name());
+        QListWidgetItem* item = new QListWidgetItem(QString("Layer %1").arg(layer->id())); // layer->name());
         item->setCheckState(layer->m_visible ? Qt::Checked : Qt::Unchecked);
         item->setData(Qt::UserRole, QVariant::fromValue<void*>(layer));
         item->setIcon(QIcon(layer->m_visible
@@ -671,6 +693,35 @@ void MainWindow::rebuildLayerList()
         m_layerList->addItem(item);
     }
     m_updatingLayerList = false;
+    // updating layer list in m_selectLayerItem
+    int nItems = 0;
+    int currentId = m_selectLayerItem->currentData().toInt();
+    m_selectLayerItem->clear();
+    for ( int i = layers.size()-1; i >= 0; --i ) {
+      Layer* layer = layers[i];
+      if ( !layer || !layer->m_item || !layer->m_active ) continue;
+      m_selectLayerItem->addItem(QString("Layer %1").arg(layer->id()), layer->id());
+      nItems += 1;
+    }
+    if ( nItems == 0 ) {
+       m_selectLayerItem->addItems({"None yet defined"});
+    } else {
+       int index = m_selectLayerItem->findData(currentId);
+       if ( index != -1 ) {
+        m_selectLayerItem->setCurrentIndex(index);
+       }
+    }
+  }
+}
+
+void MainWindow::setSelectedLayer( const QString &name )
+{
+  qDebug() << "MainWindow::setSelectedLayer(): name =" << name;
+  {
+    int index = m_selectLayerItem->findText(name);
+    if ( index != -1 ) {
+      m_selectLayerItem->setCurrentIndex(index);
+    }
   }
 }
 
@@ -769,16 +820,28 @@ void MainWindow::deleteLayer()
 {
   qCDebug(logEditor) << "MainWindow::deleteLayer(): Processing...";
   {
+    
     QListWidgetItem* item = m_layerList->currentItem();
     if ( !item ) return;
     Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
     if ( !layer ) return;
-    if ( layer->m_item )
-        m_imageView->getScene()->removeItem(layer->m_item);
-    m_imageView->layers().removeOne(layer);
-    delete layer;
-    rebuildLayerList();
-    m_imageView->rebuildUndoStack();
+    
+    QString labelText = QString("Do you really want to delete the layer? Press the Revoke button to undo all operations "
+                    "(all entries will be permanently deleted from the history list) or press Delete to remove "
+                    "the layer with the option of restoring it.");
+    int result = QWidgetUtils::showIconDialog(this,QString("Delete %1").arg(layer->name()),labelText);
+
+    if ( result == 1 ) {
+      // Undo all operations from the stack. Preserve original state
+      m_imageView->removeOperationsByIdUndoStack(layer->id());
+    } else if ( result == 2 ) {
+      m_imageView->deleteLayer(layer);
+      // if ( layer->m_item ) 
+      //   m_imageView->getScene()->removeItem(layer->m_item);
+      // m_imageView->layers().removeOne(layer);
+      rebuildLayerList();
+      m_imageView->rebuildUndoStack();
+    }
   }
 }
 
@@ -832,6 +895,9 @@ void MainWindow::createActions()
     m_infoAction = new QAction(tr("Info"), this);
     connect(m_infoAction, &QAction::triggered, this, &MainWindow::info);
     
+    m_sortHistoryAction = new QAction(tr("Sort and merge history"), this);
+    connect(m_sortHistoryAction, &QAction::triggered, m_imageView, &ImageView::rebuildUndoStack);
+    
     m_saveHistoryAction = new QAction(tr("Save history as..."), this);
     connect(m_saveHistoryAction, &QAction::triggered, this, &MainWindow::saveHistory);
     
@@ -843,9 +909,6 @@ void MainWindow::createActions()
 
     m_saveAsAction = new QAction(tr("Save As..."), this);
     connect(m_saveAsAction, &QAction::triggered, this, &MainWindow::saveAsImage);
-
-    // m_cutAction = new QAction(tr("Cut Selection"), this);
-    // connect(m_cutAction, &QAction::triggered, this, &MainWindow::cutSelection);
     
     m_pipetteAction = new QAction("Pipette", this);
     m_pipetteAction->setCheckable(true);
@@ -860,6 +923,12 @@ void MainWindow::createActions()
     m_crosshairAction = new QAction("Crosshair", this);
     m_crosshairAction->setCheckable(true);
     connect(m_crosshairAction, &QAction::toggled, m_imageView, &ImageView::setCrosshairVisible);
+    
+    m_quitAction = new QAction("Quit Application", this);
+    m_quitAction->setToolTip("Exit application");
+    connect(m_quitAction, &QAction::triggered, this, [this]() {
+      QApplication::quit();
+    });
     
     m_undoAction = m_imageView->undoStack()->createUndoAction(this," Undo ");
     m_redoAction = m_imageView->undoStack()->createRedoAction(this," Redo ");
@@ -1109,11 +1178,20 @@ void MainWindow::createToolbars()
     fileToolbar->addAction(m_undoAction);
     fileToolbar->insertSeparator(m_undoAction);
     fileToolbar->addAction(m_redoAction);
+    fileToolbar->addAction(m_sortHistoryAction);
+    fileToolbar->insertSeparator(m_sortHistoryAction);
     fileToolbar->addAction(m_saveHistoryAction);
     fileToolbar->insertSeparator(m_saveHistoryAction);
     fileToolbar->addAction(m_openHistoryAction);
     fileToolbar->addAction(m_infoAction);
     fileToolbar->insertSeparator(m_infoAction);
+    // add spacer
+    QWidget* spacer = new QWidget();
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    QWidgetAction* spacerAction = new QWidgetAction(fileToolbar);
+    spacerAction->setDefaultWidget(spacer);
+    fileToolbar->addAction(spacerAction);
+    fileToolbar->addAction(m_quitAction);
     
     // ============================================================
     //  toolbar break
@@ -1200,15 +1278,16 @@ void MainWindow::createToolbars()
     // ============================================================
     m_layerToolbar = addToolBar(tr("Layer"));
     // --- layer selection ---
-    QComboBox* selectLayerItem = new QComboBox();
-    selectLayerItem->addItems({"None yet defined"});
-    m_layerToolbar->addWidget(selectLayerItem);
-    connect(selectLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
+    m_selectLayerItem = new QComboBox();
+    m_selectLayerItem->addItems({"None yet defined"});
+    m_selectLayerItem->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_layerToolbar->addWidget(m_selectLayerItem);
+    connect(m_selectLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
      std::cout << "MainWindow::createToolbars(): name=" << text.toStdString() << std::endl;
     });
     // --- operation modus ---
     m_transformLayerItem = new QComboBox();
-    m_transformLayerItem->addItems({"Translate","Rotate","Scale","Vertical flip","Horizontal flip","Cage transform"}); // Perspective
+    m_transformLayerItem->addItems({"Translate","Rotate","Scale","Vertical flip","Horizontal flip","Perspective","Cage transform"}); // Perspective
     m_layerToolbar->addWidget(m_transformLayerItem);
     connect(m_transformLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
       LayerItem::OperationMode transformMode = LayerItem::OperationMode::None;
@@ -1224,11 +1303,25 @@ void MainWindow::createToolbars()
     // --- cage control points ---
     QLabel* cageControlPointsLabel = new QLabel(" Cage control points:");
     m_layerToolbar->addWidget(cageControlPointsLabel);
+    
+    QPushButton* btnPlus = new QPushButton("+", this);
+    QPushButton* btnMinus = new QPushButton("-", this);
+    btnPlus->setStyleSheet("font-size: 20px; font-weight: bold;");
+    btnMinus->setStyleSheet("font-size: 20px; font-weight: bold;");
+    btnPlus->setFixedSize(18, 18);
+    btnMinus->setFixedSize(18, 18);
+    m_layerToolbar->addWidget(btnPlus);
+    m_layerToolbar->addWidget(btnMinus);
+    connect(btnPlus, &QPushButton::clicked, m_imageView, &ImageView::setIncreaseNumberOfCageControlPoints);
+    connect(btnMinus, &QPushButton::clicked, m_imageView, &ImageView::setDecreaseNumberOfCageControlPoints);
+
     m_cageControlPointsSpin = new QSpinBox();
     m_cageControlPointsSpin->setRange(2,30);
     m_cageControlPointsSpin->setValue(1);
-    m_layerToolbar->addWidget(m_cageControlPointsSpin);
-    connect(m_cageControlPointsSpin, QOverload<int>::of(&QSpinBox::valueChanged), m_imageView, &ImageView::setNumberOfCageControlPoints);
+    // m_layerToolbar->addWidget(m_cageControlPointsSpin);
+    // connect(m_cageControlPointsSpin, QOverload<int>::of(&QSpinBox::valueChanged), m_imageView, &ImageView::setNumberOfCageControlPoints);
+    
+    
     // --- interpolation ---
     QComboBox* interpolationLayerItem = new QComboBox();
     interpolationLayerItem->addItems({"Nearest neighbor interpolation","Trilinear interpolation"});
@@ -1445,6 +1538,7 @@ void MainWindow::info()
 
 void MainWindow::setLayerOperationMode( int mode ) 
 {
+  qDebug() << "MainWindow::setLayerOperationMode(): mode =" << mode;
    m_transformLayerItem->setCurrentIndex(mode-3);
 }
 
@@ -1468,12 +1562,13 @@ void MainWindow::setMainOperationMode( MainOperationMode mode )
     }
 }
 
-void MainWindow::setActivePolygon( const QString& polygonName )
+int MainWindow::setActivePolygon( const QString& polygonName )
 {
   int index = m_polygonIndexBox->findText(polygonName);
   if ( index != -1 ) {
     m_polygonIndexBox->setCurrentIndex(index);
   } 
+  return index;
 }
 
 /* =================== Signal calls =================== */

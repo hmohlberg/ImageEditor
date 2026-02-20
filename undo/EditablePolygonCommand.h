@@ -32,10 +32,15 @@ public:
 
     EditablePolygonCommand( LayerItem* layer, QGraphicsScene* scene, const QPolygonF& polygon, const QString& name, QUndoCommand* parent = nullptr );
 
+    AbstractCommand* clone() const override { return new EditablePolygonCommand(m_layer, m_scene, m_polygon, m_name); }
     QString type() const override { return "EditablePolygon"; }
+    QString name() const { return m_name; }
     EditablePolygon* model() const { return m_model; }
     
     void setVisible( bool isVisible );
+    void setSelected( bool isSelected );
+    void setColor( const QColor& color );
+    bool isSelected() const;
     
     LayerItem* layer() const override { return m_layer; }
     int id() const override { return 1000; }
@@ -51,11 +56,11 @@ private:
     LayerItem* m_layer = nullptr;
     QGraphicsScene* m_scene = nullptr;
 
-    // Daten
+    // Data
     QString m_name;
     QPolygonF m_polygon;
 
-    // Runtime-Objekte
+    // Runtime objects
     EditablePolygon* m_model = nullptr;
     EditablePolygonItem* m_item = nullptr;
     
