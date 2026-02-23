@@ -39,6 +39,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QGraphicsScene>
 #include <QScrollBar>
 #include <QWheelEvent>
