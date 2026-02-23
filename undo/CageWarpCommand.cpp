@@ -47,7 +47,7 @@ CageWarpCommand::CageWarpCommand( LayerItem* layer,
 // 
 void CageWarpCommand::pushNewWarpStep( const QVector<QPointF>& points )
 {
-  std::cout << "CageWarpCommand::pushNewWarpStep(): Processing..." << std::endl;
+  // qDebug() << "CageWarpCommand::pushNewWarpStep(): Processing...";
   {
     m_after = points;
     m_steps += 1;
@@ -57,7 +57,7 @@ void CageWarpCommand::pushNewWarpStep( const QVector<QPointF>& points )
 // ---------------------- Undo/Redo ----------------------
 void CageWarpCommand::undo()
 {
-  std::cout << "CageWarpCommand::undo() Processing..." << std::endl;
+  // qDebug() << "CageWarpCommand::undo(): m_beforepoints =" << m_before.size();
   {
     if ( !m_layer ) return;
     // Cage auf Startposition zurücksetzen
@@ -67,13 +67,13 @@ void CageWarpCommand::undo()
     // Triangle Warp auf Bild anwenden
     // ??? m_layer->applyTriangleWarp();
     m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,false);
-    m_layer->resetPixmap();
+    m_layer->resetPixmap(); // holt das originale image
   }
 }
 
 void CageWarpCommand::redo()
 {
-  std::cout << "CageWarpCommand::redo() Processing..." << std::endl;
+  // qDebug() << "CageWarpCommand::redo(): rows =" << m_rows << ", columns =" << m_columns << ", points =" << m_after.size();
   {
     if ( m_silent || !m_layer ) return;
     // Cage auf Endposition setzen
@@ -85,8 +85,10 @@ void CageWarpCommand::redo()
     
     // m_layer->cageMesh().setPoints(m_after);
     // Triangle Warp auf Bild anwenden
+    
     m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,true);
     m_layer->applyTriangleWarp();
+    
   }
 }
 

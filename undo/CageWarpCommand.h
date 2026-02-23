@@ -29,7 +29,7 @@ class LayerItem;
 class CageWarpCommand : public AbstractCommand
 {
 
-public:
+  public:
 
     CageWarpCommand( LayerItem* layer, const QVector<QPointF>& before,
                     const QVector<QPointF>& after, const QRectF& rect, int rows, int columns, QUndoCommand* parent = nullptr );
@@ -47,14 +47,24 @@ public:
     static CageWarpCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent = nullptr );
     
     void pushNewWarpStep( const QVector<QPointF>& points );
+    void setNumberOfRowsAndColumns( int n ) {
+      m_rows = n;
+      m_columns = n;
+    }
+    
+    void setImage( const QImage& image ) { m_image = image; }
+    void save_image() {
+      m_image.save("/tmp/imageeditor_backuppic.png");
+    }
 
-private:
+  private:
 
     int m_layerId = -1;
     
     int m_steps = 0;
     int m_rows = 0;
     int m_columns = 0;
+    
     QString m_interpolation = "trlinear";
     QRectF m_rect;
     
@@ -62,5 +72,7 @@ private:
     
     QVector<QPointF> m_before;  // Startposition der Cage-Punkte
     QVector<QPointF> m_after;   // Endposition der Cage-Punkte
+    
+    QImage m_image;
     
 };

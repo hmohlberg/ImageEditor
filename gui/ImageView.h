@@ -98,7 +98,7 @@ public:
     LayerItem::OperationMode getPolygonOperationMode() const { return m_polygonOperationMode; }
     LayerItem::OperationMode getLayerOperationMode() const { return m_layerOperationMode; }
     
-    LayerItem* getSelectedItem();
+    LayerItem* getSelectedItem( bool isActiveCageItem = false );
     LayerItem* currentLayer() const;
     LayerItem* baseLayer();
     EditablePolygonCommand* getPolygonUndoCommand( const QString& name = "", bool isSelected = false );
@@ -128,7 +128,9 @@ public:
     void setNumberOfCageControlPoints( int nControlPoints );
     void setDecreaseNumberOfCageControlPoints();
     void setIncreaseNumberOfCageControlPoints();
+    void setCageWarpFixBoundary( bool isChecked );
     void setCageWarpRelaxationSteps( int nRelaxationSteps );
+    void setCageWarpStiffness( double stiffness );
     void setCageVisible( LayerItem* layer, LayerItem::OperationMode mode, bool isVisible );
     void setMaskTool( MaskTool t );
     void setMaskCutTool( const QString&, MaskCutTool t );

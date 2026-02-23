@@ -51,6 +51,7 @@
 #include <QToolBar>
 #include <QStatusBar>
 #include <QAction>
+#include <QCheckBox>
 #include <QHBoxLayout>
 #include <QFileDialog>
 #include <QLabel>
@@ -1298,46 +1299,67 @@ void MainWindow::createToolbars()
       else if ( text.startsWith("Horizontal") ) transformMode = LayerItem::OperationMode::Flop;
       else if ( text.startsWith("Perspective") ) transformMode = LayerItem::OperationMode::Perspective;
       else if ( text.startsWith("Cage transform") ) transformMode = LayerItem::OperationMode::CageWarp;
+      
+      bool isVisible = transformMode == LayerItem::OperationMode::CageWarp ? true : false;
+      m_cageControlGroup->setVisible( isVisible );
+      m_cageControlGroup->updateGeometry();
+      qDebug() << "isVisible =" << isVisible << " - " << this->m_cageControlGroup->isVisible();
+      
       m_imageView->setLayerOperationMode(transformMode);
     });
+    // --- interpolation ---
+    QComboBox* interpolationLayerItem = new QComboBox();
+    interpolationLayerItem->addItems({"Nearest neighbor interpolation","Trilinear interpolation"});
+    m_layerToolbar->addWidget(interpolationLayerItem);
+    
+    // --- cage control layout ---
+    m_cageControlGroup = new QWidget();
+    QHBoxLayout* cageControlLayout = new QHBoxLayout(m_cageControlGroup);
+    cageControlLayout->setContentsMargins(0, 0, 0, 0);
     // --- cage control points ---
     QLabel* cageControlPointsLabel = new QLabel(" Cage control points:");
-    m_layerToolbar->addWidget(cageControlPointsLabel);
-    
+    cageControlLayout->addWidget(cageControlPointsLabel);
     QPushButton* btnPlus = new QPushButton("+", this);
     QPushButton* btnMinus = new QPushButton("-", this);
     btnPlus->setStyleSheet("font-size: 20px; font-weight: bold;");
     btnMinus->setStyleSheet("font-size: 20px; font-weight: bold;");
     btnPlus->setFixedSize(18, 18);
     btnMinus->setFixedSize(18, 18);
-    m_layerToolbar->addWidget(btnPlus);
-    m_layerToolbar->addWidget(btnMinus);
+    cageControlLayout->addWidget(btnPlus);
+    cageControlLayout->addWidget(btnMinus);
     connect(btnPlus, &QPushButton::clicked, m_imageView, &ImageView::setIncreaseNumberOfCageControlPoints);
     connect(btnMinus, &QPushButton::clicked, m_imageView, &ImageView::setDecreaseNumberOfCageControlPoints);
-
-    m_cageControlPointsSpin = new QSpinBox();
-    m_cageControlPointsSpin->setRange(2,30);
-    m_cageControlPointsSpin->setValue(1);
-    // m_layerToolbar->addWidget(m_cageControlPointsSpin);
-    // connect(m_cageControlPointsSpin, QOverload<int>::of(&QSpinBox::valueChanged), m_imageView, &ImageView::setNumberOfCageControlPoints);
-    
-    
-    // --- interpolation ---
-    QComboBox* interpolationLayerItem = new QComboBox();
-    interpolationLayerItem->addItems({"Nearest neighbor interpolation","Trilinear interpolation"});
-    m_layerToolbar->addWidget(interpolationLayerItem);
+    // --- fix boundary ---
+    QCheckBox* fixBoundaryCheck = new QCheckBox("Fix boundary", this);
+    fixBoundaryCheck->setToolTip("Fixed outer mesh warp cage boundaries.");
+    fixBoundaryCheck->setChecked(true);
+    cageControlLayout->addWidget(fixBoundaryCheck);
+    connect(fixBoundaryCheck, &QCheckBox::toggled, m_imageView, &ImageView::setCageWarpFixBoundary);
     // --- relaxation ---
     QLabel* cageRelaxationLabel = new QLabel(" Relaxation:");
-    m_layerToolbar->addWidget(cageRelaxationLabel);
+    cageControlLayout->addWidget(cageRelaxationLabel);
     QSpinBox* relaxationSpin = new QSpinBox();
-    relaxationSpin->setRange(0,10);
+    relaxationSpin->setRange(0,100);
     relaxationSpin->setValue(0);
-    m_layerToolbar->addWidget(relaxationSpin);
+    cageControlLayout->addWidget(relaxationSpin);
     connect(relaxationSpin, QOverload<int>::of(&QSpinBox::valueChanged), m_imageView, &ImageView::setCageWarpRelaxationSteps);
+    // --- stiffness ---
+    QLabel* cageStiffnessLabel = new QLabel(" Stifness:");
+    cageControlLayout->addWidget(cageStiffnessLabel);
+    QDoubleSpinBox* stiffnessSpin = new QDoubleSpinBox();
+    stiffnessSpin->setRange(0.0,3.0);
+    stiffnessSpin->setSingleStep(0.05);
+    stiffnessSpin->setValue(0.0);
+    cageControlLayout->addWidget(stiffnessSpin);
+    connect(stiffnessSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), m_imageView, &ImageView::setCageWarpStiffness);
     // --- Update for Debugging ---
-    QAction *updateAction = new QAction("Update");
-    connect(updateAction, &QAction::triggered, this, &MainWindow::forcedUpdate);
-    m_layerToolbar->addAction(updateAction);
+    QPushButton *updateAction = new QPushButton("Update");
+    connect(updateAction, &QPushButton::clicked, this, &MainWindow::forcedUpdate);
+    cageControlLayout->addWidget(updateAction);
+    // --- add control group to toolbar
+    m_cageControlGroup->setLayout(cageControlLayout);
+    m_cageControlGroup->setVisible(true);
+    m_layerToolbar->addWidget(m_cageControlGroup);
     
     m_layerToolbar->setVisible(false);
     
@@ -1539,7 +1561,9 @@ void MainWindow::info()
 void MainWindow::setLayerOperationMode( int mode ) 
 {
   qDebug() << "MainWindow::setLayerOperationMode(): mode =" << mode;
-   m_transformLayerItem->setCurrentIndex(mode-3);
+  {
+     m_transformLayerItem->setCurrentIndex(mode-3);
+  }
 }
 
 void MainWindow::setPolygonOperationMode( int mode ) 

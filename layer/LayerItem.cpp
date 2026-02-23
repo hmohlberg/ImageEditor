@@ -104,21 +104,21 @@ void LayerItem::init()
 // ------------------------ Self info ------------------------
 void LayerItem::printself( bool debugSave )
 {
-  qInfo() << " LayerItem::printself(): name=" << name() << ", id=" << m_index << ", visible=" << isVisible();
+  qInfo() << " LayerItem::printself(): name =" << name() << ", id =" << m_index << ", visible =" << isVisible();
   QRectF rect = m_nogui ? m_image.rect() : boundingRect();
   QString geometry = QString("%1x%2+%3+%4").arg(rect.width()).arg(rect.height()).arg(pos().x()).arg(pos().y());
   qInfo() << "  + position =" << pos();
-  qInfo() << "  + geometry=" << geometry;
-  qInfo() << "  + cage: enabled=" << m_cageEnabled << ", edited=" << m_cageEditing;
-  qInfo() << "  + operation mode=" << m_operationMode;
-  qInfo() << "  + bounding box=" << m_showBoundingBox;
-  qInfo() << "  + parent="  << ( m_parent != nullptr ? "null" : "ok" );
-  
-  if ( debugSave && m_index == 1 ) {
-   std::cout << " LayerItem::printself(): Saving image data... " << std::endl;
-   m_image.save("/tmp/LayerItem_image.png");
-   m_originalImage.save("/tmp/LayerItem_originalimage.png");
-  }
+  qInfo() << "  + geometry =" << geometry;
+  qInfo() << "  + cage: enabled =" << m_cageEnabled << ", edited=" << m_cageEditing;
+  qInfo() << "  + cage overlay =" << (m_cageOverlay != nullptr ? "ok" : "null");
+  qInfo() << "  + operation mode =" << m_operationMode;
+  qInfo() << "  + bounding box =" << m_showBoundingBox;
+  qInfo() << "  + parent ="  << ( m_parent != nullptr ? "null" : "ok" );
+  // if ( debugSave && m_index == 1 ) {
+  //  std::cout << " LayerItem::printself(): Saving image data... " << std::endl;
+  //  m_image.save("/tmp/LayerItem_image.png");
+  //  m_originalImage.save("/tmp/LayerItem_originalimage.png");
+  // }
 }
 
 // ------------------------ Getter / Setter ------------------------
@@ -175,6 +175,7 @@ const QImage& LayerItem::originalImage() {
 }
 
 QString LayerItem::name() const {
+  if ( m_index == 0 ) return "MainImage";
   if ( m_layer ) return m_layer->name();
   return m_name;
 }
@@ -312,14 +313,16 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 // ------------------------ Cage ------------------------
 void LayerItem::applyTriangleWarp()
 {
-  // qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): meshActive=" << m_mesh.isActive() << ",  m_cageEnabled=" << m_cageEnabled << ", m_cageEditing=" << m_cageEditing;
+  qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): meshActive=" << m_cageMesh.isActive() << ",  m_cageEnabled=" << m_cageEnabled << ", m_cageEditing=" << m_cageEditing;
   {
-    TriangleWarp::WarpResult warped = TriangleWarp::warp(m_originalImage,m_mesh);
+    TriangleWarp::WarpResult warped = TriangleWarp::warp(m_originalImage,m_cageMesh);
     if ( !warped.image.isNull() ) {
      setPixmap(QPixmap::fromImage(warped.image));
      m_image = warped.image;
-     QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_mesh.getOffset());
-     m_mesh.setOffset();
+     QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
+     m_cageMesh.setOffset();
+    } else {
+     qCDebug(logEditor) << "WARNING: Image isNull...";
     } 
   }
 }
@@ -331,10 +334,10 @@ void LayerItem::applyCageWarp()
 
 void LayerItem::enableCage( int cols, int rows )
 {
-  // qCDebug(logEditor) << "LayerItem::enableCage(): cols=" << cols << ", rows=" << rows << ", enabled=" << m_cageEnabled;
+  qCDebug(logEditor) << "LayerItem::enableCage(): cols =" << cols << ", rows =" << rows << ", enabled =" << m_cageEnabled;
   {
-    m_mesh.create(boundingRect(), cols, rows);
-    m_cageEnabled = true;
+    m_cageMesh.create(boundingRect(), cols, rows);
+    m_cageEnabled = true;     
     if ( !scene() )
       return;
     if ( !m_cageOverlay ) {
@@ -345,10 +348,10 @@ void LayerItem::enableCage( int cols, int rows )
     // Handles
     qDeleteAll(m_handles);
     m_handles.clear();
-    for ( int i = 0; i < m_mesh.pointCount(); ++i ) {
+    for ( int i = 0; i < m_cageMesh.pointCount(); ++i ) {
       auto* h = new CageControlPointItem(this, i);
       h->setParentItem(this);
-      h->setPos(m_mesh.point(i));
+      h->setPos(m_cageMesh.point(i));
       m_handles << h;
     }
   }
@@ -358,43 +361,47 @@ void LayerItem::enableCage( int cols, int rows )
 
 void LayerItem::initCage( const QVector<QPointF>& pts, const QRectF &rect, int nrows, int ncolumns )
 {
-  // qCDebug(logEditor) << "LayerItem::initCage(): rect =" << rect << ", rows =" << nrows << ", ncolumns =" << ncolumns;
+  qCDebug(logEditor) << "LayerItem::initCage(): cageOverlay =" << (m_cageOverlay!=nullptr?"ok":"null") << ", rect =" << rect << ", rows =" << nrows << ", ncolumns =" << ncolumns;
   {
-    m_mesh.create(rect,nrows,ncolumns);  
-    m_mesh.setPoints(pts);
-    if ( !m_cageOverlay ) {
+    m_cageMesh.create(rect,nrows,ncolumns);  
+    m_cageMesh.setPoints(pts);
+    if ( m_cageOverlay == nullptr ) {
       m_cageOverlay = new CageOverlayItem(this);
       m_cageOverlay->setParentItem(this);
     }
   }
 }
 
-void LayerItem::disableCage()
+void LayerItem::setCageVisible( bool isVisible )
 {
-  // std::cout << "LayerItem::disableCage(): m_cageEditing=" << m_cageEditing << "|" << m_cageEnabled << " nControlPoints=" << m_mesh.pointCount() << std::endl;
+  qCDebug(logEditor) << "LayerItem::setCageVisible(): name = "  << name() << ", cageOverlay =" << (m_cageOverlay != nullptr?"ok":"none") << ", cageEditing=" << m_cageEditing << "|" << m_cageEnabled << " nControlPoints=" << m_cageMesh.pointCount();
   {
-    if ( m_cageOverlay != nullptr ) {
-     if ( m_parent != nullptr ) {
-      MainWindow* parent = dynamic_cast<MainWindow*>(m_parent);
-      if ( parent && parent->getViewer() != nullptr ) {
-       parent->getViewer()->setActiveCageLayer(nullptr);
-      }
-     }    
-     m_mesh.setActive(false);
-     m_cageEnabled = false;
-     m_cageEditing = false;
-     for ( int i = 0; i < m_handles.size(); ++i ) {
-       m_handles[i]->setVisible(false);
-     }
-     m_cageOverlay->setVisible(false);
-     update();
+   if ( m_cageOverlay != nullptr ) {
+     if ( isVisible  ) {
+      m_cageOverlay->setVisible(true);
+     } else {
+       if ( m_parent != nullptr ) { 
+        MainWindow* parent = dynamic_cast<MainWindow*>(m_parent);
+        if ( parent && parent->getViewer() != nullptr ) {
+         parent->getViewer()->setActiveCageLayer(nullptr);
+        }
+       }    
+       m_cageMesh.setActive(false);
+       m_cageEnabled = false;
+       m_cageEditing = false;
+       for ( int i = 0; i < m_handles.size(); ++i ) {
+         m_handles[i]->setVisible(false);
+       }
+       m_cageOverlay->setVisible(false);
+       update();
     }
+   }
   }
 }
 
 void LayerItem::setCageVisible( LayerItem::OperationMode mode, bool isVisible )
 {
-  qDebug() << "LayerItem::setCageVisible(): mode =" << mode << ", isVisible =" << isVisible;
+  qCDebug(logEditor) << "LayerItem::setCageVisible(): mode =" << mode << ", isVisible =" << isVisible;
   { 
     switch ( mode ) {
       case LayerItem::OperationMode::CageWarp:
@@ -422,30 +429,57 @@ void LayerItem::setCageVisible( LayerItem::OperationMode mode, bool isVisible )
  }
 }
 
-void LayerItem::changeNumberOfActiveCagePoints( int step ) 
+int LayerItem::changeNumberOfActiveCagePoints( int step ) 
 {
-  qDebug() << "LayerItem::changeNumberOfActiveCagePoints(): step =" << step;
-   int columns = m_mesh.cols();
-   columns += step;
-   int rows = m_mesh.rows();
-   rows += step;
-   enableCage(std::max(3,rows),std::max(3,columns));
+  qDebug() << "LayerItem::changeNumberOfActiveCagePoints(): cage = " << m_cageMesh.cols() << ", step =" << step;
+  {
+     int expo = std::log2(m_cageMesh.cols()-1);
+     expo -= step > 0 ? 0 : 1;
+     int ds = pow(2,expo);
+     int columns = m_cageMesh.cols();
+     columns += step*ds;
+     int rows = m_cageMesh.rows();
+     rows += step*ds;
+     // update cage
+     m_cageMesh.needUpdate();
+     m_cageMesh.update(boundingRect(),std::max(3,rows),std::max(3,columns));
+     // update handles
+     qDeleteAll(m_handles);
+     m_handles.clear();
+     for ( int i = 0; i < m_cageMesh.pointCount(); ++i ) {
+      auto* h = new CageControlPointItem(this, i);
+      h->setParentItem(this);
+      h->setPos(m_cageMesh.point(i));
+      m_handles << h;
+     }
+     return rows;
+  }
 }
+
 void LayerItem::setNumberOfActiveCagePoints( int nControlPoints ) {
   enableCage(nControlPoints,nControlPoints);
 }
 
-void LayerItem::setCageWarpRelaxationSteps( int nRelaxationsSteps ) {
-  m_nCageWarpRelaxationsSteps = nRelaxationsSteps;
+void LayerItem::setCageWarpProperty( int type, double value ) {
+    if ( type == 1 ) {
+       m_cageMesh.setNumberOfRelaxationsSteps(int(value));
+    } else if ( type == 2 ) {
+       m_cageMesh.setStiffness(value);
+    } else if ( type == 3 ) {
+       m_cageMesh.setFixedBoundaries(value>0?true:false);
+    } else {
+       return;
+    }
+    m_cageMesh.needUpdate();
 }
 
 void LayerItem::setCagePoints( const QVector<QPointF>& pts ) {
-    m_mesh.setPoints(pts);
+    m_cageMesh.setPoints(pts);
     update();
 }
 
 QVector<QPointF> LayerItem::cagePoints() const {
-    return m_mesh.points();
+    return m_cageMesh.points();
 }
 
 void LayerItem::updateCagePoint( TransformHandleItem* handle, const QPointF& localPos )
@@ -463,16 +497,16 @@ void LayerItem::setCagePoint( int idx, const QPointF& pos )
 {
   qCDebug(logEditor) << "LayerItem::setCagePoint(): index=" << idx << ", pos=(" << pos.x() << ":" << pos.y() << ")...";
   {
-    QRectF bounds_before = QPolygonF(m_mesh.points()).boundingRect();
+    QRectF bounds_before = QPolygonF(m_cageMesh.points()).boundingRect();
     QPointF local = mapFromScene(pos);
-    m_mesh.setPoint(idx, local);
-    QRectF bounds_after = QPolygonF(m_mesh.points()).boundingRect();
+    m_cageMesh.setPoint(idx, local);
+    QRectF bounds_after = QPolygonF(m_cageMesh.points()).boundingRect();
     qreal dx = bounds_after.x() - bounds_before.x();
     qreal dy = bounds_after.y() - bounds_before.y();
-    m_mesh.addOffset(dx,dy);
+    m_cageMesh.addOffset(dx,dy);
     for ( int i = 0; i < m_handles.size(); ++i )
-        m_handles[i]->setPos(m_mesh.point(i));
-    m_mesh.relax(m_nCageWarpRelaxationsSteps);
+        m_handles[i]->setPos(m_cageMesh.point(i));
+    m_cageMesh.relax();
     update(); 
   } 
 }
@@ -542,7 +576,7 @@ void LayerItem::setOperationMode( OperationMode mode )
      if ( m_operationMode == mode )
       return;
      if ( m_operationMode == OperationMode::CageWarp ) {
-      disableCage();
+      setCageVisible(false);
      }
      m_operationMode = mode;
    }
@@ -571,14 +605,14 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
             MainWindow* parent = dynamic_cast<MainWindow*>(m_parent);
             if ( parent && parent->getViewer() != nullptr ) {
              parent->getViewer()->setActiveCageLayer(this);
-             int nCagePoints = parent->getNumberOfCageControlPoints();
+             int nCagePoints = m_cageMesh.rows();
              enableCage(nCagePoints,nCagePoints);
              return;
             }
            }
            enableCage(3,3);
         } else {
-           disableCage();
+           setCageVisible(false);
         }
       } else if ( m_operationMode == OperationMode::Perspective ) {
           qCDebug(logEditor) << " + perpective call +";

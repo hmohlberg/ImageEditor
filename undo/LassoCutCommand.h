@@ -33,7 +33,8 @@ class ImageView;
 class LassoCutCommand : public AbstractCommand
 {
 
-public:
+  public:
+  
     LassoCutCommand( LayerItem* originalLayer, LayerItem* newLayer, const QRect& bounds, 
                          const QImage& originalBackup, const int index, const QString& name, QUndoCommand* parent=nullptr );
     
@@ -52,11 +53,12 @@ public:
     
     int layerId() const { return m_newLayerId; }
     void setController( QUndoCommand *undoCommand ) { m_controller = undoCommand; };
+    
     void save_backup() {
       m_backup.save("/tmp/imageeditor_backuppic.png");
     }
 
-private:
+  private:
 
     int m_originalLayerId = -1;
     int m_newLayerId = -1;

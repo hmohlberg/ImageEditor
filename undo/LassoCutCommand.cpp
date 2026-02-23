@@ -56,8 +56,7 @@ LassoCutCommand::LassoCutCommand( LayerItem* originalLayer, LayerItem* newLayer,
 // ---------------------- Undo/Redo ----------------------
 void LassoCutCommand::undo()
 {
-  // qCDebug(logEditor) 
-  qDebug() << "LassoCutCommand::undo(): Processing...";
+  qCDebug(logEditor) << "LassoCutCommand::undo(): Processing...";
   {
     QImage tempImage = m_originalLayer->image();
     QPainter p(&tempImage);
@@ -90,8 +89,7 @@ void LassoCutCommand::undo()
     
 void LassoCutCommand::redo()
 {
-  // qCDebug(logEditor) 
-  qDebug() << "LassoCutCommand::redo(): Processing...";
+  qCDebug(logEditor) << "LassoCutCommand::redo(): Processing...";
   {
     if ( m_silent ) return;
     QColor color = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
@@ -142,7 +140,7 @@ QJsonObject LassoCutCommand::toJson() const
 
 LassoCutCommand* LassoCutCommand::fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent )
 {
-  // qDebug() << "LassoCutCommand::fromJson(): Processing...";
+  qCDebug(logEditor) << "LassoCutCommand::fromJson(): Processing...";
   {
     // Original Layer
     const int originalLayerId = obj["originalLayerId"].toInt(-1);

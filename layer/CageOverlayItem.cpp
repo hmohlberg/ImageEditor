@@ -20,8 +20,7 @@
 #include "CageMesh.h"
 #include <QPainter>
 
-CageOverlayItem::CageOverlayItem(LayerItem* layer)
-    : m_layer(layer)
+CageOverlayItem::CageOverlayItem( LayerItem* layer ) : m_layer(layer)
 {
     setZValue(10000);          // immer über dem Bild
     setAcceptedMouseButtons(Qt::NoButton);
@@ -32,14 +31,12 @@ QRectF CageOverlayItem::boundingRect() const
     return m_layer->boundingRect();
 }
 
-void CageOverlayItem::paint(QPainter* p,
-                            const QStyleOptionGraphicsItem*,
-                            QWidget*)
+void CageOverlayItem::paint( QPainter* p, const QStyleOptionGraphicsItem*, QWidget* )
 {
     const CageMesh& mesh = m_layer->cageMesh();
     if ( mesh.pointCount() == 0 )
         return;
-    QPen pen(QColor(0, 255, 0));
+    QPen pen(QColor(0, 255, 0)); // cage color
     pen.setWidth(0); // cosmetic
     p->setPen(pen);
     int cols = mesh.cols();

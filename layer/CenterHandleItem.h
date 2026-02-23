@@ -24,20 +24,24 @@ class TransformOverlay;
 
 class CenterHandleItem : public QGraphicsItem
 {
- public:
+   public:
+   
     CenterHandleItem(TransformOverlay* overlay);
 
     QRectF boundingRect() const override;
-    void paint(QPainter* painter,
+    void paint( QPainter* painter,
                const QStyleOptionGraphicsItem*,
-               QWidget*) override;
+               QWidget*) override ;
 
-protected:
-    void mousePressEvent(QGraphicsSceneMouseEvent* e) override;
-    void mouseMoveEvent(QGraphicsSceneMouseEvent* e) override;
-    void mouseReleaseEvent(QGraphicsSceneMouseEvent* e) override;
+  protected:
+  
+    void mousePressEvent( QGraphicsSceneMouseEvent* e ) override;
+    void mouseMoveEvent( QGraphicsSceneMouseEvent* e ) override;
+    void mouseReleaseEvent( QGraphicsSceneMouseEvent* e ) override;
 
- private:
+  private:
+   
     TransformOverlay* m_overlay = nullptr;
     QPointF m_lastPos;
+    
 };

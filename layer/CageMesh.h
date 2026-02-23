@@ -39,11 +39,14 @@ struct CageSpring {
 class CageMesh
 {
 
-public:
+  public:
+  
     CageMesh();
 
     void create( const QRectF& bounds, int cols, int rows );
-    void update( int cols, int rows );
+    void update( const QRectF& bounds, int cols, int rows );
+    
+    void rebuildSprings();
     
     int cols() const { return m_cols; }
     int rows() const { return m_rows; }
@@ -59,7 +62,7 @@ public:
     QPointF point( int i ) const;
 
     void setPoint( int i, const QPointF& pos );
-    void relax( int iterations = 5 );
+    void relax();
     
     void setPoints( const QVector<QPointF>& pts );
     void enforceConstraints( int idx );
@@ -69,14 +72,32 @@ public:
     QPointF getOffset() const { return m_offset; }
     void setOffset( qreal x = -0.5, qreal y = -0.5 ) { m_offset = QPointF(x,y);  }
     
+    void setStiffness( double value ) { m_stiffness = value; }
+    void setNumberOfRelaxationsSteps( int nsteps ) { m_relaxationSteps = nsteps; }
+    void setFixedBoundaries( bool isFixed ) { m_fixedBoundaries = isFixed; }
+    
+    void needUpdate() { m_needUpdate = true; }
+    
     void printself();
-
-private:
+    
+  private:
+  
+    bool isBoundaryPoint( int index ) const;
+    void coarsen( const QRectF& bounds, int cols, int rows );
+    void refine( const QRectF& bounds, int cols, int rows );
+    void addNewSpring( int idxA, int idxB );
+    
+  private:
 
     bool m_active = true;
+    bool m_needUpdate = false;
     
-    int m_cols = 0;
-    int m_rows = 0;
+    bool m_fixedBoundaries = true;
+    double m_stiffness = 0.0;
+    int m_relaxationSteps = 0;
+    
+    int m_cols = 3;
+    int m_rows = 3;
     
     QPointF m_offset = QPointF(0,0);
     

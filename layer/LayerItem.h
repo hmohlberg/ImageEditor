@@ -70,7 +70,7 @@ class LayerItem : public QGraphicsPixmapItem
     void updateCagePoint( TransformHandleItem*, const QPointF& localPos );
     void commitCageTransform( const QVector<QPointF> &cage );
     void beginCageEdit();
-    void disableCage();
+    void setCageVisible( bool isVisible = false );
     bool cageEnabled() const;
     void setCageVisible( LayerItem::OperationMode mode, bool isVisible );
     void setInActive( bool isInActive );
@@ -86,14 +86,14 @@ class LayerItem : public QGraphicsPixmapItem
     void setIndex( const int index ) { m_index = index; }
     void setName( const QString& name ) { m_name = name; }
     LayerType getType() const { return m_type; }
-    bool hasActiveCage() const { return m_cageEnabled; }
+    bool hasActiveCage() const { return m_cageOverlay != nullptr ? true : false; } // m_cageEnabled; }
     PerspectiveTransform& perspective() { return m_perspective; }
     
     void applyPerspectiveQuad( const QVector<QPointF>& quad );
     
-    void changeNumberOfActiveCagePoints( int step );
+    int changeNumberOfActiveCagePoints( int step );
     void setNumberOfActiveCagePoints( int nControlPoints );
-    void setCageWarpRelaxationSteps( int nRelaxationsSteps );
+    void setCageWarpProperty( int type, double value );
     
     void setOperationMode( OperationMode mode );
     OperationMode operationMode() const { return m_operationMode; }
@@ -102,7 +102,7 @@ class LayerItem : public QGraphicsPixmapItem
     
     OperationMode getPolygonOperationMode();
     
-    const CageMesh& cageMesh() const { return m_mesh; }
+    const CageMesh& cageMesh() const { return m_cageMesh; }
     void setCagePoint( int idx, const QPointF& pos );
     void setCagePoints( const QVector<QPointF>& pts );
     void initCage( const QVector<QPointF>& pts, const QRectF& rect, int rows, int columns );
@@ -142,7 +142,6 @@ class LayerItem : public QGraphicsPixmapItem
     bool isValidMouseEventOperation();
     
     int m_index = 0;
-    int m_nCageWarpRelaxationsSteps = 0;
     
     OperationMode m_operationMode = LayerItem::Translate;
     OperationMode m_polygonOperationMode = LayerItem::AddPoint;
@@ -155,7 +154,7 @@ class LayerItem : public QGraphicsPixmapItem
     QVector<QPointF> m_originalCage;
     QVector<QPointF> m_cage;
     
-    CageMesh m_mesh;
+    CageMesh m_cageMesh;
     CageOverlayItem* m_cageOverlay = nullptr;
     PerspectiveTransform m_perspective;
 

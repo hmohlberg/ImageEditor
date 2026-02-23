@@ -50,7 +50,6 @@ public:
     
     // ----------------- global setter and getter -----------------
     ImageView* getViewer() const { return m_imageView; }
-    int getNumberOfCageControlPoints() const { return m_cageControlPointsSpin->value(); }
     void setMainOperationMode( MainOperationMode = ImageLayer );
     MainOperationMode getOperationMode() const { return m_operationMode; }
     int setActivePolygon( const QString& polygonName );
@@ -120,9 +119,9 @@ private:
     QToolBar* m_maskToolbar = nullptr;
     QToolBar* m_polygonToolbar = nullptr;
     
-    QSpinBox* m_cageControlPointsSpin = nullptr;
-    
     MainOperationMode m_operationMode = Paint;
+    
+    QWidget* m_cageControlGroup = nullptr; 
     
     QAction* m_quitAction = nullptr;
     QAction* m_saveHistoryAction = nullptr;

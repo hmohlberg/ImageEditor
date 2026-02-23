@@ -106,6 +106,11 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
                   m_transformOverlay->setVisible(false);
                   // cleanupCommand(previousActiveCommand);
                 }
+              } else if ( previousActiveCommand->text().startsWith("Cage Warp") ) {
+                 LayerItem *layer = getSelectedItem(true);
+                 if ( layer != nullptr ) layer->setCageVisible(false);
+              } else if ( previousActiveCommand->text().startsWith("Perspective Warp") ) {
+                 qDebug() << " cleaning perspective warp mesh here";
               }
             }
           }
@@ -139,6 +144,8 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::Perspective);
           } else if ( justFinishedCommand->text().startsWith("Cage") ) {
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::CageWarp);
+            LayerItem *layer = getSelectedItem(true);
+            if ( layer != nullptr ) layer->setCageVisible(true);
           } 
           // Going-back in undo stack actions
           const QUndoCommand* previousCommand = m_undoStack->command(m_lastIndex-1);
@@ -206,7 +213,7 @@ void ImageView::forcedUpdate()
   qCDebug(logEditor) << "ImageView::forcedUpdate(): Processing...";
   {
     if ( m_selectedLayer != nullptr ) {
-     m_selectedLayer->disableCage();
+     m_selectedLayer->setCageVisible(false);
     } else {
      qInfo() << " - no selected layer found";
     }
@@ -1149,8 +1156,20 @@ void ImageView::cutSelection()
 }
 
 // ---------------------------- Layer methods -----------------------------
-LayerItem* ImageView::getSelectedItem()
+LayerItem* ImageView::getSelectedItem( bool isActiveCageItem )
 {
+   if ( isActiveCageItem ) {
+     for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
+       auto* layer = dynamic_cast<LayerItem*>(item);
+       if ( layer && layer->getType() != LayerItem::MainImage ) {
+         qDebug() << " isSelected =" << ( layer->isSelected() ? "selected" : "none" );
+         if ( layer->hasActiveCage() ) {
+           return layer;
+         }
+       }
+     }
+     return nullptr;
+   }
    for ( auto* item : m_scene->items() ) {
         auto* layer = dynamic_cast<LayerItem*>(item);
         if ( layer && layer->isSelected() ) {
@@ -1206,8 +1225,9 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
 void ImageView::setIncreaseNumberOfCageControlPoints() 
 {
  qDebug() << " m_selectedLayer = " << (m_selectedLayer ? "ok" : "null" );
-   if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() ) return;
-   m_selectedLayer->changeNumberOfActiveCagePoints(+1);
+   if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() && m_cageWarpCommand != nullptr ) return;
+   int n = m_selectedLayer->changeNumberOfActiveCagePoints(+1);
+   m_cageWarpCommand->setNumberOfRowsAndColumns(n);
 }
 
 void ImageView::setDecreaseNumberOfCageControlPoints() 
@@ -1236,17 +1256,41 @@ void ImageView::setCageWarpRelaxationSteps( int nRelaxationSteps )
 {
   // qCDebug(logEditor) << "ImageView::setCageWarpRelaxationSteps(): nRelaxationSteps=" << nRelaxationSteps;
   {
+    LayerItem *layer = getSelectedItem(true);
+    if ( layer != nullptr ) {
+     layer->setCageWarpProperty(1,nRelaxationSteps);
+    }
+    /*
     for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
       auto* layer = dynamic_cast<LayerItem*>(item);
       if ( layer && layer->getType() != LayerItem::MainImage ) {
+        qDebug() << " isSelected =" << ( layer->isSelected() ? "selected" : "none" );
         if ( layer->hasActiveCage() ) {
          layer->setCageWarpRelaxationSteps(nRelaxationSteps);
          return;
         }
       }
     }
+    */
   }
 }
+
+void ImageView::setCageWarpStiffness( double stiffness )
+{
+  LayerItem *layer = getSelectedItem(true);
+  if ( layer != nullptr ) {
+    layer->setCageWarpProperty(2,stiffness);
+  }
+}
+
+void ImageView::setCageWarpFixBoundary( bool isChecked )
+{
+  LayerItem *layer = getSelectedItem(true);
+  if ( layer != nullptr ) {
+    layer->setCageWarpProperty(3,isChecked);
+  }
+}
+
 
 LayerItem* ImageView::baseLayer()
 {

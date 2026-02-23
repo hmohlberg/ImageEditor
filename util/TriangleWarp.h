@@ -34,24 +34,26 @@ namespace TriangleWarp
     QPointF offset;  // Die Verschiebung relativ zum Original-Nullpunkt
   };
 
-  WarpResult warp( const QImage& originalImage, const CageMesh& mesh )
+  WarpResult warp( const QImage& originalImage, const CageMesh& cageMesh )
   {
-   std::cout << "WarpResult:warp(): Processing..." << std::endl;
+   // qDebug() << "WarpResult:warp(): Processing...";
    {
-    if ( mesh.pointCount() < 4 || !mesh.isActive() ) return { QImage(), QPointF(0,0) };
+    if ( cageMesh.pointCount() < 4 ) {
+      return { QImage(), QPointF(0,0) }; 
+    }
     // compute bounding box
     QRectF dstBounds;
-    for ( int i=0 ; i<mesh.pointCount() ; ++i ) {
-      dstBounds = dstBounds.united(QRectF(mesh.point(i), QSizeF(1,1)));
+    for ( int i=0 ; i<cageMesh.pointCount() ; ++i ) {
+      dstBounds = dstBounds.united(QRectF(cageMesh.point(i), QSizeF(1,1)));
     }
     // create warped image: QImage warped = m_originalImage; // Ausgangsbild
-    std::cout << " oldsize=" << originalImage.width() << "x" << originalImage.height() << std::endl;
-    std::cout << " newsize=" << int(dstBounds.width()) << "x" << int(dstBounds.height()) << std::endl;
+    // qDebug() << " oldsize=" << originalImage.width() << "x" << originalImage.height();
+    // qDebug() << " newsize=" << int(dstBounds.width()) << "x" << int(dstBounds.height());
     QImage warped(int(dstBounds.width()), int(dstBounds.height()), QImage::Format_ARGB32);
     warped.fill(Qt::transparent);
     // compute new target image (transparent background)
-    int rows = mesh.rows();
-    int cols = mesh.cols();
+    int rows = cageMesh.rows();
+    int cols = cageMesh.cols();
     for ( int y = 0; y + 1 < rows; ++y ) {
         for ( int x = 0; x + 1 < cols; ++x ) {
             int i00 = y*cols + x;
@@ -65,10 +67,10 @@ namespace TriangleWarp
                 QPointF((x+1) * originalImage.width() / (cols-1), (y+1) * originalImage.height() / (rows-1))
             };
             QVector<QPointF> dstQuad{
-                mesh.point(i00) - dstBounds.topLeft(),
-                mesh.point(i10) - dstBounds.topLeft(),
-                mesh.point(i01) - dstBounds.topLeft(),
-                mesh.point(i11) - dstBounds.topLeft()
+                cageMesh.point(i00) - dstBounds.topLeft(),
+                cageMesh.point(i10) - dstBounds.topLeft(),
+                cageMesh.point(i01) - dstBounds.topLeft(),
+                cageMesh.point(i11) - dstBounds.topLeft()
             };
             // two tris per quad
             QVector<QPointF> tri1{srcQuad[0], srcQuad[1], srcQuad[2]};
