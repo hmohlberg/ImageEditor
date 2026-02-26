@@ -71,14 +71,14 @@ brew install qt cmake
 
 ### Windows with WSL
 
-* Open the windows command line ([Windows]+[R] --> "cmd" --> [Ok]) and enter`wsl --install Debian`
+* Create a directory where ImageEditor should be installed, open the Powershell there (Open the folder --> Rightclick --> Open in terminal) and enter `wsl --install Debian`
 * Wait for Download and Installation to finish, at the end you will be asked to create a username and password. Can be the same as Windows or different.
-* After picking a user and password combination the Linux environment will autostart. Now run `sudo apt-get update` and `sudo apt-get install qt6-base-dev qt6-declarative-dev`
+* After picking a user and password combination the Linux environment will autostart. Now run the following commands:
+  *  `sudo apt-get update`
+  *  `sudo apt-get install qt6-base-dev qt6-declarative-dev git`
+  *  `sudo git clone https://github.com/hmohlberg/ImageEditor.git`
 * Leave the Linux environment by entering `exit`
-* Download the precompiled binary from ImageEditor (https://github.com/hmohlberg/ImageEditor/tree/main/bin) and any Images you need
-* To run ImageEditor from the Windows command line:
-  * If you keep the downloaded files in the standard Windows Downloads-folder: `wsl -e 'Downloads/ImageEditor' -f 'Downloads/pm2088o.png`
-  * If you have your own file organization scheme for downloaded files adapt from following absolute paths: `wsl -e '/mnt/c/Path/To/My/Installations/ImageEditor' -f '/mnt/c/Users/ArnoNym/MyDownloadedFiles/pm2088o.png`
+* To run ImageEditor open the file in ImageEditor/bin/windows/wsl.bat
  
 ---
 
