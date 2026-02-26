@@ -75,7 +75,7 @@ brew install qt cmake
 * Wait for Download and Installation to finish, at the end you will be asked to create a username and password. Can be the same as Windows or different.
 * After picking a user and password combination the Linux environment will autostart. Now run the following commands:
   *  `sudo apt-get update`
-  *  `sudo apt-get install qt6-base-dev qt6-declarative-dev git`
+  *  `sudo apt-get install qt6-base-dev qt6-declarative-dev qt6-svg-dev git`
   *  `sudo git clone https://github.com/hmohlberg/ImageEditor.git`
 * Leave the Linux environment by entering `exit`
 * To run ImageEditor open the file in ImageEditor/bin/windows/wsl.bat
