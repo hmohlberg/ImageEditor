@@ -84,7 +84,8 @@ void LayerItem::init()
              QGraphicsItem::ItemIsFocusable);
   setTransformationMode(Qt::SmoothTransformation);
   setAcceptedMouseButtons(Qt::LeftButton);
-  setShapeMode(QGraphicsPixmapItem::BoundingRectShape);
+  // setShapeMode(QGraphicsPixmapItem::BoundingRectShape);
+  setShapeMode(QGraphicsPixmapItem::MaskShape);
   
   // setZValue(0);
   m_showBoundingBox = true;
@@ -227,7 +228,7 @@ void LayerItem::setMirror( int mirrorPlane ) {
 
 // ------------------------ Transform ------------------------
 void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
-  qDebug() << "LayerItem::setImageTransform(): combine =" << combine;
+  qCDebug(logEditor) << "LayerItem::setImageTransform(): combine =" << combine;
   {
     // *** DO NOT USE INTERNAL TRANSFORMATIONS ***
     if ( 1 == 2 && qobject_cast<QApplication*>(qApp) ) {
@@ -255,7 +256,7 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
 // ------------------------ Paint ------------------------
 void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget )
 {
-  // qCDebug(logEditor) << "LayerItem::paint(): Processing " << (m_layer?m_layer->name():"unknown") << ", selected = " << isSelected();
+  qCDebug(logEditor) << "LayerItem::paint(): Processing " << (m_layer?m_layer->name():"unknown") << ", selected = " << isSelected();
   {
     QGraphicsPixmapItem::paint(painter,option,widget);
     if ( isSelected() ) {
@@ -278,7 +279,7 @@ void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option
 
 void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QColor &color, int radius, float hardness )
 {
-  // qCDebug(logEditor) << "LayerItem::paintStrokeSegment(): Processing...";
+  qCDebug(logEditor) << "LayerItem::paintStrokeSegment(): Processing...";
   if ( radius < 0.0 ) return;
   {
     const float spacing = std::max(1.0f, radius * 0.35f);
@@ -322,14 +323,14 @@ void LayerItem::applyTriangleWarp()
      QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
      m_cageMesh.setOffset();
     } else {
-     qCDebug(logEditor) << "WARNING: Image isNull...";
+     qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): WARNING: Image isNull...";
     } 
   }
 }
 
 void LayerItem::applyCageWarp()
 {
-  std::cout << "DEPRECTAED **** LayerItem::applyCageWarp(): Processing..." << std::endl;
+  qDebug() << "DEPRECTAED **** LayerItem::applyCageWarp(): None!";
 }
 
 void LayerItem::enableCage( int cols, int rows )
@@ -431,7 +432,7 @@ void LayerItem::setCageVisible( LayerItem::OperationMode mode, bool isVisible )
 
 int LayerItem::changeNumberOfActiveCagePoints( int step ) 
 {
-  qDebug() << "LayerItem::changeNumberOfActiveCagePoints(): cage = " << m_cageMesh.cols() << ", step =" << step;
+  qCDebug(logEditor) << "LayerItem::changeNumberOfActiveCagePoints(): cage = " << m_cageMesh.cols() << ", step =" << step;
   {
      int expo = std::log2(m_cageMesh.cols()-1);
      expo -= step > 0 ? 0 : 1;
@@ -484,7 +485,7 @@ QVector<QPointF> LayerItem::cagePoints() const {
 
 void LayerItem::updateCagePoint( TransformHandleItem* handle, const QPointF& localPos )
 {
-  qDebug() << "LayerItem::updateCagePoint(): Processing...";
+  qCDebug(logEditor) << "LayerItem::updateCagePoint(): Processing...";
   {
     int idx = m_handles.indexOf(handle);
     if ( idx < 0 ) return;
@@ -537,7 +538,7 @@ void LayerItem::beginCageEdit()
 
 void LayerItem::endCageEdit( int idx, const QPointF& startPos )
 {
-  // std::cout << "LayerItem::endCageEdit(): Processing..." << std::endl;
+  qCDebug(logEditor) << "LayerItem::endCageEdit(): Processing...";
   {
     QVector<QPointF> cage;
     for ( int i=0 ; i<m_cage.size() ; i++ ) {
@@ -580,6 +581,34 @@ void LayerItem::setOperationMode( OperationMode mode )
      }
      m_operationMode = mode;
    }
+}
+
+void LayerItem::setRotationAngle( double value )
+{
+  qCDebug(logEditor) << "LayerItem::setRotationAngle(): value =" << value;
+  {
+    // --- create undo command ---
+    if ( m_transformLayerCommand == nullptr ) {
+      QString name = "Rotate Layer";
+      TransformLayerCommand::LayerTransformType trafoType = TransformLayerCommand::LayerTransformType::Rotate;
+      name += QString(" %1").arg(m_index);
+      m_transformLayerCommand = new TransformLayerCommand(this, m_startPos, pos(), m_startTransform, transform(), name, trafoType);
+      m_undoStack->push(m_transformLayerCommand);
+    }
+    // --- update layer ---
+    QPointF c = boundingRect().center();
+    QTransform t = m_startTransform;
+    t.translate(c.x(), c.y());
+    t.rotate(value);
+    t.translate(-c.x(), -c.y());
+    setTransform(t);
+    m_currentRotation = value;
+    // --- update undo command ---
+    m_transformLayerCommand->setRotationAngle(value);
+    m_transformLayerCommand->setTransform(t);
+    // >>>
+    update();
+  }
 }
 
 
@@ -627,22 +656,30 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
 {
-  qCDebug(logEditor) << "LayerItem::mousePressEvent(): operationMode =" << m_operationMode << ", active=" << m_mouseOperationActive;
+  qCDebug(logEditor) << "LayerItem::mousePressEvent(): layer =" << name() << ", operationMode =" << m_operationMode << ", active=" << m_mouseOperationActive;
   {
     if ( event->button() != Qt::LeftButton ) {
      QGraphicsPixmapItem::mousePressEvent(event);
      return;
     }
-    if ( isValidMouseEventOperation() ) {
+    MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
+    if ( isValidMouseEventOperation() && parent != nullptr ) {
        if ( m_operationMode == OperationMode::Translate ) {
           m_startPos = pos();
           m_mouseOperationActive = true;
           m_startTransform = transform();
           QGraphicsPixmapItem::mousePressEvent(event);
        } else if ( m_operationMode == OperationMode::Rotate ) {
+       
+          QPointF clickPos = event->scenePos();
+          QPointF center = mapToScene(boundingRect().center());
+          double angleRad = std::atan2(clickPos.y() - center.y(), clickPos.x() - center.x());
+          m_startMouseAngle = angleRad * 180.0 / M_PI;
+          m_startLayerRotation = m_currentRotation;
+          
           m_mouseOperationActive = true; 
           m_startPos = pos();
-          m_startTransform = transform();
+         // m_startTransform = transform();
           QGraphicsPixmapItem::mousePressEvent(event);
        } else {
          // m_operationMode = OperationMode::None;
@@ -654,27 +691,36 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
 {
-  // qCDebug(logEditor) << "LayerItem::mouseMoveEvent(): mode =" << m_operationMode;
+  qCDebug(logEditor) << "LayerItem::mouseMoveEvent(): mode =" << m_operationMode;
   {
     if ( m_operationMode == OperationMode::Translate ) {
       QGraphicsPixmapItem::mouseMoveEvent(event);
       return;
     }
+    MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
     if ( m_operationMode == OperationMode::Rotate ) {
         QPointF delta = event->scenePos() - event->buttonDownScenePos(Qt::LeftButton);
         QPointF c = boundingRect().center();
-        QTransform t = m_startTransform;
-        t.translate(c.x(), c.y());
+        // QTransform t = m_startTransform;
+        // t.translate(c.x(), c.y());
         if ( m_operationMode == OperationMode::Rotate ) {
-            t.rotate(delta.x());
+            QPointF center = mapToScene(boundingRect().center());
+            QPointF currentPos = event->scenePos();
+            double currentMouseAngleDeg = std::atan2(currentPos.y() - center.y(), 
+                                                 currentPos.x() - center.x()) * 180.0 / M_PI;
+            double angleDelta = currentMouseAngleDeg - m_startMouseAngle;
+            double newRotation = m_startLayerRotation + angleDelta;
+            setRotationAngle(newRotation);
+            parent->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,newRotation); 
         } else {
+            QTransform t = m_startTransform;
+            t.translate(c.x(), c.y());
             qreal s = qMax(0.1, 1.0 + delta.y() * 0.005);
             t.scale(s, s);
+            t.translate(-c.x(), -c.y());
+            setTransform(t);
         }
-        t.translate(-c.x(), -c.y());
-        setTransform(t);
         event->accept();
-        return;
     }
   }
 }
@@ -688,7 +734,7 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
       return;
     }
     if ( m_operationMode == OperationMode::Translate ) {
-        qDebug() << "LayerItem::mouseReleaseEvent(): MoveLayer " << m_index << " processing...";
+        qCDebug(logEditor) << "LayerItem::mouseReleaseEvent(): MoveLayer " << m_index << " processing...";
         if ( pos() != m_startPos ) {
             // create new (only if really new otherwise it will merge automatically and no new entry will be created)
             m_undoStack->push(
@@ -696,14 +742,15 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
             );
         }
     } else if ( m_operationMode == OperationMode::Rotate ) {
+       /*
         if ( transform() != m_startTransform ) {
             QString name = "Rotate Layer";
             TransformLayerCommand::LayerTransformType trafoType = TransformLayerCommand::LayerTransformType::Rotate;
             name += QString(" %1").arg(m_index);
-            m_undoStack->push(
-                new TransformLayerCommand(this, m_startPos, pos(), m_startTransform, transform(), name, trafoType)
-            );
+            TransformLayerCommand *layerCommand = new TransformLayerCommand(this, m_startPos, pos(), m_startTransform, transform(), name, trafoType);
+            m_undoStack->push(layerCommand);
         }
+       */
     }
     // m_operationMode = None;
     QGraphicsPixmapItem::mouseReleaseEvent(event);
@@ -740,7 +787,7 @@ void LayerItem::updateHandles()
 // -----
 void LayerItem::applyPerspectiveQuad( const QVector<QPointF>& quad )
 {
-  qDebug() << "LayerItem::applyPerspectiveQuad(): Processing...";
+  qCDebug(logEditor) << "LayerItem::applyPerspectiveQuad(): Processing...";
   {
     QRectF r = boundingRect();
     QVector<QPointF> src =
@@ -751,7 +798,8 @@ void LayerItem::applyPerspectiveQuad( const QVector<QPointF>& quad )
         r.bottomLeft()
     };
     QTransform warp;
-    QTransform::quadToQuad(src, quad, warp);
-    setTransform(warp);
+    if ( QTransform::quadToQuad(src, quad, warp) ) {
+      this->setTransform(warp);
+    }
   }
 }

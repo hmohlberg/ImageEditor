@@ -25,17 +25,18 @@
 #include "../undo/PolygonMovePointCommand.h"
 #include "../undo/PolygonSmoothCommand.h"
 #include "../undo/PolygonReduceCommand.h"
+#include "../core/Config.h"
 
 #include <QDebug>
 
 #include <iostream>
 
 // ---------------------------- Constructor ----------------------------
-EditablePolygon::EditablePolygon( const QString& name, QObject* parent )
+EditablePolygon::EditablePolygon( const QString &caller, const QString& name, QObject* parent )
     : QObject(parent)
      , m_name(name)
 {
-  // std::cout << "EditablePolygon::EditablePolygon(): name=" << m_name.toStdString() << std::endl;
+  qCDebug(logEditor) << "EditablePolygon::EditablePolygon(): caller =" << caller << ", name=" << m_name;
 }
 
 void EditablePolygon::setVisible( bool isVisible )
@@ -79,7 +80,7 @@ void EditablePolygon::smooth()
 // --- reduce number of points (Douglas-Peucker-Algorithmus) ---
 void EditablePolygon::reduce( qreal tolerance )
 {
-  // qDebug() << "EditablePolygon::reduce(): tolerance=" << tolerance;
+  qCDebug(logEditor) << "EditablePolygon::reduce(): tolerance=" << tolerance;
   {
     if ( m_polygon.size() > 3 ) {
       QPainterPath path;
@@ -183,7 +184,7 @@ QJsonArray EditablePolygon::undoStackToJson() const
 
 void EditablePolygon::undoStackFromJson( const QJsonArray& arr )
 {
-  // std::cout << "EditablePolygon::undoStackFromJson(): Processing..." << std::endl;
+  qCDebug(logEditor) << "EditablePolygon::undoStackFromJson(): Processing...";
   {
     m_undoStack.clear();
     for ( const QJsonValue& v : arr ) {
@@ -234,7 +235,7 @@ QJsonObject EditablePolygon::toJson() const
 EditablePolygon* EditablePolygon::fromJson( const QJsonObject& obj )
 {
     QString name = obj.value("name").toString("Unknown");
-    auto* poly = new EditablePolygon(name);
+    auto* poly = new EditablePolygon("EditablePolygon::fromJson()",name);
     QPolygonF polygon;
     QJsonArray arr = obj["points"].toArray();
     for ( const QJsonValue& v : arr ) {

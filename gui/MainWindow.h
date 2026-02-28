@@ -56,6 +56,8 @@ public:
     void setLayerOperationMode( int mode );
     void setPolygonOperationMode( int mode );
     void setSelectedLayer( const QString &name );
+    void updateLayerOperationParameter( int mode, double value );
+    double getLayerOperationParameter( int mode );
     
 protected:
 
@@ -119,9 +121,13 @@ private:
     QToolBar* m_maskToolbar = nullptr;
     QToolBar* m_polygonToolbar = nullptr;
     
-    MainOperationMode m_operationMode = Paint;
+    QToolBar* m_perspectiveLayerToolbar = nullptr;
+    QToolBar* m_canvasWarpLayerToolbar = nullptr;
+    QToolBar* m_rotateLayerToolbar = nullptr;
+    QToolBar* m_scaleLayerToolbar = nullptr;
+    QToolBar* m_mirrorLayerToolbar = nullptr;
     
-    QWidget* m_cageControlGroup = nullptr; 
+    MainOperationMode m_operationMode = Paint;
     
     QAction* m_quitAction = nullptr;
     QAction* m_saveHistoryAction = nullptr;
@@ -156,6 +162,8 @@ private:
     QComboBox* m_transformLayerItem = nullptr;
     QComboBox* m_polygonOperationItem = nullptr;
     QComboBox* m_selectLayerItem = nullptr;
+    
+    QDoubleSpinBox* m_rotationLayerAngleSpin = nullptr;
     
     bool m_updatingLayerList = false;
     bool m_saveImageDataInProjectFile = false;

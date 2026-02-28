@@ -124,7 +124,7 @@ void EditablePolygonItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
 
 void EditablePolygonItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
 {
-  // qDebug() << "EditablePolygonItem::mouseMoveEvent(): Processing...";
+  qCDebug(logEditor) << "EditablePolygonItem::mouseMoveEvent(): Processing...";
   {
     if ( !m_layer || !m_poly || !m_poly->isSelected() )
       return;

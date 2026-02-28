@@ -22,6 +22,7 @@
 
 #include "AbstractCommand.h"
 #include "../layer/LayerItem.h"
+#include "../core/Config.h"
 
 class TransformLayerCommand : public AbstractCommand
 {
@@ -45,6 +46,8 @@ class TransformLayerCommand : public AbstractCommand
     
     AbstractCommand* clone() const override { return new TransformLayerCommand(m_layer, m_oldPos, m_newPos, m_oldTransform, m_newTransform, m_name); }
     
+    void setRotationAngle( double rotation ) { m_rotationAngle = rotation; }
+    double rotationAngle() const { return m_rotationAngle; }
     void setTransform( const QTransform& transform ) { m_newTransform = transform; } 
     QString type() const override { return "TransformLayer"; }
     LayerItem* layer() const override { return m_layer; }
@@ -61,6 +64,7 @@ class TransformLayerCommand : public AbstractCommand
  private:
 
     int m_layerId = -1;
+    double m_rotationAngle = 0.0;
     LayerItem* m_layer = nullptr;
     
     LayerTransformType m_trafoType = None;

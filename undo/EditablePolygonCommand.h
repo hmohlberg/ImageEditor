@@ -28,19 +28,29 @@
 class EditablePolygonCommand : public AbstractCommand
 {
 
-public:
+  public:
 
     EditablePolygonCommand( LayerItem* layer, QGraphicsScene* scene, const QPolygonF& polygon, const QString& name, QUndoCommand* parent = nullptr );
 
-    AbstractCommand* clone() const override { return new EditablePolygonCommand(m_layer, m_scene, m_polygon, m_name); }
+    AbstractCommand* clone() const override { 
+       EditablePolygonCommand *new_instance = new EditablePolygonCommand(m_layer, m_scene, m_polygon, m_name);
+       new_instance->setChildLayerId(m_childLayerId);
+       return new_instance;
+    }
+    
     QString type() const override { return "EditablePolygon"; }
     QString name() const { return m_name; }
     EditablePolygon* model() const { return m_model; }
+    const QPolygonF& polygon() const { return m_polygon; }
     
     void setVisible( bool isVisible );
     void setSelected( bool isSelected );
     void setColor( const QColor& color );
+    void setName( const QString& name );
     bool isSelected() const;
+    
+    void setChildLayerId( int layerId ) { m_childLayerId = layerId; }
+    int childLayerId() const { return m_childLayerId; }
     
     LayerItem* layer() const override { return m_layer; }
     int id() const override { return 1000; }
@@ -51,7 +61,9 @@ public:
     QJsonObject toJson() const override;
     static EditablePolygonCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QGraphicsScene* scene = nullptr );
 
-private:
+  private:
+  
+    int m_childLayerId = -1;  // holds the child layer id
 
     LayerItem* m_layer = nullptr;
     QGraphicsScene* m_scene = nullptr;

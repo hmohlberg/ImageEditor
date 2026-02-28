@@ -32,6 +32,7 @@
 #include "../undo/InvertLayerCommand.h"
 #include "../undo/DeleteLayerCommand.h"
 #include "../undo/LassoCutCommand.h"
+#include "../util/QUndoSortDialog.h"
 #include "../util/QImageUtils.h"
 #include "../util/MaskUtils.h"
 
@@ -45,6 +46,7 @@
 #include <QWheelEvent>
 
 #include <iostream>
+#include <limits>
 
 /* ============================================================
  * Helper
@@ -91,27 +93,42 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
       setWindowModified(!isClean);
       setWindowTitle(QString("Mein Editor[*]"));
     });
-    // --- history control ---
+    // --- history control (only stable for step-by-step processing) ---
     connect(m_undoStack, &QUndoStack::indexChanged, this, [this](int currentIndex) {
-      qDebug() << "ImageView::ImageView(): lastIndex =" << m_lastIndex << ", currentIndex =" << currentIndex;
+      // *** have to go to all commands between last and current index ***
+      // qDebug() << "ImageView::ImageView(): lastIndex =" << m_lastIndex << ", currentIndex =" << currentIndex;
       if ( currentIndex > 0 ) {
         const QUndoCommand* justFinishedCommand = m_undoStack->command(currentIndex - 1);
         if ( justFinishedCommand != nullptr ) {
-          qDebug() << "Actual command: " << justFinishedCommand->text();
+          // qDebug() << "Just finished command :" << justFinishedCommand->text();
           if ( currentIndex > 1 ) {
-            const QUndoCommand* previousActiveCommand = m_undoStack->command(currentIndex - 2);
-            if ( previousActiveCommand != nullptr ) {
-              qDebug() << "Command before: " << previousActiveCommand->text();
-              if ( previousActiveCommand->text().startsWith("Scale Transform") ) {
-                if ( m_transformOverlay != nullptr ) {
-                  m_transformOverlay->setVisible(false);
-                  // cleanupCommand(previousActiveCommand);
+            // qDebug() << " + lastIndex =" << m_lastIndex << " -> " << (currentIndex-1);
+            int ks = m_lastIndex == 0 ? m_lastIndex : m_lastIndex-1;
+            int ke = m_lastIndex == 0 ? currentIndex - 1 : currentIndex - 2;
+            for ( int k = ks ; k <= ke ; k++ ) {
+              const QUndoCommand* previousActiveCommand = m_undoStack->command(k);
+              if ( previousActiveCommand != nullptr ) {
+                // qDebug() << "Previous command :" << previousActiveCommand->text();
+                if ( previousActiveCommand->text().startsWith("Scale Transform") ) {
+                  if ( m_transformOverlay != nullptr ) {
+                    m_transformOverlay->setVisible(false);
+                    // cleanupCommand(previousActiveCommand);
+                  }
+                } else if ( previousActiveCommand->text().startsWith("Cage Warp") ) {
+                   LayerItem *layer = getSelectedItem(true);
+                   if ( layer != nullptr ) layer->setCageVisible(false);
+                } else if ( previousActiveCommand->text().startsWith("Perspective Warp") ) {
+                   // qDebug() << " cleaning perspective warp mesh here";
+                } else if ( previousActiveCommand->text().startsWith("Editable Polygon") ) {
+                   EditablePolygonCommand *polyCommand = const_cast<EditablePolygonCommand*>(
+                                            dynamic_cast<const EditablePolygonCommand*>(previousActiveCommand));
+                   if ( polyCommand != nullptr ) {
+                     polyCommand->setVisible(false);
+                     if ( polyCommand->layer() != nullptr ) {
+                       polyCommand->layer()->update();
+                     }
+                   }
                 }
-              } else if ( previousActiveCommand->text().startsWith("Cage Warp") ) {
-                 LayerItem *layer = getSelectedItem(true);
-                 if ( layer != nullptr ) layer->setCageVisible(false);
-              } else if ( previousActiveCommand->text().startsWith("Perspective Warp") ) {
-                 qDebug() << " cleaning perspective warp mesh here";
               }
             }
           }
@@ -124,7 +141,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
             mainWindow->setSelectedLayer(QString("Layer %1").arg(layerId));
           }
           if ( justFinishedCommand->text().startsWith("Scale Transform") ) {
-            qDebug() << " *** handle scale transform operation ***";
+            // qDebug() << " *** handle scale transform operation ***";
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::Scale);
             if ( m_transformOverlay != nullptr ) {
               m_transformOverlay->setVisible(true);
@@ -133,17 +150,36 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
             if ( mainWindow != nullptr ) {
               mainWindow->updateLayerList();
             }
+          } else if ( justFinishedCommand->text().startsWith("Editable Polygon") ) {
+            // qDebug() << " *** handle editable polygon operation ***";
+            mainWindow->setMainOperationMode(MainWindow::MainOperationMode::Polygon);
+            EditablePolygonCommand *polyCommand = const_cast<EditablePolygonCommand*>(
+                                            dynamic_cast<const EditablePolygonCommand*>(justFinishedCommand));
+            if ( polyCommand != nullptr ) {
+                polyCommand->setVisible(true);
+                if ( polyCommand->layer() != nullptr ) {
+                  polyCommand->layer()->update();
+                }
+            }
+          } else if ( justFinishedCommand->text().startsWith("Polygon") && justFinishedCommand->text().endsWith("Cut")) {
+            mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
           } else if ( justFinishedCommand->text().startsWith("Move Layer") ) {
+            mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::Translate);
           } else if ( justFinishedCommand->text().startsWith("Rotate Layer") ) {
+            mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::Rotate);
           } else if ( justFinishedCommand->text().startsWith("Mirror Vertical") ) {
+            mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::Flip);
           } else if ( justFinishedCommand->text().startsWith("Mirror Horizontal") ) {
+            mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::Flop);
           } else if ( justFinishedCommand->text().startsWith("Perspective") ) {
+            mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::Perspective);
           } else if ( justFinishedCommand->text().startsWith("Cage") ) {
+            mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::CageWarp);
             LayerItem *layer = getSelectedItem(true);
             if ( layer != nullptr ) layer->setCageVisible(true);
@@ -175,6 +211,7 @@ void ImageView::printself()
 {
   qInfo() << " ImageView::printself():";
   qInfo() << "  + Pixmap items in scene:" << getScene()->items().count();
+  qInfo() << "  + nEditablePolygons:" << m_editablePolygons.size();
   auto items = getScene()->items();
   for ( QGraphicsItem* item : items ) {
     if ( auto pixmapItem = qgraphicsitem_cast<QGraphicsPixmapItem*>(item) ) {
@@ -223,10 +260,18 @@ void ImageView::forcedUpdate()
 
 void ImageView::rebuildUndoStack()
 {
-  qDebug() << "ImageView::rebuildUndoStack(): Processing...";
+  if ( !m_undoStack || m_layers.size() == 0 ) return;
+  qCDebug(logEditor) << "ImageView::rebuildUndoStack(): undoStack =" << m_undoStack->count();
   {
-    // sort and put a given index (=1) to the end
-    int targetIdToEnd = 1;
+    QList<int> possible_ids;
+    for ( int i=0 ; i<m_layers.size() ; i++ ) {
+      possible_ids.append(m_layers[i]->id());
+    }
+    bool ok;
+    auto settings = QUndoSortDialog::getUserOptions(possible_ids, &ok, this);
+    if ( !ok ) return;
+    
+    // preparing
     struct CommandEntry {
       const QUndoCommand* cmd;
       int id;
@@ -235,18 +280,59 @@ void ImageView::rebuildUndoStack()
     QList<QUndoCommand*> sortedCommands;
     QList<int> sortedLayerIdents;
     std::vector<CommandEntry> entries;
-    for ( int i = 0; i < m_undoStack->count(); ++i ) {
+    for ( int i=0; i < m_undoStack->count(); ++i ) {
       const QUndoCommand* base = m_undoStack->command(i);
       auto* cmd = dynamic_cast<const AbstractCommand*>(base);
-      if ( cmd && cmd->layer() ) {
-        entries.push_back({base, cmd->layer()->id(), i});
-      }  
+      if ( cmd != nullptr ) {
+        const EditablePolygonCommand *editablePolygon = dynamic_cast<const EditablePolygonCommand*>(cmd);
+        if ( editablePolygon != nullptr ) {
+          int id = editablePolygon->childLayerId();
+          entries.push_back({base, id, i});
+        } else {
+          if ( cmd->layer() ) {
+            entries.push_back({base, cmd->layer()->id(), i});
+          } else {
+            qCDebug(logEditor) << " + found a none abstract command";
+          }
+        }
+      } 
     }
-    std::stable_sort(entries.begin(), entries.end(), [targetIdToEnd](const CommandEntry& a, const CommandEntry& b) {
-      if (a.id == targetIdToEnd && b.id != targetIdToEnd) return false;
-      if (a.id != targetIdToEnd && b.id == targetIdToEnd) return true;
-      return a.id < b.id;
-    });
+    
+    // output
+    for ( int i=0; i < entries.size(); ++i ) {
+      qDebug() << "  + name = " << entries[i].cmd->text() << ": id =" << entries[i].id << ", originalIndex =" << entries[i].originalIndex;
+    }
+
+    // sort method
+    if ( settings.sortMode == QUndoSortDialog::SortMode::Ascending ) {
+       // ascending sorting order
+       std::stable_sort(entries.begin(), entries.end(), [](const CommandEntry& a, const CommandEntry& b) {
+        if ( a.id != b.id ) {
+         return a.id < b.id; // Kleinerer Wert kommt nach vorne
+        }
+        return false;
+       });
+    } else if ( settings.sortMode == QUndoSortDialog::SortMode::Descending ) {
+       // descending sorting order
+       std::stable_sort(entries.begin(), entries.end(), [](const CommandEntry& a, const CommandEntry& b) {
+        if ( a.id != b.id ) {
+         return a.id > b.id; // Kleinerer Wert kommt nach vorne
+        }
+        return false;
+       });
+    } else if ( settings.sortMode == QUndoSortDialog::SortMode::IndexAtEnd ) {
+       // put a given index (=1) to the end
+       int targetIdToEnd = settings.targetIndex;
+       std::stable_sort(entries.begin(), entries.end(), [targetIdToEnd](const CommandEntry& a, const CommandEntry& b) {
+         if (a.id == targetIdToEnd && b.id != targetIdToEnd) return false;
+         if (a.id != targetIdToEnd && b.id == targetIdToEnd) return true;
+         return a.id < b.id;
+       });
+    } else {
+       return;
+    }
+    
+    // finalize
     for ( const auto& entry : entries ) {
       sortedLayerIdents.append(entry.originalIndex);
     }
@@ -254,6 +340,7 @@ void ImageView::rebuildUndoStack()
       const QUndoCommand* base = m_undoStack->command(sortedLayerIdents[i]);
       auto* cmd = dynamic_cast<const AbstractCommand*>(base);
       if ( cmd && cmd->layer() ) {
+        qDebug() << " cloning " << cmd->text();
         sortedCommands.append(cmd->clone());
       }
     }
@@ -266,6 +353,10 @@ void ImageView::rebuildUndoStack()
         // cmd->setSilent(false);
       }
     }
+    
+    // re-run the complete undo stack
+    m_undoStack->setIndex(0);
+    m_undoStack->setIndex(m_undoStack->count());
     
   }
 }
@@ -574,7 +665,7 @@ void ImageView::keyPressEvent( QKeyEvent* event )
            } else if ( event->key() == Qt::Key_R ) {
              qDebug() << "ImageView::keyPressEvent(): Perspective reset...";
            }
-        }  
+        }
       }
     }
     QGraphicsView::keyPressEvent(event);
@@ -621,16 +712,22 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         }
     }
     
-    // --- Layer ---
+    // --- Image Layer ---
     if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::ImageLayer ) {
       // --- Check whether a layer has been clicked ---
       LayerItem* clickedItem = nullptr;
       auto itemsUnderCursor = m_scene->items(scenePos);
+      qreal minarea = std::numeric_limits<qreal>::max();
       for ( auto* item : itemsUnderCursor ) {
         auto* layer = dynamic_cast<LayerItem*>(item);
         if ( layer ) {
-            clickedItem = layer;
-            break;
+            QRectF rect = layer->sceneBoundingRect();
+            double areaInScene = rect.width() * rect.height();
+            qCDebug(logEditor) << layer->name() << ": " << layer->zValue() << ", area = " << areaInScene;
+            if ( areaInScene < minarea ) {
+              minarea = areaInScene;
+              clickedItem = layer;
+            } 
         }
       }
       if ( clickedItem ) {
@@ -737,7 +834,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
 
 void ImageView::mouseDoubleClickEvent( QMouseEvent* event )
 {
-  // qCDebug(logEditor) << "ImageView::mouseDoubleClickEvent(): Processing...";
+  qCDebug(logEditor) << "ImageView::mouseDoubleClickEvent(): Processing...";
   {
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow != nullptr ) {
@@ -1190,8 +1287,7 @@ void ImageView::setPolygonOperationMode( LayerItem::OperationMode mode )
 
 void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
 {
-  // qCDebug(logEditor) 
-  qDebug() << "ImageView::setLayerOperationMode(): mode =" << mode << ", m_polygonEnabled =" << m_polygonEnabled;
+  qCDebug(logEditor) << "ImageView::setLayerOperationMode(): mode =" << mode << ", m_polygonEnabled =" << m_polygonEnabled;
   {
     if ( m_layerOperationMode == LayerItem::OperationMode::Scale ) {
       qDebug() << " + clean-up scale mode...";
@@ -1225,7 +1321,6 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
 
 void ImageView::setIncreaseNumberOfCageControlPoints() 
 {
- qDebug() << " m_selectedLayer = " << (m_selectedLayer ? "ok" : "null" );
    if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() && m_cageWarpCommand != nullptr ) return;
    int n = m_selectedLayer->changeNumberOfActiveCagePoints(+1);
    m_cageWarpCommand->setNumberOfRowsAndColumns(n);
@@ -1255,7 +1350,7 @@ void ImageView::setNumberOfCageControlPoints( int nControlPoints )
 
 void ImageView::setCageWarpRelaxationSteps( int nRelaxationSteps )
 {
-  // qCDebug(logEditor) << "ImageView::setCageWarpRelaxationSteps(): nRelaxationSteps=" << nRelaxationSteps;
+  qCDebug(logEditor) << "ImageView::setCageWarpRelaxationSteps(): nRelaxationSteps=" << nRelaxationSteps;
   {
     LayerItem *layer = getSelectedItem(true);
     if ( layer != nullptr ) {
@@ -1316,7 +1411,7 @@ void ImageView::createLassoLayer()
 
 LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QString &name )
 {
-  qCDebug(logEditor) << "ImageView::createNewLayer(): name=" << name << ",  polygon_size=" << polygon.size() << ", operationMode= " << m_layerOperationMode;
+  qCDebug(logEditor) << "ImageView::createNewLayer(): name =" << name << ",  polygon_size =" << polygon.size() << ", operationMode = " << m_layerOperationMode;
   {
     // --- switch to layer operation mode ---
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
@@ -1383,7 +1478,6 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
       }
      }
     } else if ( m_maskCutTool == MaskCutTool::Copy && m_maskLayer != nullptr ) {
-     qDebug() << " *** processing ***";
      // --- testing ---
      // src  = mainImage
      // mask = m = maskImage -> area under polygon
@@ -1429,6 +1523,7 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     int nidx = m_layers.size()+1;
     Layer* layer = new Layer(nidx,cut);
     layer->m_name = QString("%1 %2").arg(name).arg(nidx);
+    layer->m_creator = name;
     LayerItem* newLayer = new LayerItem(cut);
     newLayer->setParent(m_parent);
     newLayer->setIndex(nidx);
@@ -1525,10 +1620,11 @@ void ImageView::createPolygonLayer()
     EditablePolygon *editablePolygon = polyCmd->model();
     if ( editablePolygon != nullptr ) {
      int index = m_layers.size()+1;
-     LassoCutCommand *layerCut = createNewLayer(editablePolygon->polygon(),QString("Polygon %1 Layer").arg(index));
+     LassoCutCommand *layerCut = createNewLayer(editablePolygon->polygon(),QString("%1 Layer").arg(polyCmd->name()));
      if ( layerCut != nullptr ) {
       layerCut->setController(polyCmd);
       editablePolygon->setVisible(false);
+      polyCmd->setChildLayerId(index);
      }
      emit lassoLayerAdded();
     }
@@ -1587,7 +1683,7 @@ void ImageView::setPolygonEnabled( bool enabled )
     m_polygonEnabled = enabled;
     if ( m_polygonEnabled ) {
      QString name = QString("Polygon %1").arg(1+m_editablePolygons.size());
-     m_activePolygon = new EditablePolygon(name,this);
+     m_activePolygon = new EditablePolygon("ImageView::setPolygonEnabled()",name,this);
      m_editablePolygons.push_back(m_activePolygon);
      m_activePolygonItem = new EditablePolygonItem(m_activePolygon,layer);
      m_activePolygonItem->setColor(QColor(255,0,0)); // set polygon color here
@@ -1601,12 +1697,25 @@ void ImageView::setPolygonEnabled( bool enabled )
   }
 }
 
+int ImageView::pushEditablePolygon( EditablePolygon* editablePolygon )
+{
+    if ( !editablePolygon ) return 0;
+    qCDebug(logEditor) << "ImageView::pushEditablePolygon): name =" << editablePolygon->name();
+    for ( int i=0 ; i<m_editablePolygons.size() ; i++ ) {
+      if ( m_editablePolygons[i]->name() == editablePolygon->name() ) {
+        return -m_editablePolygons.size();
+      }
+    }
+    m_editablePolygons.push_back(editablePolygon);
+    return m_editablePolygons.size();
+}
+
 // ---------------------------- --------------- -----------------------------
 // ---------------------------- Perspective free scale ----------------------
 // ---------------------------- --------------- -----------------------------
 void ImageView::setCageVisible( LayerItem* layer, LayerItem::OperationMode mode, bool isVisible )
 {
-  qDebug() << "ImageView::setCageVisible(): mode =" << mode << ", visible =" << isVisible;	
+  qCDebug(logEditor) << "ImageView::setCageVisible(): mode =" << mode << ", visible =" << isVisible;	
   {
     if ( mode == LayerItem::OperationMode::Scale ) {
       if ( m_transformOverlay == nullptr && isVisible == true ) {
@@ -1631,7 +1740,7 @@ void ImageView::setCageVisible( LayerItem* layer, LayerItem::OperationMode mode,
 void ImageView::setEnableTransformMode( LayerItem* layer )
 {
   // qCDebug(logEditor) 
-  qDebug() << "ImageView::setEnableTransformMode(): layer =" << (layer != nullptr ? layer->name() : "NULL");
+  qCDebug(logEditor) << "ImageView::setEnableTransformMode(): layer =" << (layer != nullptr ? layer->name() : "NULL");
   {
     if ( !scene() || !layer )
         return;
@@ -1648,7 +1757,7 @@ void ImageView::setEnableTransformMode( LayerItem* layer )
 
 void ImageView::disableTransformMode()
 {
-  qDebug() << "ImageView::disableTransformMode(): Processing...";
+  qCDebug(logEditor) << "ImageView::disableTransformMode(): Processing...";
   {
     if ( !m_transformOverlay )
         return;
@@ -1664,7 +1773,7 @@ void ImageView::disableTransformMode()
 
 void ImageView::setEnablePerspectiveWarp( LayerItem* layer )
 {
-  qDebug() << "ImageView::setEnablePerspectiveWarp(): layer =" << (layer != nullptr ? layer->name() : "NULL");
+  qCDebug(logEditor) << "ImageView::setEnablePerspectiveWarp(): layer =" << (layer != nullptr ? layer->name() : "NULL");
   {
     if ( !scene() || !layer )
         return;

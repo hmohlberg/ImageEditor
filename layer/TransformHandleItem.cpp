@@ -30,7 +30,7 @@ TransformHandleItem::TransformHandleItem( LayerItem* layer, Role role )
       m_layer(layer),
       m_role(role)
 {
-  qDebug() << "TransformHandleItem::TransformHandleItem(): Processing...";
+  qCDebug(logEditor) << "TransformHandleItem::TransformHandleItem(): Processing...";
   {
     setBrush(role == Rotate ? Qt::yellow : Qt::white);
     setPen(QPen(Qt::black, 0));
@@ -95,9 +95,9 @@ TransformHandleItem::TransformHandleItem( HandleType type, PerspectiveOverlay* o
 // --------------------- Mouse events ---------------------
 void TransformHandleItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
 {
- // qDebug() << "TransformHandleItem::mousePressEvent(): overlay=" << (m_overlay?"ok":"null") 
- //                << ", perspective=" << (m_perspectiveOverlay?"ok":"null")
- //                << ", layer=" << (m_layer?"ok":"null");
+ qCDebug(logEditor) << "TransformHandleItem::mousePressEvent(): overlay=" << (m_overlay?"ok":"null") 
+                 << ", perspective=" << (m_perspectiveOverlay?"ok":"null")
+                 << ", layer=" << (m_layer?"ok":"null");
  {
    m_pressScenePos = e->scenePos();
    if ( m_overlay ) {
@@ -113,7 +113,7 @@ void TransformHandleItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
 
 void TransformHandleItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
 {
-  // qDebug() << "TransformHandleItem::mouseMoveEvent(): Processing...";
+  qCDebug(logEditor) << "TransformHandleItem::mouseMoveEvent(): Processing...";
   {
    QPointF delta = e->scenePos() - m_pressScenePos;
    if ( m_overlay ) {
@@ -151,7 +151,7 @@ void TransformHandleItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
 
 void TransformHandleItem::mouseReleaseEvent( QGraphicsSceneMouseEvent *e )
 {
-  // qDebug() << "TransformHandleItem::mouseReleaseEvent(): Processing...";
+  qCDebug(logEditor) << "TransformHandleItem::mouseReleaseEvent(): Processing...";
   {
     if ( m_overlay ) {
       m_overlay->endTransform();

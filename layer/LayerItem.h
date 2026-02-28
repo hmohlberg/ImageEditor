@@ -34,6 +34,7 @@ class CageControlPointItem;
 class TransformHandleItem;
 class TransformOverlay;
 class PerspectiveOverlay;
+class TransformLayerCommand;
 
 // ---
 class LayerItem : public QGraphicsPixmapItem
@@ -63,6 +64,7 @@ class LayerItem : public QGraphicsPixmapItem
     QString name() const;
     
     void setMirror( int plane );
+    void setRotationAngle( double value );
     void setImageTransform( const QTransform& transform, bool combine = false );
     // void setCagePoint( int idx, const QPointF& pos );
     void endCageEdit( int idx, const QPointF& pos );
@@ -143,6 +145,10 @@ class LayerItem : public QGraphicsPixmapItem
     
     int m_index = 0;
     
+    double m_currentRotation = 0.0;
+    double m_startMouseAngle = 0.0;
+    double m_startLayerRotation = 0.0;
+    
     OperationMode m_operationMode = LayerItem::Translate;
     OperationMode m_polygonOperationMode = LayerItem::AddPoint;
     LayerType m_type = LayerItem::LassoLayer;
@@ -157,6 +163,8 @@ class LayerItem : public QGraphicsPixmapItem
     CageMesh m_cageMesh;
     CageOverlayItem* m_cageOverlay = nullptr;
     PerspectiveTransform m_perspective;
+    
+    TransformLayerCommand* m_transformLayerCommand = nullptr;
 
 	Layer* m_layer = nullptr;
 	

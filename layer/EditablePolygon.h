@@ -36,7 +36,7 @@ class EditablePolygon : public QObject
     
 public:
 
-    explicit EditablePolygon( const QString& name = "", QObject* parent = nullptr );
+    explicit EditablePolygon( const QString& caller, const QString& name = "", QObject* parent = nullptr );
 
     // --- Access ---
     QString name() const { return m_name; }
@@ -57,6 +57,7 @@ public:
     void setPolygon( const QPolygonF& poly );
 
     // --- Misc ---
+    void setName( const QString& name ) { m_name = name; }
     bool isSelected() const { return m_polygonSelected; }
     void setSelected( bool isSelected );
     bool polygonVisible() const { return m_polygonVisible; }

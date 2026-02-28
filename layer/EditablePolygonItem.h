@@ -30,7 +30,8 @@ class EditablePolygonItem : public QGraphicsObject
 {
     Q_OBJECT
     
-public:
+  public:
+  
     explicit EditablePolygonItem( EditablePolygon* poly, QGraphicsItem* parent = nullptr );
 
     // --- QGraphicsItem ---
@@ -48,31 +49,35 @@ public:
     void setColor( const QColor& color ) { m_lineColor = color; }
     void setName( const QString& name ) { m_name = name; } 
 
-signals:
+  signals:
+  
     // → wird vom ImageView abgefangen und in UndoCommands umgesetzt
     void requestMovePoint( int idx, const QPointF& from, const QPointF& to );
     void requestInsertPoint( int idx, const QPointF& scenePos );
     void requestRemovePoint( int idx );
 
-protected:
+  protected:
+  
     // --- mouse-Events ---
     void mousePressEvent( QGraphicsSceneMouseEvent* e ) override;
     void mouseMoveEvent( QGraphicsSceneMouseEvent* e ) override;
     void mouseReleaseEvent( QGraphicsSceneMouseEvent* e ) override;
     void mouseDoubleClickEvent( QGraphicsSceneMouseEvent* e ) override;
 
-private slots:
+  private slots:
+  
     void updateGeometry();
     void onVisibilityChanged();
     void onSelelctionChanged();
 
-private:
+  private:
+
     // --- Hilfsfunktionen ---
     int hitTestPoint( const QPointF& scenePos ) const;
     int hitTestEdge( const QPointF& scenePos ) const;
     void rebuildHandles();
 
-private:
+  private:
 
     EditablePolygon* m_poly = nullptr;
     LayerItem* m_layer = nullptr;

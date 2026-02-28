@@ -27,6 +27,7 @@ PerspectiveWarpCommand::PerspectiveWarpCommand(
 {
     m_layerId = layer->id();
     m_name = QString("Perspective Warp Layer %1").arg(m_layerId);
+    // m_baseTransform = layer->transform();
     setText(m_name);
     QByteArray perspectiveWarpSvg = "<svg viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'>"
       "<path d='M12 12h40v40H12z' fill='none' stroke='#ccc' stroke-dasharray='2,2' stroke-width='1'/>"
@@ -42,15 +43,26 @@ PerspectiveWarpCommand::PerspectiveWarpCommand(
 
 void PerspectiveWarpCommand::undo()
 {
-  qDebug() << "PerspectiveWarpCommand::undo(): Processing...";
-    m_layer->applyPerspectiveQuad(m_before);
+    apply(m_before);
 }
 
 void PerspectiveWarpCommand::redo()
 {
-  qDebug() << "PerspectiveWarpCommand::redo(): Processing...";
-    if ( m_silent ) return;
-    m_layer->applyPerspectiveQuad(m_after);
+    apply(m_after);
+}
+
+void PerspectiveWarpCommand::apply( const QVector<QPointF>& quad )
+{
+  qDebug() << "PerspectiveWarpCommand::apply(): Processing...";
+  {
+    if ( !m_layer || quad.size() != 4 ) return;
+    QRectF r = m_layer->boundingRect();
+    QVector<QPointF> startQuad = { r.topLeft(), r.topRight(), r.bottomRight(), r.bottomLeft() };
+    QTransform warp;
+    if ( QTransform::quadToQuad(startQuad, quad, warp) ) {
+      m_layer->setTransform(warp * m_baseTransform);
+    }
+  }
 }
 
 QJsonObject PerspectiveWarpCommand::toJson() const

@@ -16,7 +16,10 @@
 */
 
 #include "EditablePolygonCommand.h"
+
 #include "../undo/PolygonMovePointCommand.h"
+#include "../core/Config.h"
+
 #include <iostream>
 
 // ------------------------ Constructor ------------------------
@@ -28,10 +31,10 @@ EditablePolygonCommand::EditablePolygonCommand( LayerItem *layer, QGraphicsScene
     , m_polygon(polygon)
     , m_name(name)
 {
-  // qDebug() << "EditablePolygonCommand::EditablePolygonCommand(): name=" << name;
+  qCDebug(logEditor) << "EditablePolygonCommand::EditablePolygonCommand(): name =" << name;
   {
     setText(QString("Editable %1").arg(name));
-    m_model = new EditablePolygon(m_name);
+    m_model = new EditablePolygon("EditablePolygonCommand::EditablePolygonCommand()",m_name);
     m_model->setPolygon(m_polygon);
     m_item = new EditablePolygonItem(m_model,m_layer);
     QByteArray polygonSvg = 
@@ -48,6 +51,16 @@ EditablePolygonCommand::EditablePolygonCommand( LayerItem *layer, QGraphicsScene
 }
 
 // ------------------------ Methods ------------------------
+void EditablePolygonCommand::setName( const QString& name )
+{
+  qCDebug(logEditor) << "EditablePolygonCommand::setName(): name =" << name;
+  {
+    m_name = name;
+    if ( m_model != nullptr ) { m_model->setName(m_name); }
+    setText(QString("Editable %1").arg(name));
+  }
+}
+
 void EditablePolygonCommand::setColor( const QColor& color )
 {
     if ( m_item != nullptr ) {
@@ -73,7 +86,7 @@ void EditablePolygonCommand::setSelected( bool isSelected )
 
 void EditablePolygonCommand::setVisible( bool isVisible )
 {
-  // qDebug() << "EditablePolygonCommand::setVisible(): isVisible=" << isVisible;
+  qCDebug(logEditor) << "EditablePolygonCommand::setVisible(): isVisible =" << isVisible;
   {
     if ( m_model != nullptr ) {
       m_model->setVisible(isVisible);
@@ -83,11 +96,11 @@ void EditablePolygonCommand::setVisible( bool isVisible )
 
 void EditablePolygonCommand::redo()
 {
-   // qDebug() << "EditablePolygonCommand::redo(): name =" << m_name;
+   qCDebug(logEditor) << "EditablePolygonCommand::redo(): name =" << m_name;
    {
     if ( m_silent ) return;
     if ( !m_model ) {
-      m_model = new EditablePolygon(m_name);
+      m_model = new EditablePolygon("EditablePolygonCommand::redo()",m_name);
       m_model->setPolygon(m_polygon);
       m_item = new EditablePolygonItem(m_model,m_layer);
     }
@@ -102,7 +115,7 @@ void EditablePolygonCommand::redo()
 
 void EditablePolygonCommand::undo()
 {
-  // qDebug() << "EditablePolygonCommand::undo(): Processing...";
+  qCDebug(logEditor) << "EditablePolygonCommand::undo(): Processing...";
   {
     if ( m_item && m_item->scene() ) {
     //  INTRODUCED TO HANDLE CRASH EVENT: if ( !m_item->parentItem() ) {
@@ -119,6 +132,7 @@ QJsonObject EditablePolygonCommand::toJson() const
     obj["type"] = "EditablePolygonCommand";
     obj["name"] = m_model != nullptr ? m_model->name() : "Unknown";
     obj["layerId"] = m_layer != nullptr ? m_layer->id() : 0;
+    obj["childLayerId"] = m_childLayerId;
     QJsonArray pts;
     for ( const QPointF& p : m_polygon ) {
         QJsonObject jp;
@@ -134,7 +148,7 @@ QJsonObject EditablePolygonCommand::toJson() const
 EditablePolygonCommand* EditablePolygonCommand::fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers,
                                                      QGraphicsScene* scene )
 {
-  // std::cout << "EditablePolygonCommand::fromJson(): Processing..." << std::endl;
+  qCDebug(logEditor) << "EditablePolygonCommand::fromJson(): Processing...";
   {
     QString name = obj.value("name").toString("Unknown");
     const int layerId = obj["layerId"].toInt(-1);
@@ -149,7 +163,9 @@ EditablePolygonCommand* EditablePolygonCommand::fromJson( const QJsonObject& obj
         QJsonObject jp = v.toObject();
         poly << QPointF(jp["x"].toDouble(), jp["y"].toDouble());
     }
+    const int childLayerId = obj["childLayerId"].toInt(-1);
     EditablePolygonCommand* editablePolygonCommand = new EditablePolygonCommand( layer, layer->scene(), poly, name );
+    editablePolygonCommand->setChildLayerId(childLayerId);
     EditablePolygon *model = editablePolygonCommand->model();
     if ( model != nullptr ) {
       model->undoStackFromJson(obj["undo"].toArray());

@@ -33,12 +33,11 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer,
       , m_name(name)
       , m_trafoType(trafoType)
 {
-  qDebug() << "TransformLayerCommand::TransformLayerCommand(): trafotype =" << m_trafoType << ", name =" << m_name;
+  qCDebug(logEditor) << "TransformLayerCommand::TransformLayerCommand(): trafotype =" << m_trafoType << ", name =" << m_name;
   {
     m_layerId = layer->id();
     setText(name);
     if ( m_trafoType == LayerTransformType::Rotate ) {
-      qDebug() << " rotate ";
       QByteArray rotateLayerSvg = 
          "<svg viewBox='0 0 64 64'>"
          "<path d='M32 12 C43.05 12 52 20.95 52 32 C52 43.05 43.05 52 32 52 C20.95 52 12 43.05 12 32 C12 26.5 14.2 21.5 17.8 17.8' "
@@ -47,7 +46,6 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer,
          "</svg>";
       setIcon(AbstractCommand::getIconFromSvg(rotateLayerSvg));
     } else {
-      qDebug() << " scale  ";
       QByteArray scaleAxesLayerSvg = 
         "<svg viewBox='0 0 64 64'>"
         "<path d='M18 18h28v28H18z' fill='none' stroke='#666' stroke-dasharray='2,2' stroke-width='1'/>"
@@ -73,7 +71,7 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer, const QTransform
       , m_oldTransform(oldTransform)
       , m_newTransform(newTransform)
 {
-  qDebug() << "TransformLayerCommand::TransformLayerCommand(): Base...";
+  qCDebug(logEditor) << "TransformLayerCommand::TransformLayerCommand(): Base...";
   {
     m_layerId = layer->id();
     m_name = QString("Scale Transform Layer %1").arg(m_layerId);
@@ -98,7 +96,7 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer, const QTransform
 // -------------------------------- Merge transforms --------------------------------
 bool TransformLayerCommand::mergeWith( const QUndoCommand *other ) 
 {
-  qDebug() << "TransformLayerCommand::mergeWith(): Processing...";
+  qCDebug(logEditor) << "TransformLayerCommand::mergeWith(): Processing...";
   {
     if ( other->id() != id() ) return false;
     const TransformLayerCommand *otherCmd = static_cast<const TransformLayerCommand*>(other);
@@ -111,22 +109,24 @@ bool TransformLayerCommand::mergeWith( const QUndoCommand *other )
 // -------------------------------- Undo/Redo --------------------------------
 void TransformLayerCommand::undo() 
 {
-  qDebug() << "TransformLayerCommand::undo(): m_oldTransform =" << m_oldTransform;
+  qCDebug(logEditor) << "TransformLayerCommand::undo(): m_oldTransform =" << m_oldTransform;
   {
-    if ( m_layer )
-      m_layer->resetTotalTransform();
-      m_layer->setImageTransform(m_oldTransform);
+    if ( !m_layer ) return;
+    m_layer->resetTotalTransform();
+    m_layer->setImageTransform(m_oldTransform);
+    if ( m_trafoType == LayerTransformType::Scale ) {
       m_layer->setCageVisible(LayerItem::OperationMode::Scale,false);
+    }
   }
 }
 
 void TransformLayerCommand::redo() 
 {
-  qDebug() << "TransformLayerCommand::redo(): m_newTransform =" << m_newTransform;
+  qCDebug(logEditor) << "TransformLayerCommand::redo(): m_newTransform =" << m_newTransform;
   {
-    if ( m_silent ) return;
-    if ( m_layer ) {
-      m_layer->setImageTransform(m_newTransform);
+    if ( m_silent || !m_layer ) return;
+    m_layer->setImageTransform(m_newTransform);
+    if ( m_trafoType == LayerTransformType::Scale ) {
       m_layer->setCageVisible(LayerItem::OperationMode::Scale,true);
     }
   }
@@ -142,6 +142,7 @@ QJsonObject TransformLayerCommand::toJson() const
     obj["layerId"] = m_layer ? m_layer->id() : -1;
     obj["name"] = m_name;
     obj["trafoType"] = m_trafoType == LayerTransformType::Rotate ? "rotate" : "scale";
+    if ( LayerTransformType::Rotate ) obj["rotationAngle"] = m_rotationAngle;
     
     // points
     QJsonObject oldPointObj;
@@ -191,7 +192,7 @@ TransformLayerCommand* TransformLayerCommand::fromJson( const QJsonObject& obj, 
     // points
     QJsonObject oldPointObj = obj["oldPosition"].toObject();
     QPoint oldPos(oldPointObj["x"].toInt(), oldPointObj["y"].toInt());
-    QJsonObject newPointObj = obj["oldPosition"].toObject();
+    QJsonObject newPointObj = obj["newPosition"].toObject();
     QPoint newPos(newPointObj["x"].toInt(), newPointObj["y"].toInt());
 
     // transforms

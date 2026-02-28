@@ -41,7 +41,7 @@ class PerspectiveOverlay : public QObject, public QGraphicsItem
     QRectF boundingRect() const override;
     void paint( QPainter*, const QStyleOptionGraphicsItem*, QWidget* ) override;
 
-    void updateOverlay();
+    void updateOverlay( bool fromStart = false );
 
     void beginWarp();
     void endWarp();
@@ -52,6 +52,7 @@ class PerspectiveOverlay : public QObject, public QGraphicsItem
  
     void createHandles();
     void updateHandlePositions();
+    void commitTransformation();
 
  private:
  
@@ -59,6 +60,7 @@ class PerspectiveOverlay : public QObject, public QGraphicsItem
  
     LayerItem* m_layer;
     QUndoStack* m_undoStack = nullptr;
+    
     PerspectiveWarpCommand* m_warpCommand = nullptr;
 
     QRectF m_rect;
@@ -67,8 +69,10 @@ class PerspectiveOverlay : public QObject, public QGraphicsItem
 
     QVector<QPointF> m_startQuad;
     QVector<QPointF> m_currentQuad;
+    QVector<QPointF> m_initialQuad;
+    QVector<QPointF> m_finalQuad;
 
     QTransform m_startTransform;
-    QTransform m_finalTransform;
+    QTransform m_sceneToLocalSnapshot;
     
 };

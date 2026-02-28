@@ -17,7 +17,7 @@
 
 #include "CageWarpCommand.h"
 #include "../layer/LayerItem.h"
-
+#include "../core/Config.h"
 #include <iostream>
 
 // ---------------------- JSON ----------------------
@@ -47,7 +47,7 @@ CageWarpCommand::CageWarpCommand( LayerItem* layer,
 // 
 void CageWarpCommand::pushNewWarpStep( const QVector<QPointF>& points )
 {
-  // qDebug() << "CageWarpCommand::pushNewWarpStep(): Processing...";
+  qCDebug(logEditor) << "CageWarpCommand::pushNewWarpStep(): Processing...";
   {
     m_after = points;
     m_steps += 1;
@@ -73,7 +73,7 @@ void CageWarpCommand::undo()
 
 void CageWarpCommand::redo()
 {
-  // qDebug() << "CageWarpCommand::redo(): rows =" << m_rows << ", columns =" << m_columns << ", points =" << m_after.size();
+  qCDebug(logEditor) << "CageWarpCommand::redo(): rows =" << m_rows << ", columns =" << m_columns << ", points =" << m_after.size();
   {
     if ( m_silent || !m_layer ) return;
     // Cage auf Endposition setzen
@@ -129,7 +129,7 @@ QJsonObject CageWarpCommand::toJson() const
 
 CageWarpCommand* CageWarpCommand::fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent )
 {
-  std::cout << "CageWarpCommand::fromJson(): Processing..." << std::endl;
+  qCDebug(logEditor) << "CageWarpCommand::fromJson(): Processing...";
   {
     // Layer
     const int layerId = obj["layerId"].toInt(-1);

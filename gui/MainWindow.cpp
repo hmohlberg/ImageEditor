@@ -143,9 +143,28 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
        this->showMaximized();
     } else if ( EditorStyle::instance().windowSize() == "fullscreen" ) {
        this->showFullScreen();
+    } else if ( EditorStyle::instance().windowSize() == "mni" ) {
+       // by CLAUDE - select best screen for highest resolution,
+       //             full screen mode. fitToWindow doesn't seem
+       //             to work with showFullScreen(), so set screen
+       //             size and position explicitly.
+       int bestScreen = 0;
+       for( int i = 0; i < QGuiApplication::screens().size(); i++ ) {
+        if( QGuiApplication::screens().at(i) >
+           QGuiApplication::screens().at(bestScreen) ) {
+         bestScreen = i;
+        }
+       }
+       QScreen * screen = QGuiApplication::screens().at(bestScreen);
+       QSize totalSize = screen->size();
+       QRect ScreenGeometry = QGuiApplication::screens().at(bestScreen)->geometry();
+       move(ScreenGeometry.topLeft());
+       resize(totalSize.width(), totalSize.height());
     } else if ( hasMainImage == false) {
        this->setMinimumSize(800, 600);
     }
+    show();
+    fitToWindow();
   }    
 }
 
@@ -339,6 +358,7 @@ bool MainWindow::saveProject( const QString& filePath )
          layerObj["data"] = QString::fromUtf8(ba.toBase64());
         }
         layerObj["opacity"] = layer->opacity();
+        layerObj["creator"] = layer->creator();
         layerArray.append(layerObj);
     }
     root["layers"] = layerArray;
@@ -383,7 +403,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
     QUndoStack* undoStack = m_imageView->undoStack();
     undoStack->clear();
     
-    // --- 2. Parsing layers ---
+    // --- 2. Parsing layers (does not contain layer postions) ---
     QJsonArray layerArray = root["layers"].toArray();
     if ( !skipMainImage ) {
       for ( const QJsonValue& v : layerArray ) {
@@ -407,7 +427,6 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
       if ( id != 0 ) {
         QString name = layerObj["name"].toString();
         if ( layerObj.contains("data") ) {
-         // qDebug() << "MainWindow::loadProject(): Creating new layer " << name << ": id " << id << "...";
          QString imgBase64 = layerObj["data"].toString();
          QByteArray ba = QByteArray::fromBase64(imgBase64.toUtf8());
          QImage image;
@@ -417,6 +436,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
          newLayer->setIndex(id);
          newLayer->setParent(this);
          newLayer->setUndoStack(m_imageView->undoStack());
+         // qDebug() << " image layer " << id << " rect =" << newLayer->boundingRect();
          Layer* layer = new Layer(id,image);
          layer->m_name = name;
          layer->m_item = newLayer;
@@ -440,6 +460,8 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
     }
 
     // --- 3. Restore Undo/Redo Stack ---
+    QHash<int, QRectF> boundingBoxLayerMap;
+    QList<EditablePolygonCommand*> editablePolygonCommands;
     EditablePolygonCommand* editablePolyCommand = nullptr;
     QJsonArray undoArray = root["undoStack"].toArray();
     for ( const QJsonValue& v : undoArray ) {
@@ -456,6 +478,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
            if ( cutCommand != nullptr ) {
              cutCommand->setController(editablePolyCommand);
            }
+           boundingBoxLayerMap.insert(cutCommand->layerId(),cutCommand->rect());
         } else if ( type == "MoveLayer" ) {
            cmd = MoveLayerCommand::fromJson(cmdObj, layers);
         } else if ( type == "MirrorLayer" ) {
@@ -471,15 +494,73 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
         } else if ( type == "EditablePolygonCommand" ) {
            cmd = EditablePolygonCommand::fromJson(cmdObj, layers);
            editablePolyCommand = dynamic_cast<EditablePolygonCommand*>(cmd);
+           int npolygons = m_imageView->pushEditablePolygon(editablePolyCommand->model());
+           if ( editablePolyCommand->childLayerId() == -1 || npolygons < 0 ) {
+             editablePolygonCommands.push_back(editablePolyCommand);
+           }
         } else {
            qCDebug(logEditor) << "MainWindow::loadProject(): " << type << " not yet processed.";
         }
         // ggf. weitere Command-Typen hier hinzufügen
         if ( cmd )
-            undoStack->push(cmd);
+          undoStack->push(cmd);
     }
     
-    // --- 4. set clean flag in undo stack ---
+    // --- 4. Correct misnamed polygon - layer couples ---
+    if ( !editablePolygonCommands.isEmpty() ) {
+      for ( int i = 0; i < editablePolygonCommands.size(); i++ ) {
+        QRectF polyBox = editablePolygonCommands[i]->polygon().boundingRect();
+        int bestMatchLayerId = -1;
+        double smallestArea = std::numeric_limits<double>::max();
+        QHashIterator<int, QRectF> ibt(boundingBoxLayerMap);
+        while ( ibt.hasNext() ) {
+          ibt.next();
+          QRectF layerBox = ibt.value();
+          if ( layerBox.contains(polyBox) ) {
+            double currentArea = layerBox.width() * layerBox.height();
+            if ( currentArea < smallestArea ) {
+                smallestArea = currentArea;
+                bestMatchLayerId = ibt.key();
+            }
+          }
+        }
+        if ( bestMatchLayerId != -1 ) {
+            editablePolygonCommands[i]->setChildLayerId(bestMatchLayerId);
+            editablePolygonCommands[i]->setName(QString("Polygon %1").arg(bestMatchLayerId));
+        } else {
+            QRectF polyBox = editablePolygonCommands[i]->polygon().boundingRect();
+            qDebug() << "WARNING: No layer match found for polygon " << editablePolygonCommands[i]->text() << ": " << polyBox;
+            QHashIterator<int, QRectF> ibt(boundingBoxLayerMap);
+            while ( ibt.hasNext() ) {
+              ibt.next();
+              QRectF layerBox = ibt.value();
+              qDebug() << " + layer " << ibt.key() << " rect :" << layerBox;
+            }
+        }
+      }
+    }
+    
+    /** --- best-match search ---
+    if ( editablePolygonCommands.size() > 0 ) {
+      // qDebug() << "WARNING: Found errors in " << editablePolygonCommands.size() << " editable polygons";
+      for ( int i=0 ; i<editablePolygonCommands.size() ; i++ ) {
+        QRectF polyBox = editablePolygonCommands[i]->polygon().boundingRect();
+        // qDebug() << " polygon: childLayerId =" << editablePolygonCommands[i]->childLayerId() << ", name =" << editablePolygonCommands[i]->name() << ", rect =" << polyBox;
+        QHashIterator<int, QRectF> ibt(boundingBoxLayerMap);
+        while ( ibt.hasNext() ) {
+         ibt.next();
+         if ( polyBox.intersects(ibt.value()) ) {
+           // qDebug() << "  + found match for layer " << ibt.key();
+           editablePolygonCommands[i]->setChildLayerId(ibt.key());
+           editablePolygonCommands[i]->setName(QString("Polygon %1").arg(ibt.key()));
+           // qDebug() << QJsonDocument(editablePolygonCommands[i]->toJson()).toJson(QJsonDocument::Indented);
+         }
+        }
+      }
+    }
+    */
+    
+    // --- 5. set clean flag in undo stack ---
     m_imageView->undoStack()->setClean();
     
     return true;
@@ -647,8 +728,8 @@ void MainWindow::toggleDocks()
 // --------------------------------- Layer tools ---------------------------------
 void MainWindow::toggleLayerVisibility(  QListWidgetItem* item )
 {
- qCDebug(logEditor) << "MainWindow::toggleLayerVisibility(): Processing...";
- {
+  qCDebug(logEditor) << "MainWindow::toggleLayerVisibility(): Processing...";
+  {
     if ( !item ) return;
     if ( m_updatingLayerList ) return; // ⚡ verhindert Rekursion
     Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
@@ -665,18 +746,18 @@ void MainWindow::toggleLayerVisibility(  QListWidgetItem* item )
     // Update CheckState
     item->setCheckState(layer->m_visible ? Qt::Checked : Qt::Unchecked);
     m_updatingLayerList = false;
- }   
+  }   
 }
 
 void MainWindow::updateLayerList()
 {
-   qDebug() << "MainWindow::updateLayerList(): Processing...";
+   qCDebug(logEditor) << "MainWindow::updateLayerList(): Processing...";
    rebuildLayerList();
 }
 
 void MainWindow::rebuildLayerList()
 {
-  qDebug() << "MainWindow::rebuildLayerList(): Rebuild layer list...";
+  qCDebug(logEditor) << "MainWindow::rebuildLayerList(): Rebuild layer list...";
   {
     // updating layer list in docks widget
     m_updatingLayerList = true;
@@ -717,7 +798,7 @@ void MainWindow::rebuildLayerList()
 
 void MainWindow::setSelectedLayer( const QString &name )
 {
-  qDebug() << "MainWindow::setSelectedLayer(): name =" << name;
+  qCDebug(logEditor) << "MainWindow::setSelectedLayer(): name =" << name;
   {
     int index = m_selectLayerItem->findText(name);
     if ( index != -1 ) {
@@ -978,6 +1059,7 @@ void MainWindow::createActions()
     m_paintControlAction->setCheckable(true);
     m_paintControlAction->setChecked(true);
     connect(m_paintControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
+    
     m_maskControlAction = new QAction("Mask classes", this);
     m_maskControlAction->setCheckable(true);
     connect(m_maskControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
@@ -989,6 +1071,7 @@ void MainWindow::createActions()
     m_lassoControlAction = new QAction("Free selection", this);
     m_lassoControlAction->setCheckable(true);
     connect(m_lassoControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
+    
     m_polygonControlAction = new QAction("Polygon", this);
     m_polygonControlAction->setCheckable(true);
     connect(m_polygonControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
@@ -1284,82 +1367,113 @@ void MainWindow::createToolbars()
     m_selectLayerItem->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_layerToolbar->addWidget(m_selectLayerItem);
     connect(m_selectLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
-     std::cout << "MainWindow::createToolbars(): name=" << text.toStdString() << std::endl;
+     qCDebug(logEditor) << "MainWindow::createToolbars(): name=" << text;
     });
     // --- operation modus ---
     m_transformLayerItem = new QComboBox();
-    m_transformLayerItem->addItems({"Translate","Rotate","Scale","Vertical flip","Horizontal flip","Perspective","Cage transform"}); // Perspective
+    m_transformLayerItem->addItems({"Translate","Rotate","Scale","Flip","Flop","Perspective","Cage transform"}); // Perspective
     m_layerToolbar->addWidget(m_transformLayerItem);
     connect(m_transformLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
       LayerItem::OperationMode transformMode = LayerItem::OperationMode::None;
       if ( text.startsWith("Translate") ) transformMode = LayerItem::OperationMode::Translate;
       else if ( text.startsWith("Rotate") ) transformMode = LayerItem::OperationMode::Rotate;
       else if ( text.startsWith("Scale") ) transformMode = LayerItem::OperationMode::Scale;
-      else if ( text.startsWith("Vertical") ) transformMode = LayerItem::OperationMode::Flip;
-      else if ( text.startsWith("Horizontal") ) transformMode = LayerItem::OperationMode::Flop;
+      else if ( text.startsWith("Mirror") ) transformMode = LayerItem::OperationMode::Flip;
       else if ( text.startsWith("Perspective") ) transformMode = LayerItem::OperationMode::Perspective;
       else if ( text.startsWith("Cage transform") ) transformMode = LayerItem::OperationMode::CageWarp;
       
-      bool isVisible = transformMode == LayerItem::OperationMode::CageWarp ? true : false;
-      m_cageControlGroup->setVisible( isVisible );
-      m_cageControlGroup->updateGeometry();
-      qDebug() << "isVisible =" << isVisible << " - " << this->m_cageControlGroup->isVisible();
+      // --- update visibility of layer sub toolbar ---
+      bool rotateLayerIsVisible = transformMode == LayerItem::OperationMode::Rotate ? true : false;
+      m_rotateLayerToolbar->setVisible(rotateLayerIsVisible);
+      bool scaleLayerIsVisible = transformMode == LayerItem::OperationMode::Scale ? true : false;
+      m_scaleLayerToolbar->setVisible(scaleLayerIsVisible);
+      bool cageWrapLayerIsVisible = transformMode == LayerItem::OperationMode::CageWarp ? true : false;
+      m_canvasWarpLayerToolbar->setVisible(cageWrapLayerIsVisible);
+      bool mirrorLayerIsVisible = transformMode == LayerItem::OperationMode::Flip ? true : false;
+      m_mirrorLayerToolbar->setVisible(mirrorLayerIsVisible);
       
       m_imageView->setLayerOperationMode(transformMode);
     });
-    // --- interpolation ---
-    QComboBox* interpolationLayerItem = new QComboBox();
-    interpolationLayerItem->addItems({"Nearest neighbor interpolation","Trilinear interpolation"});
-    m_layerToolbar->addWidget(interpolationLayerItem);
     
-    // --- cage control layout ---
-    m_cageControlGroup = new QWidget();
-    QHBoxLayout* cageControlLayout = new QHBoxLayout(m_cageControlGroup);
-    cageControlLayout->setContentsMargins(0, 0, 0, 0);
+    // --- sub toolbar layer scale ---
+    m_scaleLayerToolbar = addToolBar(tr("ScaleLayer"));
+    QCheckBox* isotropScaleCheck = new QCheckBox("Isotrop scaling", this);
+    isotropScaleCheck->setToolTip("Enable isotropic scaling.");
+    isotropScaleCheck->setChecked(true);
+    // connect(isotropScaleCheck, &QCheckBox::toggled, m_imageView, &ImageView::setCageWarpFixBoundary);
+    m_scaleLayerToolbar->addWidget(isotropScaleCheck);
+    m_scaleLayerToolbar->setVisible(false);
+    
+    // --- sub toolbar layer mirror ---
+    m_mirrorLayerToolbar = addToolBar(tr("MirrorLayer"));
+    QLabel* mirrorDirectionLabel = new QLabel(" Mirror Direction:");
+    m_mirrorLayerToolbar->addWidget(mirrorDirectionLabel);
+    QComboBox* mirrorDirectionCombo = new QComboBox();
+    mirrorDirectionCombo->addItems({"Horizontal","Vertical"});
+    mirrorDirectionCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_mirrorLayerToolbar->addWidget(mirrorDirectionCombo);
+    m_mirrorLayerToolbar->setVisible(false);
+    
+    // --- sub toolbar layer rotate ---
+    m_rotateLayerToolbar = addToolBar(tr("RotateLayer"));
+    QLabel* rotationLayerAngleLabel = new QLabel(" Rotation Angle:");
+    m_rotateLayerToolbar->addWidget(rotationLayerAngleLabel);
+    m_rotationLayerAngleSpin = new QDoubleSpinBox();
+    m_rotationLayerAngleSpin->setRange(-180.0,180.0);
+    m_rotationLayerAngleSpin->setSingleStep(1.0);
+    m_rotationLayerAngleSpin->setValue(0.0);
+    m_rotationLayerAngleSpin->setWrapping(true);
+    connect(m_rotationLayerAngleSpin, &QDoubleSpinBox::valueChanged, m_imageView, [this](double value){
+      LayerItem *layer = m_imageView->getSelectedItem();
+      if ( layer ) layer->setRotationAngle(value);
+    });
+    m_rotateLayerToolbar->addWidget(m_rotationLayerAngleSpin);
+    m_rotateLayerToolbar->setVisible(false);
+    
+    // --- sub toolbar layer cage control ---
+    m_canvasWarpLayerToolbar = addToolBar(tr("CanvasWarpLayer"));
     // --- cage control points ---
     QLabel* cageControlPointsLabel = new QLabel(" Cage control points:");
-    cageControlLayout->addWidget(cageControlPointsLabel);
+    m_canvasWarpLayerToolbar->addWidget(cageControlPointsLabel);
     QPushButton* btnPlus = new QPushButton("+", this);
     QPushButton* btnMinus = new QPushButton("-", this);
     btnPlus->setStyleSheet("font-size: 20px; font-weight: bold;");
     btnMinus->setStyleSheet("font-size: 20px; font-weight: bold;");
     btnPlus->setFixedSize(18, 18);
     btnMinus->setFixedSize(18, 18);
-    cageControlLayout->addWidget(btnPlus);
-    cageControlLayout->addWidget(btnMinus);
+    m_canvasWarpLayerToolbar->addWidget(btnPlus);
+    m_canvasWarpLayerToolbar->addWidget(btnMinus);
     connect(btnPlus, &QPushButton::clicked, m_imageView, &ImageView::setIncreaseNumberOfCageControlPoints);
     connect(btnMinus, &QPushButton::clicked, m_imageView, &ImageView::setDecreaseNumberOfCageControlPoints);
     // --- fix boundary ---
     QCheckBox* fixBoundaryCheck = new QCheckBox("Fix boundary", this);
     fixBoundaryCheck->setToolTip("Fixed outer mesh warp cage boundaries.");
     fixBoundaryCheck->setChecked(true);
-    cageControlLayout->addWidget(fixBoundaryCheck);
+    m_canvasWarpLayerToolbar->addWidget(fixBoundaryCheck);
     connect(fixBoundaryCheck, &QCheckBox::toggled, m_imageView, &ImageView::setCageWarpFixBoundary);
     // --- relaxation ---
     QLabel* cageRelaxationLabel = new QLabel(" Relaxation:");
-    cageControlLayout->addWidget(cageRelaxationLabel);
+    m_canvasWarpLayerToolbar->addWidget(cageRelaxationLabel);
     QSpinBox* relaxationSpin = new QSpinBox();
     relaxationSpin->setRange(0,100);
     relaxationSpin->setValue(0);
-    cageControlLayout->addWidget(relaxationSpin);
+    m_canvasWarpLayerToolbar->addWidget(relaxationSpin);
     connect(relaxationSpin, QOverload<int>::of(&QSpinBox::valueChanged), m_imageView, &ImageView::setCageWarpRelaxationSteps);
     // --- stiffness ---
     QLabel* cageStiffnessLabel = new QLabel(" Stifness:");
-    cageControlLayout->addWidget(cageStiffnessLabel);
+    m_canvasWarpLayerToolbar->addWidget(cageStiffnessLabel);
     QDoubleSpinBox* stiffnessSpin = new QDoubleSpinBox();
     stiffnessSpin->setRange(0.0,3.0);
     stiffnessSpin->setSingleStep(0.05);
     stiffnessSpin->setValue(0.0);
-    cageControlLayout->addWidget(stiffnessSpin);
+    m_canvasWarpLayerToolbar->addWidget(stiffnessSpin);
     connect(stiffnessSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), m_imageView, &ImageView::setCageWarpStiffness);
     // --- Update for Debugging ---
     QPushButton *updateAction = new QPushButton("Update");
     connect(updateAction, &QPushButton::clicked, this, &MainWindow::forcedUpdate);
-    cageControlLayout->addWidget(updateAction);
+    m_canvasWarpLayerToolbar->addWidget(updateAction);
     // --- add control group to toolbar
-    m_cageControlGroup->setLayout(cageControlLayout);
-    m_cageControlGroup->setVisible(true);
-    m_layerToolbar->addWidget(m_cageControlGroup);
+    m_canvasWarpLayerToolbar->setVisible(false);
     
     m_layerToolbar->setVisible(false);
     
@@ -1543,6 +1657,27 @@ void MainWindow::createStatusbar()
 }
 
 /* =================== Misc =================== */
+
+void MainWindow::updateLayerOperationParameter( int mode, double value )
+{
+  qCDebug(logEditor) << "MainWindow::updateLayerOperationParameter(): mode =" << mode << ", value =" << value;
+  {
+    if ( mode == LayerItem::OperationMode::Rotate ) {
+      m_rotationLayerAngleSpin->blockSignals(true);
+      m_rotationLayerAngleSpin->setValue(value);
+      m_rotationLayerAngleSpin->blockSignals(false);
+    }
+  }
+}
+
+double MainWindow::getLayerOperationParameter( int mode )
+{
+  if ( mode == LayerItem::OperationMode::Rotate ) {
+    return  m_rotationLayerAngleSpin->value();
+  }
+  return 0.0;
+}
+
 void MainWindow::info()
 {
   qCDebug(logEditor) << "MainWindow::info(): Processing...";
@@ -1550,7 +1685,6 @@ void MainWindow::info()
     for ( auto* item : m_imageView->getScene()->items(Qt::DescendingOrder) ) {
       auto* layer = dynamic_cast<LayerItem*>(item);
       if ( layer ) {
-        // qDebug() << " Layer " << layer->name() << ", id=" << layer->id();
         layer->printself(true);
       }  
     }
@@ -1560,7 +1694,7 @@ void MainWindow::info()
 
 void MainWindow::setLayerOperationMode( int mode ) 
 {
-  qDebug() << "MainWindow::setLayerOperationMode(): mode =" << mode;
+  qCDebug(logEditor) << "MainWindow::setLayerOperationMode(): mode =" << mode;
   {
      m_transformLayerItem->setCurrentIndex(mode-3);
   }
@@ -1573,6 +1707,8 @@ void MainWindow::setPolygonOperationMode( int mode )
 
 void MainWindow::setMainOperationMode( MainOperationMode mode )
 {
+  qCDebug(logEditor) << "MainWindow::setMainOperationMode(): mode =" << mode;
+  {
     if ( mode == MainOperationMode::ImageLayer ) {
       m_layerControlAction->setChecked(true);
     } else if ( mode == MainOperationMode::FreeSelection ) {
@@ -1583,7 +1719,10 @@ void MainWindow::setMainOperationMode( MainOperationMode mode )
       m_polygonAction->blockSignals(true);
       m_polygonAction->setChecked(false);
       m_polygonAction->blockSignals(false);
+    } else if ( mode == MainOperationMode::Polygon ) {
+      m_polygonControlAction->setChecked(true);
     }
+  }
 }
 
 int MainWindow::setActivePolygon( const QString& polygonName )
@@ -1596,6 +1735,7 @@ int MainWindow::setActivePolygon( const QString& polygonName )
 }
 
 /* =================== Signal calls =================== */
+
 void MainWindow::newLassoLayerCreated()
 {
   m_lassoAction->setChecked(false);
@@ -1603,6 +1743,7 @@ void MainWindow::newLassoLayerCreated()
 }
 
 /* =================== View Helpers =================== */
+
 void MainWindow::cutSelection() { m_imageView->cutSelection(); }
 void MainWindow::zoom1to1() { m_imageView->resetTransform(); }
 void MainWindow::fitToWindow() { m_imageView->fitInView(m_layerItem,Qt::KeepAspectRatio); }

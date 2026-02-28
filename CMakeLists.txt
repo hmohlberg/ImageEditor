@@ -79,6 +79,7 @@ set(SOURCES
     undo/MoveLayerCommand.cpp
     undo/MaskStrokeCommand.cpp
     undo/MaskPaintCommand.cpp
+    util/QUndoSortDialog.cpp
 )
 
 set(HEADERS
@@ -121,6 +122,7 @@ set(HEADERS
     undo/PolygonTranslateCommand.h
     undo/PolygonSmoothCommand.h
     undo/PolygonReduceCommand.h
+    util/QUndoSortDialog.h
     util/GeometryUtils.h
 )
 

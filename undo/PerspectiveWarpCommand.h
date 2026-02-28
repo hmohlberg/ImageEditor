@@ -37,6 +37,8 @@ class PerspectiveWarpCommand : public AbstractCommand
     LayerItem* layer() const override { return nullptr; }
     int id() const override { return 1031; }
     
+    void apply( const QVector<QPointF>& quad );
+    
     void undo() override;
     void redo() override;
 
@@ -48,6 +50,8 @@ class PerspectiveWarpCommand : public AbstractCommand
     int m_layerId = -1;
     LayerItem* m_layer = nullptr;
     QString m_name;
+    
+    QTransform m_baseTransform;
     
     QVector<QPointF> m_before;
     QVector<QPointF> m_after;

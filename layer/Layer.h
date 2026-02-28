@@ -30,13 +30,16 @@ class Layer {
     float opacity() const { return m_opacity; }
     QPointF pos() const { return m_item != nullptr ? m_item->pos() : QPointF(0,0); }
     QString name() const { return m_name; }
+    QString creator() const { return m_creator; }
     QImage image() const { return m_image; }
 
   public:
   
     int m_id = -1;
     float m_opacity = 1.0;
+    
     QString m_name;
+    QString m_creator;
     
     bool m_visible = true;
     bool m_active = true;
@@ -47,4 +50,5 @@ class Layer {
     bool m_linkedToImage = false;
     
     Layer() = default;
+    
 };

@@ -110,6 +110,7 @@ public:
       if ( !m_maskItem ) return Qt::transparent;
       return m_maskItem->labelColor(label);
     }
+    int pushEditablePolygon( EditablePolygon* edtitablePolygon );
     int getMaskCutToolType( const QString& name );
     
     void setBrushRadius( int r ) { m_brushRadius = r; }

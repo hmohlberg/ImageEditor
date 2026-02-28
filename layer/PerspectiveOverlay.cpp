@@ -38,6 +38,8 @@ PerspectiveOverlay::PerspectiveOverlay( LayerItem* layer, QUndoStack* undoStack 
         r.bottomLeft()
     };
     m_currentQuad = m_startQuad;
+    m_initialQuad = m_currentQuad;
+    m_finalQuad = m_startQuad;
     createHandles();
     updateOverlay();
 }
@@ -58,19 +60,24 @@ void PerspectiveOverlay::paint( QPainter* p, const QStyleOptionGraphicsItem*, QW
         p->drawPolygon(QPolygonF(m_currentQuad));
 }
 
-void PerspectiveOverlay::updateOverlay()
+void PerspectiveOverlay::updateOverlay( bool fromStart )
 {
-  qDebug() << "PerspectiveOverlay::updateOverlay(): Processing...";
+  qDebug() << "PerspectiveOverlay::updateOverlay(): fromStart =" << fromStart;
   {
-    if ( !m_layer || m_currentQuad.size() != 4 ) return;
+    if ( !m_layer || m_startQuad.size() != 4 || m_currentQuad.size() != 4 ) return;
 
     prepareGeometryChange();
 
     // --- Handles Positionen in Scene-Koordinaten ---
     QVector<QPointF> scenePts;
-    for ( int i = 0; i < 4; i++ )
+    if ( fromStart ) {
+     for ( int i = 0; i < 4; i++ )
+        scenePts.push_back(m_layer->mapToScene(m_startQuad[i]));
+    } else {
+     for ( int i = 0; i < 4; i++ )
         scenePts.push_back(m_layer->mapToScene(m_currentQuad[i]));
-
+    }
+    
     // --- BoundingRect für Overlay = Polygon der Handles ---
     m_rect = QPolygonF(scenePts).boundingRect();
 
@@ -103,7 +110,7 @@ void PerspectiveOverlay::createHandles()
 
 void PerspectiveOverlay::updateHandlePositions()
 {
-  qDebug() << "PerspectiveOverlay::updateHandlePositions(): Processing...";
+  qDebug() << "PerspectiveOverlay::updateHandlePositions(): currentQuad =" << m_currentQuad;
   {
     if ( m_currentQuad.size() != 4 )
         return;
@@ -118,19 +125,10 @@ void PerspectiveOverlay::beginWarp()
 {
   qDebug() << "PerspectiveOverlay::beginWarp(): Processing...";
   {
-    if ( !m_layer )
-        return;
+    if ( !m_layer ) return;
     m_dragging = true;
+    m_sceneToLocalSnapshot = m_layer->sceneTransform().inverted();
     m_startTransform = m_layer->transform();
-  /*
-    QRectF r = m_layer->boundingRect();
-    m_startQuad = {
-        r.topLeft(),
-        r.topRight(),
-        r.bottomRight(),
-        r.bottomLeft()
-    };
-   */
     m_currentQuad = m_startQuad;
   }
 }
@@ -139,36 +137,40 @@ void PerspectiveOverlay::endWarp()
 {
   qDebug() << "PerspectiveOverlay::endWarp(): Processing...";
   {
-    if ( !m_layer )
-        return;
+    if ( !m_layer ) return;
     if ( !m_dragging ) return;
-        m_dragging = false;
+    m_dragging = false;
     if ( m_currentQuad == m_startQuad )
         return;
     if ( !m_warpCommand ) {
-      m_warpCommand = new PerspectiveWarpCommand(m_layer,m_startQuad,m_currentQuad);
+      m_warpCommand = new PerspectiveWarpCommand(m_layer,m_initialQuad,m_currentQuad);
       m_undoStack->push(m_warpCommand);
     } else {
-      m_warpCommand->setAfterQuad(m_currentQuad);
+      m_warpCommand->setAfterQuad(m_finalQuad);
     }
   }
 }
 
+void PerspectiveOverlay::commitTransformation()
+{
+    if ( !m_layer || m_currentQuad == m_initialQuad ) return;
+    auto* cmd = new PerspectiveWarpCommand(m_layer, m_initialQuad, m_currentQuad);
+    m_undoStack->push(cmd);
+    m_initialQuad = m_currentQuad; 
+}
+
 void PerspectiveOverlay::moveCorner( PerspectiveCorner corner, const QPointF& scenePos )
 {
-  qDebug() << "PerspectiveOverlay::moveCorner(): Processing...";
+  qDebug() << "PerspectiveOverlay::moveCorner(): corner = " << int(corner) << ", pos :" << scenePos;
   {
     if ( !m_layer || !m_dragging ) return;
-    int idx = int(corner);
-    
-    // Scene → Local
-    QPointF localPos = m_layer->mapFromScene(scenePos);
-    m_currentQuad[idx] = localPos;
-
-    // Transformation: quadToQuad zwischen StartQuad und aktuellem Quad
+    QPointF localPos = m_sceneToLocalSnapshot.map(scenePos);
+    m_currentQuad[int(corner)] = localPos;
+    m_finalQuad[int(corner)] = localPos;
     QTransform warp;
-    QTransform::quadToQuad(m_startQuad, m_currentQuad, warp);
-    m_layer->setTransform(warp * m_startTransform); // Vorschau
-    updateOverlay();
+    if ( QTransform::quadToQuad(m_startQuad, m_currentQuad, warp) ) {
+      m_layer->setTransform(warp * m_startTransform); // Vorschau
+    }
+    updateOverlay(true);
   }
 }
