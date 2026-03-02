@@ -216,7 +216,9 @@ void LayerItem::updateOriginalImage() {
 void LayerItem::setMirror( int mirrorPlane ) {
   qCDebug(logEditor) << "LayerItem::setMirror(): mirrorPlane=" << mirrorPlane;
   {
-    #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+    #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+     QImage flippedImage = m_image.mirrored(mirrorPlane == 1 ? Qt::Vertical : Qt::Horizontal);
+    #elif QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
      QImage flippedImage = m_image.flipped(mirrorPlane == 1 ? Qt::Vertical : Qt::Horizontal);
     #else
      QImage flippedImage = m_image.mirrored(mirrorPlane == 1 ? Qt::Vertical : Qt::Horizontal);
