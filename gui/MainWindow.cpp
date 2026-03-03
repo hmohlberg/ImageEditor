@@ -164,7 +164,9 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
        this->setMinimumSize(800, 600);
     }
     show();
-    fitToWindow();
+	if ( imagePath != "" ) {
+      fitToWindow();
+	}
   }    
 }
 
