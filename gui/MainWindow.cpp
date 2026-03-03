@@ -164,7 +164,9 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
        this->setMinimumSize(800, 600);
     }
     show();
-    fitToWindow();
+	if ( imagePath != "" ) {
+      fitToWindow();
+	}
   }    
 }
 
@@ -310,7 +312,7 @@ void MainWindow::saveAsImage()
 void MainWindow::saveHistory()
 {
     QString fileName = QFileDialog::getSaveFileName(this,
-                        tr("Save History File As"),QString(),tr("JSON file (*.json)"));
+                        tr("Save History File As"),QString(),tr("JSON file (*.json);;All Files (*)"));
     if ( !fileName.isEmpty() ) {
      saveProject(fileName);
     }
@@ -586,7 +588,7 @@ void MainWindow::openHistory()
 {
     QString fileName = QFileDialog::getOpenFileName(this,
                         tr("Open JSON history file"), QString(),
-                        tr("JSON file (*,json)"));
+                        tr("JSON file (*.json);;All Files(*)"));
     if ( fileName.isEmpty() )
       return;
     loadHistory(fileName);
