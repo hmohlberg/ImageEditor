@@ -20,6 +20,7 @@
 #include "../core/Config.h"
 
 #include <QCoreApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QMainWindow>
 #include <QString>
@@ -27,6 +28,7 @@
 #include <QListWidget>
 #include <QSpinBox>
 #include <QToolBar>
+#include <QLabel>
 
 class ImageView;
 class LayerItem;
@@ -35,7 +37,7 @@ class MainWindow : public QMainWindow
 {
     Q_OBJECT
     
-public:
+ public:
 
     enum MainOperationMode { None, Paint, Mask, FreeSelection, Polygon, ImageLayer, CreateLasso, CreatePolygon };
 
@@ -43,6 +45,7 @@ public:
     //            bool useVulkan = false, QWidget* parent = nullptr );
                 
     explicit MainWindow( const QJsonObject& options, QWidget* parent = nullptr );
+    static MainWindow* instance();
     ~MainWindow();
                 
     // --- ---
@@ -58,12 +61,14 @@ public:
     void setSelectedLayer( const QString &name );
     void updateLayerOperationParameter( int mode, double value );
     double getLayerOperationParameter( int mode );
+    QString getSelectedLayerItemName() const { return m_selectedLayerItemName; }
+    void showMessage( const QString& message, int msgType );
     
-protected:
+ protected:
 
     void closeEvent( QCloseEvent *event ) override;
 
-private slots:
+ private slots:
 
     void rebuildLayerList();
     void newLassoLayerCreated();
@@ -92,7 +97,7 @@ private slots:
     void updateButtonState();
     void updateControlButtonState();
 
-private:
+ private:
     
     bool checkUnsavedData();
     bool loadImage( const QString& );
@@ -104,6 +109,8 @@ private:
     void createActions();
     void createToolbars();
     void createStatusbar();
+    
+    static MainWindow* m_instance;
     
     QComboBox* buildDefaultColorComboBox( const QString& name = "Label" );
     
@@ -121,11 +128,11 @@ private:
     QToolBar* m_maskToolbar = nullptr;
     QToolBar* m_polygonToolbar = nullptr;
     
-    QToolBar* m_perspectiveLayerToolbar = nullptr;
     QToolBar* m_canvasWarpLayerToolbar = nullptr;
     QToolBar* m_rotateLayerToolbar = nullptr;
     QToolBar* m_scaleLayerToolbar = nullptr;
     QToolBar* m_mirrorLayerToolbar = nullptr;
+    QToolBar* m_perspectiveLayerToolbar = nullptr;
     
     MainOperationMode m_operationMode = Paint;
     
@@ -158,15 +165,21 @@ private:
     QAction* m_polygonAction = nullptr;
     QAction* m_infoAction = nullptr; 
     
+    QLabel *m_messageLabel = nullptr;
+    
     QComboBox* m_polygonIndexBox = nullptr;
     QComboBox* m_transformLayerItem = nullptr;
     QComboBox* m_polygonOperationItem = nullptr;
     QComboBox* m_selectLayerItem = nullptr;
+    QComboBox* m_mirrorDirectionCombo = nullptr;
+    
+    QCheckBox* m_isotropScaleCheck = nullptr;
     
     QDoubleSpinBox* m_rotationLayerAngleSpin = nullptr;
+    
+    QString m_selectedLayerItemName;
     
     bool m_updatingLayerList = false;
     bool m_saveImageDataInProjectFile = false;
     
 };
-

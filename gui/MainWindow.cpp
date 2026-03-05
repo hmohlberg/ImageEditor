@@ -71,6 +71,12 @@
 #include <iostream>
 
 /* ============================================================
+ * Static instance
+ * ============================================================ */
+ 
+MainWindow* MainWindow::m_instance = nullptr;
+
+/* ============================================================
  * Constructor
  * ============================================================ */
 MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWindow(parent)
@@ -165,7 +171,15 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     }
     show();
     fitToWindow();
+    
+    // setup singleton-patterm
+    m_instance = this;
+    
   }    
+}
+
+MainWindow* MainWindow::instance() {
+    return m_instance;
 }
 
 MainWindow::~MainWindow() {
@@ -215,6 +229,7 @@ bool MainWindow::loadImage( const QString& filePath )
     m_layerItem->setFileInfo(filePath);
     m_layerItem->setType(LayerItem::MainImage);
     m_layerItem->setParent(this);
+    m_layerItem->setZValue(1);
     scene->addItem(m_layerItem);
     // set scene size
     scene->setSceneRect(m_layerItem->boundingRect());
@@ -310,7 +325,8 @@ void MainWindow::saveAsImage()
 void MainWindow::saveHistory()
 {
     QString fileName = QFileDialog::getSaveFileName(this,
-                        tr("Save History File As"),QString(),tr("JSON file (*.json)"));
+                          tr("Save JSON History File As..."),
+                          QString(),tr("JSON Files (*.json);;All Files (*)"));
     if ( !fileName.isEmpty() ) {
      saveProject(fileName);
     }
@@ -586,7 +602,7 @@ void MainWindow::openHistory()
 {
     QString fileName = QFileDialog::getOpenFileName(this,
                         tr("Open JSON history file"), QString(),
-                        tr("JSON file (*,json)"));
+                        tr("JSON Files (*.json);;All Files (*)"));
     if ( fileName.isEmpty() )
       return;
     loadHistory(fileName);
@@ -698,7 +714,8 @@ void MainWindow::createDockWidgets()
     if ( !index.isValid() ) return;
     QMenu menu(this);
     QAction *jumpAction = menu.addAction(tr("Jump back to this point"));
-    QAction *renameAction = menu.addAction(tr("Rename..."));
+    QAction *renameAction = menu.addAction(tr("Rename command"));
+    QAction *deleteAction = menu.addAction(tr("Delete command"));
     QAction *selectedAction = menu.exec(m_undoView->mapToGlobal(pos));
     if ( selectedAction == jumpAction ) {
         m_imageView->undoStack()->setIndex(index.row()); 
@@ -711,6 +728,18 @@ void MainWindow::createDockWidgets()
         if ( ok && !newText.isEmpty() ) {
             cmd->setText(newText);
             m_undoView->viewport()->update();
+        }
+    } else if ( selectedAction == deleteAction ) {
+        QUndoCommand *cmd = const_cast<QUndoCommand*>(m_imageView->undoStack()->command(index.row() - 1));
+        QString labelText = QString("Do you really want to delete the command? Press the Revoke button to undo all operations "
+                    "(all follow-up entries will be permanently deleted from the history list) or press Delete to remove "
+                    "the command with the option of restoring it.");
+        int result = QWidgetUtils::showIconDialog(this,QString("Delete %1").arg(cmd->text()),labelText);
+        if ( result == 1 ) {
+           int currentIndex = m_imageView->undoStack()->index();
+           m_imageView->removeOperationsByIndexUndoStack(cmd->text(),currentIndex-1);
+        } else if ( result == 2 ) {
+           qDebug() << " *** delete ***"; 
         }
     }
    });
@@ -798,7 +827,7 @@ void MainWindow::rebuildLayerList()
 
 void MainWindow::setSelectedLayer( const QString &name )
 {
-  qCDebug(logEditor) << "MainWindow::setSelectedLayer(): name =" << name;
+  qDebug() << "MainWindow::setSelectedLayer(): name =" << name;
   {
     int index = m_selectLayerItem->findText(name);
     if ( index != -1 ) {
@@ -827,20 +856,35 @@ void MainWindow::layerItemClicked( QListWidgetItem* item )
 
 void MainWindow::onLayerItemClicked( QListWidgetItem* item )
 {
+  qCDebug(logEditor) << "MainWindow::onLayerItemClicked(): Processing...";
+  {
     if ( !item ) return;
     void* ptr = item->data(Qt::UserRole).value<void*>();
     Layer* layer = static_cast<Layer*>(ptr);
     if ( layer ) {
      for ( Layer* l : m_imageView->layers() ) {
        if ( l->m_item ) {
-         l->m_item->setSelected(l == layer ? true : false);
+         LayerItem *layerItem = m_imageView->getLayerItem(l->name());
+         if ( layerItem != nullptr ) {
+           if ( l == layer ) {
+             l->m_item->setSelected(true);
+             l->m_item->setZValue(3);
+             m_selectedLayerItemName = l->name();
+           } else {
+             l->m_item->setSelected(false);
+             l->m_item->setZValue(2);
+           }
+         }
        }
      }
     }
+  }
 }
 
 void MainWindow::showLayerContextMenu( const QPoint& pos )
 {
+  qCDebug(logEditor) << "MainWindow::showLayerContextMenu(): pos =" << pos;
+  {
     QListWidgetItem* item = m_layerList->itemAt(pos);
     if ( !item ) return;
     QMenu menu(this);
@@ -896,6 +940,7 @@ void MainWindow::showLayerContextMenu( const QPoint& pos )
             qInfo() << " Pixmap Size:" << pixmapSize;
     });
     menu.exec(m_layerList->viewport()->mapToGlobal(pos));
+  }
 }
 
 void MainWindow::deleteLayer()
@@ -1087,7 +1132,7 @@ void MainWindow::updateControlButtonState()
     bool isB = sender() == m_lassoControlAction ? 1 : 0;
     bool isC = sender() == m_maskControlAction ? 1 : 0;
     bool isD = sender() == m_polygonControlAction ? 1 : 0;
-    bool isE = sender() == m_layerControlAction ? 1 : 0;
+    bool isE = sender() == m_layerControlAction ? 1 : 0; // *** *** ***
     // --- ---
     bool paintIsChecked = m_paintControlAction->isChecked();
     bool lassoIsChecked = m_lassoControlAction->isChecked();
@@ -1144,6 +1189,14 @@ void MainWindow::updateControlButtonState()
      m_lassoToolbar->setVisible(false);
      m_maskToolbar->setVisible(false);
      m_polygonToolbar->setVisible(false);
+    }
+    // --- ---
+    if ( !isE ) {
+      m_canvasWarpLayerToolbar->setVisible(false);
+      m_mirrorLayerToolbar->setVisible(false);
+      m_rotateLayerToolbar->setVisible(false);
+      m_scaleLayerToolbar->setVisible(false);
+      m_perspectiveLayerToolbar->setVisible(false);
     }
     // --- ---
     if ( m_paintControlAction->isChecked() ) {
@@ -1229,6 +1282,8 @@ QComboBox* MainWindow::buildDefaultColorComboBox( const QString& name )
 
 void MainWindow::createToolbars()
 {
+  qDebug() << "MainWindow::createToolbars(): Processing...";
+  {
     // ============================================================
     // create first toolbar
     // ============================================================
@@ -1367,13 +1422,14 @@ void MainWindow::createToolbars()
     m_selectLayerItem->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_layerToolbar->addWidget(m_selectLayerItem);
     connect(m_selectLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
-     qCDebug(logEditor) << "MainWindow::createToolbars(): name=" << text;
+      m_selectedLayerItemName = text;
     });
     // --- operation modus ---
     m_transformLayerItem = new QComboBox();
-    m_transformLayerItem->addItems({"Translate","Rotate","Scale","Flip","Flop","Perspective","Cage transform"}); // Perspective
+    m_transformLayerItem->addItems({"Translate","Rotate","Scale","Mirror","Perspective","Cage transform"}); // Perspective
     m_layerToolbar->addWidget(m_transformLayerItem);
     connect(m_transformLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
+      // --- get transform mode ---
       LayerItem::OperationMode transformMode = LayerItem::OperationMode::None;
       if ( text.startsWith("Translate") ) transformMode = LayerItem::OperationMode::Translate;
       else if ( text.startsWith("Rotate") ) transformMode = LayerItem::OperationMode::Rotate;
@@ -1391,27 +1447,34 @@ void MainWindow::createToolbars()
       m_canvasWarpLayerToolbar->setVisible(cageWrapLayerIsVisible);
       bool mirrorLayerIsVisible = transformMode == LayerItem::OperationMode::Flip ? true : false;
       m_mirrorLayerToolbar->setVisible(mirrorLayerIsVisible);
+      bool perspectiveLayerIsVisible = transformMode == LayerItem::OperationMode::Perspective ? true : false;
+      m_perspectiveLayerToolbar->setVisible(perspectiveLayerIsVisible);
       
+      // --- set operation mode ---
       m_imageView->setLayerOperationMode(transformMode);
+      
+      // --- set visibility of helpers ---
+      m_imageView->setOverlayVisibility(1,false);  // hide transform overlay
+      m_imageView->setOverlayVisibility(2,false);  // hidemperepective overlay
+       
     });
     
     // --- sub toolbar layer scale ---
     m_scaleLayerToolbar = addToolBar(tr("ScaleLayer"));
-    QCheckBox* isotropScaleCheck = new QCheckBox("Isotrop scaling", this);
-    isotropScaleCheck->setToolTip("Enable isotropic scaling.");
-    isotropScaleCheck->setChecked(true);
-    // connect(isotropScaleCheck, &QCheckBox::toggled, m_imageView, &ImageView::setCageWarpFixBoundary);
-    m_scaleLayerToolbar->addWidget(isotropScaleCheck);
+    m_isotropScaleCheck = new QCheckBox("Isotrop scaling", this);
+    m_isotropScaleCheck->setToolTip("Enable isotropic scaling.");
+    m_isotropScaleCheck->setChecked(true);
+    m_scaleLayerToolbar->addWidget(m_isotropScaleCheck);
     m_scaleLayerToolbar->setVisible(false);
     
     // --- sub toolbar layer mirror ---
     m_mirrorLayerToolbar = addToolBar(tr("MirrorLayer"));
     QLabel* mirrorDirectionLabel = new QLabel(" Mirror Direction:");
     m_mirrorLayerToolbar->addWidget(mirrorDirectionLabel);
-    QComboBox* mirrorDirectionCombo = new QComboBox();
-    mirrorDirectionCombo->addItems({"Horizontal","Vertical"});
-    mirrorDirectionCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-    m_mirrorLayerToolbar->addWidget(mirrorDirectionCombo);
+    m_mirrorDirectionCombo = new QComboBox();
+    m_mirrorDirectionCombo->addItems({"Horizontal","Vertical"});
+    m_mirrorDirectionCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_mirrorLayerToolbar->addWidget(m_mirrorDirectionCombo);
     m_mirrorLayerToolbar->setVisible(false);
     
     // --- sub toolbar layer rotate ---
@@ -1420,15 +1483,25 @@ void MainWindow::createToolbars()
     m_rotateLayerToolbar->addWidget(rotationLayerAngleLabel);
     m_rotationLayerAngleSpin = new QDoubleSpinBox();
     m_rotationLayerAngleSpin->setRange(-180.0,180.0);
-    m_rotationLayerAngleSpin->setSingleStep(1.0);
+    m_rotationLayerAngleSpin->setSingleStep(EditorStyle::instance().rotationSingleStep());
     m_rotationLayerAngleSpin->setValue(0.0);
     m_rotationLayerAngleSpin->setWrapping(true);
     connect(m_rotationLayerAngleSpin, &QDoubleSpinBox::valueChanged, m_imageView, [this](double value){
       LayerItem *layer = m_imageView->getSelectedItem();
       if ( layer ) layer->setRotationAngle(value);
+      else showMessage("No image layer selected.",1);
     });
     m_rotateLayerToolbar->addWidget(m_rotationLayerAngleSpin);
     m_rotateLayerToolbar->setVisible(false);
+    
+    // --- sub toolbar layer perspective ---
+    m_perspectiveLayerToolbar = addToolBar(tr("PerspectiveLayer"));
+    QPushButton *resetPerspectiveAction = new QPushButton("Reset");
+    connect(resetPerspectiveAction, &QPushButton::clicked, this, [this]() {
+      qDebug() << " pressed reset qpushbutton ";
+    });
+    m_perspectiveLayerToolbar->addWidget(resetPerspectiveAction);
+    m_perspectiveLayerToolbar->setVisible(false);
     
     // --- sub toolbar layer cage control ---
     m_canvasWarpLayerToolbar = addToolBar(tr("CanvasWarpLayer"));
@@ -1622,11 +1695,26 @@ void MainWindow::createToolbars()
     QAction *polygonCreateLayerAction = new QAction(tr("Create new polygon layer"), this);
     connect(polygonCreateLayerAction, &QAction::triggered, m_imageView, &ImageView::createPolygonLayer);
     m_polygonToolbar->addAction(polygonCreateLayerAction);
+  }
+}
 
+void MainWindow::showMessage( const QString& message, int msgType )
+{
+  if ( msgType == 1 ) {
+    m_messageLabel->setStyleSheet("QLabel { color : red; font-weight: bold; }");
+    m_messageLabel->setText(QString("ERROR: %1").arg(message));
+    return;
+  }
+  m_messageLabel->setStyleSheet("QLabel { color : black; font-weight: bold; }");
+  m_messageLabel->setText(message);
 }
 
 void MainWindow::createStatusbar()
 {
+    m_messageLabel = new QLabel("Ready", this);
+    m_messageLabel->setFrameStyle(QFrame::NoFrame);
+    statusBar()->insertWidget(0, m_messageLabel);
+    
 	QLabel* scaleLabel = new QLabel(this);
     QLabel* posLabel   = new QLabel(this);
     QLabel* cursorColorLabel = new QLabel(this);
@@ -1674,6 +1762,10 @@ double MainWindow::getLayerOperationParameter( int mode )
 {
   if ( mode == LayerItem::OperationMode::Rotate ) {
     return  m_rotationLayerAngleSpin->value();
+  } else if ( mode == LayerItem::OperationMode::Scale ) {
+    return m_isotropScaleCheck->isChecked() ? +1 : -1;
+  } else if ( mode == LayerItem::OperationMode::Flip ) {
+    return m_mirrorDirectionCombo->currentIndex() == 1 ? +1 : -1;
   }
   return 0.0;
 }
@@ -1694,9 +1786,21 @@ void MainWindow::info()
 
 void MainWindow::setLayerOperationMode( int mode ) 
 {
-  qCDebug(logEditor) << "MainWindow::setLayerOperationMode(): mode =" << mode;
+  qDebug() << "MainWindow::setLayerOperationMode(): mode =" << mode;
   {
-     m_transformLayerItem->setCurrentIndex(mode-3);
+    // OLDOLDOLD: m_transformLayerItem->setCurrentIndex(mode-3);
+    switch ( mode ) {
+      case LayerItem::OperationMode::Translate:   m_transformLayerItem->setCurrentIndex(0);  break;
+      case LayerItem::OperationMode::Rotate:      m_transformLayerItem->setCurrentIndex(1);  break;
+      case LayerItem::OperationMode::Scale:       m_transformLayerItem->setCurrentIndex(2);  break;
+      case LayerItem::OperationMode::Flip:
+      case LayerItem::OperationMode::Flop: 
+         // m_mirrorDirectionCombo->setCurrentIndex(mode-6);         
+         m_transformLayerItem->setCurrentIndex(3);  
+         break;
+      case LayerItem::OperationMode::Perspective: m_transformLayerItem->setCurrentIndex(4);  break;
+      case LayerItem::OperationMode::CageWarp:    m_transformLayerItem->setCurrentIndex(5);  break;
+    }
   }
 }
 

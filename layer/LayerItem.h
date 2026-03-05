@@ -63,6 +63,7 @@ class LayerItem : public QGraphicsPixmapItem
     QString checksum() const { return m_checksum; }
     QString name() const;
     
+    void setIsSelected( bool isSelected );
     void setMirror( int plane );
     void setRotationAngle( double value );
     void setImageTransform( const QTransform& transform, bool combine = false );

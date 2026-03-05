@@ -20,6 +20,7 @@
 #include <QPainter>
 #include <QtMath>
 
+#include "../core/Config.h"
 #include "../util/BrushUtils.h"
 #include "../util/Compress.h"
 
@@ -70,7 +71,7 @@ PaintStrokeCommand::PaintStrokeCommand( LayerItem* layer,
 // --------------------------------  --------------------------------
 void PaintStrokeCommand::paint( QImage &img )
 {
-  // std::cout << "PaintStrokeCommand::paint(): image=(" << img.width() << "x" << img.height() << "), type=" << img.format() << ", npoints=" << m_points.size() << std::endl;
+  qCDebug(logEditor)<< "PaintStrokeCommand::paint(): image=(" << img.width() << "x" << img.height() << "), type=" << img.format() << ", npoints=" << m_points.size();
   {
     if ( m_points.size() == 1 ) {
       BrushUtils::dab(
@@ -99,7 +100,7 @@ void PaintStrokeCommand::paint( QImage &img )
 // --------------------------------  --------------------------------
 void PaintStrokeCommand::undo()
 {
-  // std::cout << "PaintStrokeCommand::undo(): Processing..." << std::endl;
+  qCDebug(logEditor) << "PaintStrokeCommand::undo(): Processing...";
   {
     if ( !m_layer || m_backup.isNull() )
         return;
@@ -112,7 +113,7 @@ void PaintStrokeCommand::undo()
 
 void PaintStrokeCommand::redo()
 {
-  // std::cout << "PaintStrokeCommand::redo(): Processing..." << std::endl;
+  qCDebug(logEditor) << "PaintStrokeCommand::redo(): Processing...";
   {
     if ( m_silent || !m_layer || m_points.isEmpty() )
       return;

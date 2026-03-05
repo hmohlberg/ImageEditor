@@ -16,6 +16,8 @@
 */
 
 #include "PerspectiveWarpCommand.h"
+
+#include "../core/Config.h"
 #include "../layer/LayerItem.h"
 
 PerspectiveWarpCommand::PerspectiveWarpCommand(
@@ -53,7 +55,7 @@ void PerspectiveWarpCommand::redo()
 
 void PerspectiveWarpCommand::apply( const QVector<QPointF>& quad )
 {
-  qDebug() << "PerspectiveWarpCommand::apply(): Processing...";
+  qCDebug(logEditor) << "PerspectiveWarpCommand::apply(): Processing...";
   {
     if ( !m_layer || quad.size() != 4 ) return;
     QRectF r = m_layer->boundingRect();

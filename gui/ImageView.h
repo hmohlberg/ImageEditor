@@ -56,7 +56,7 @@ class ImageView : public QGraphicsView
 {
     Q_OBJECT
     
-public:
+ public:
 
     enum MaskTool { None, MaskPaint, MaskErase };
     enum MaskCutTool { Ignore, Mask, OnlyMask, Copy, Inpainting };
@@ -98,9 +98,11 @@ public:
     LayerItem::OperationMode getPolygonOperationMode() const { return m_polygonOperationMode; }
     LayerItem::OperationMode getLayerOperationMode() const { return m_layerOperationMode; }
     
+    LayerItem* getLayerItem( const QString& name );
     LayerItem* getSelectedItem( bool isActiveCageItem = false );
     LayerItem* currentLayer() const;
     LayerItem* baseLayer();
+    
     EditablePolygonCommand* getPolygonUndoCommand( const QString& name = "", bool isSelected = false );
     QImage& getImage() { return m_image; };
     QGraphicsScene* getScene() const { return m_scene; }
@@ -132,6 +134,7 @@ public:
     void setCageWarpFixBoundary( bool isChecked );
     void setCageWarpRelaxationSteps( int nRelaxationSteps );
     void setCageWarpStiffness( double stiffness );
+    void setOverlayVisibility( int overlayType, bool isVisible );
     void setCageVisible( LayerItem* layer, LayerItem::OperationMode mode, bool isVisible );
     void setMaskTool( MaskTool t );
     void setMaskCutTool( const QString&, MaskCutTool t );
@@ -139,6 +142,7 @@ public:
     void saveMaskImage( const QString& filename );
     void loadMaskImage( const QString& filename );
     void removeOperationsByIdUndoStack( int id = -1 );
+    void removeOperationsByIndexUndoStack( const QString& name, int index = 0 );
     void rebuildUndoStack();
     void forcedUpdate();
     
@@ -147,7 +151,7 @@ public:
     
     void printself();
 
-signals:
+ signals:
 
     void cursorColorChanged( const QColor& color );
     void pickedColorChanged( const QColor& color );
@@ -156,7 +160,7 @@ signals:
     void lassoLayerAdded();
     void layerAdded();
 
-protected:
+ protected:
 
     void keyPressEvent( QKeyEvent* e ) override;
     void mousePressEvent( QMouseEvent* event ) override;
@@ -166,7 +170,7 @@ protected:
     void wheelEvent( QWheelEvent* event ) override;
     void drawForeground( QPainter* painter, const QRectF& rect ) override;
 
-private:
+ private:
 
     LassoCutCommand* createNewLayer( const QPolygonF& polygon, const QString& name );
     void setEnableTransformMode( LayerItem* layer );

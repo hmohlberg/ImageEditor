@@ -84,10 +84,10 @@ void LayerItem::init()
              QGraphicsItem::ItemIsFocusable);
   setTransformationMode(Qt::SmoothTransformation);
   setAcceptedMouseButtons(Qt::LeftButton);
-  // setShapeMode(QGraphicsPixmapItem::BoundingRectShape);
-  setShapeMode(QGraphicsPixmapItem::MaskShape);
+  setShapeMode(QGraphicsPixmapItem::BoundingRectShape);
+  // setShapeMode(QGraphicsPixmapItem::MaskShape); // the better choice but complex
   
-  // setZValue(0);
+  setZValue(2);
   m_showBoundingBox = true;
 
   // default color  
@@ -105,7 +105,7 @@ void LayerItem::init()
 // ------------------------ Self info ------------------------
 void LayerItem::printself( bool debugSave )
 {
-  qInfo() << " LayerItem::printself(): name =" << name() << ", id =" << m_index << ", visible =" << isVisible();
+  qInfo() << " LayerItem::printself(): name =" << name() << ", id =" << m_index << ", visible =" << isVisible() << ", zValue =" << zValue();
   QRectF rect = m_nogui ? m_image.rect() : boundingRect();
   QString geometry = QString("%1x%2+%3+%4").arg(rect.width()).arg(rect.height()).arg(pos().x()).arg(pos().y());
   qInfo() << "  + position =" << pos();
@@ -212,19 +212,26 @@ void LayerItem::updateOriginalImage() {
   m_originalImage = m_image;
 }
 
+// ------------------------ Selected ------------------------
+void LayerItem::setIsSelected( bool isSelected )
+{
+  qDebug() << "LayerItem::setIsSelected(): name =" << name() << ", selected =" << isSelected;
+  QGraphicsItem::setSelected(isSelected);
+}
+
 // ------------------------ Mirror ------------------------
 void LayerItem::setMirror( int mirrorPlane ) {
   qCDebug(logEditor) << "LayerItem::setMirror(): mirrorPlane=" << mirrorPlane;
   {
-    #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-     QImage flippedImage = m_image.mirrored(mirrorPlane == 1 ? Qt::Vertical : Qt::Horizontal);
-    #elif QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
-     QImage flippedImage = m_image.flipped(mirrorPlane == 1 ? Qt::Vertical : Qt::Horizontal);
-    #else
-     QImage flippedImage = m_image.mirrored(mirrorPlane == 1 ? Qt::Vertical : Qt::Horizontal);
-    #endif
-    m_image = flippedImage;
-    updatePixmap();
+    if ( mirrorPlane > 0 ) {
+      #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+       QImage flippedImage = m_image.flipped(mirrorPlane == 1 ? Qt::Vertical : Qt::Horizontal);
+      #else
+       QImage flippedImage = m_image.mirrored(mirrorPlane == 1 ? Qt::Vertical : Qt::Horizontal);
+      #endif
+      m_image = flippedImage;
+      updatePixmap();
+    }
   }
 }
 
@@ -239,14 +246,14 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
       return;
     }
     // *** hard QImage transformation ***
-    qDebug() << " + alternative process for case where no pixmap is available...";
+    qDebug() << "LayerItem::setImageTransform(): ALTERNATIVE PROCESS FOR CASE WHERE NO PIXMAP IS AVAILABLE";
     // transform image
     QPointF sceneCenter = mapToScene(QRectF(pixmap().rect()).center());
-    QPointF imageCenter = QRectF(m_originalImage.rect()).center();
+    QPointF imageCenter = QRectF(m_image.rect()).center(); // m_originalImage
     m_totalTransform.translate(imageCenter.x(), imageCenter.y());
     m_totalTransform *= transform; // This is my actual rotation
     m_totalTransform.translate(-imageCenter.x(), -imageCenter.y());
-    m_image = m_originalImage.transformed(m_totalTransform, Qt::SmoothTransformation);
+    m_image = m_image.transformed(m_totalTransform, Qt::SmoothTransformation);  // m_originalImage
     QPointF newImageCenter(m_image.width() / 2.0, m_image.height() / 2.0);
     setPos(sceneCenter - newImageCenter);
     // reset transform
@@ -648,9 +655,11 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
       } else if ( m_operationMode == OperationMode::Perspective ) {
           qCDebug(logEditor) << " + perpective call +";
       } else if ( m_operationMode == OperationMode::Flip ) {
-         m_undoStack->push(new MirrorLayerCommand(this, m_index, 1));
-      } else if ( m_operationMode == OperationMode::Flop ) {
-         m_undoStack->push(new MirrorLayerCommand(this, m_index, 2));
+          if ( MainWindow::instance()->getLayerOperationParameter(LayerItem::OperationMode::Flip) > 0 ) {
+            m_undoStack->push(new MirrorLayerCommand(this, m_index, 1));
+          } else {
+            m_undoStack->push(new MirrorLayerCommand(this, m_index, 2));
+          }
       }
     }
   }
@@ -658,11 +667,16 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
 {
-  qCDebug(logEditor) << "LayerItem::mousePressEvent(): layer =" << name() << ", operationMode =" << m_operationMode << ", active=" << m_mouseOperationActive;
+  qDebug() << "LayerItem::mousePressEvent(): layer =" << name() << ", zValue = " << zValue() << ", operationMode =" << m_operationMode << ", active=" << m_mouseOperationActive;
   {
+    // qDebug() << " selectedLayerItemName =" << MainWindow::instance()->getSelectedLayerItemName();
+    // if ( MainWindow::instance()->getSelectedLayerItemName() != name() ) {
+    //   event->ignore();
+    //   return;
+    // }
     if ( event->button() != Qt::LeftButton ) {
-     QGraphicsPixmapItem::mousePressEvent(event);
-     return;
+      QGraphicsPixmapItem::mousePressEvent(event);
+      return;
     }
     MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
     if ( isValidMouseEventOperation() && parent != nullptr ) {

@@ -23,6 +23,7 @@
 
 #include "LayerItem.h"
 #include "TransformHandleItem.h"
+#include "../core/Config.h"
 #include "../undo/PerspectiveWarpCommand.h"
 
 PerspectiveOverlay::PerspectiveOverlay( LayerItem* layer, QUndoStack* undoStack )
@@ -62,7 +63,7 @@ void PerspectiveOverlay::paint( QPainter* p, const QStyleOptionGraphicsItem*, QW
 
 void PerspectiveOverlay::updateOverlay( bool fromStart )
 {
-  qDebug() << "PerspectiveOverlay::updateOverlay(): fromStart =" << fromStart;
+  qCDebug(logEditor) << "PerspectiveOverlay::updateOverlay(): fromStart =" << fromStart;
   {
     if ( !m_layer || m_startQuad.size() != 4 || m_currentQuad.size() != 4 ) return;
 
@@ -93,7 +94,7 @@ void PerspectiveOverlay::updateOverlay( bool fromStart )
 
 void PerspectiveOverlay::createHandles()
 {
-  qDebug() << "PerspectiveOverlay::createHandles(): Processing...";
+  qCDebug(logEditor) << "PerspectiveOverlay::createHandles(): Processing...";
   {
     auto add = [&](PerspectiveCorner c)
     {
@@ -110,7 +111,7 @@ void PerspectiveOverlay::createHandles()
 
 void PerspectiveOverlay::updateHandlePositions()
 {
-  qDebug() << "PerspectiveOverlay::updateHandlePositions(): currentQuad =" << m_currentQuad;
+  qCDebug(logEditor) << "PerspectiveOverlay::updateHandlePositions(): currentQuad =" << m_currentQuad;
   {
     if ( m_currentQuad.size() != 4 )
         return;
@@ -123,7 +124,7 @@ void PerspectiveOverlay::updateHandlePositions()
 
 void PerspectiveOverlay::beginWarp()
 {
-  qDebug() << "PerspectiveOverlay::beginWarp(): Processing...";
+  qCDebug(logEditor) << "PerspectiveOverlay::beginWarp(): Processing...";
   {
     if ( !m_layer ) return;
     m_dragging = true;
@@ -135,7 +136,7 @@ void PerspectiveOverlay::beginWarp()
 
 void PerspectiveOverlay::endWarp()
 {
-  qDebug() << "PerspectiveOverlay::endWarp(): Processing...";
+  qCDebug(logEditor) << "PerspectiveOverlay::endWarp(): Processing...";
   {
     if ( !m_layer ) return;
     if ( !m_dragging ) return;
@@ -161,7 +162,7 @@ void PerspectiveOverlay::commitTransformation()
 
 void PerspectiveOverlay::moveCorner( PerspectiveCorner corner, const QPointF& scenePos )
 {
-  qDebug() << "PerspectiveOverlay::moveCorner(): corner = " << int(corner) << ", pos :" << scenePos;
+  qCDebug(logEditor) << "PerspectiveOverlay::moveCorner(): corner = " << int(corner) << ", pos :" << scenePos;
   {
     if ( !m_layer || !m_dragging ) return;
     QPointF localPos = m_sceneToLocalSnapshot.map(scenePos);

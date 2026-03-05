@@ -24,9 +24,10 @@
 MirrorLayerCommand::MirrorLayerCommand( LayerItem* layer, const int idx, int mirrorPlane, QUndoCommand* parent )
         : AbstractCommand(parent)
         , m_layer(layer)
-        , m_mirrorPlane(mirrorPlane)
+        , m_mirrorPlane(abs(mirrorPlane))
         , m_layerId(idx)
 {
+    m_isMirroring = mirrorPlane > 0 ? true : false;
     QString planeName = mirrorPlane == 1 ? "Vertical" : "Horizontal";
     setText(QString("Mirror %1 Layer %2").arg(planeName).arg(idx));
     if ( planeName == "Vertical" ) {
@@ -47,27 +48,44 @@ MirrorLayerCommand::MirrorLayerCommand( LayerItem* layer, const int idx, int mir
      setIcon(AbstractCommand::getIconFromSvg(horizontalFlipSvg));
     }
 }
+
+// -------------- Undo/Redo  -------------- 
+void MirrorLayerCommand::undo()
+{
+  qCDebug(logEditor)  << "MirrorLayerCommand::undo(): Processing...";
+  if ( m_layer && m_isMirroring ) m_layer->setMirror(m_mirrorPlane); 
+}
+
+void MirrorLayerCommand::redo()
+{
+  qCDebug(logEditor) << "MirrorLayerCommand::redo(): Processing...";
+  if ( m_layer && !m_silent && m_isMirroring ) m_layer->setMirror(m_mirrorPlane);
+}
  
 // -------------- Merge  --------------    
 bool MirrorLayerCommand::mergeWith( const QUndoCommand* other )
 {
+  qCDebug(logEditor) << "MirrorLayerCommand::mergeWith(): Processing...";
+  {
    if ( other->id() != id() )
         return false;
     auto* cmd = static_cast<const MirrorLayerCommand*>(other);
     if ( cmd->m_layer != m_layer || cmd->m_mirrorPlane != m_mirrorPlane )
         return false;
     m_mirrorPlane = cmd->m_mirrorPlane;
+    m_isMirroring = m_isMirroring == cmd->m_isMirroring ? false : true;
     return true;
+   }
 }
 
 // -------------- history related methods  -------------- 
 QJsonObject MirrorLayerCommand::toJson() const
 {
-   QJsonObject obj = AbstractCommand::toJson();
-   obj["layerId"] = m_layerId;
-   obj["mirrorPlane"] = m_mirrorPlane;
-   obj["type"] = type();
-   return obj;
+    QJsonObject obj = AbstractCommand::toJson();
+    obj["layerId"] = m_layerId;
+    obj["mirrorPlane"] = m_isMirroring ? m_mirrorPlane : -m_mirrorPlane;
+    obj["type"] = type();
+    return obj;
 }
 
 MirrorLayerCommand* MirrorLayerCommand::fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers )

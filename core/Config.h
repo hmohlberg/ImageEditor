@@ -49,8 +49,7 @@
     }
     void load( const QString &path ) {
       QSettings settings(path, QSettings::IniFormat);
-      // qDebug() << "Verfügbare Schlüssel:" << settings.allKeys();
-      // qDebug output
+      // qDebug() << "Available keys:" << settings.allKeys();
       m_windowSize = settings.value("Main/windowSize","default").toString();
       m_loggingIsEnabled = settings.value("Main/enableLogging", false).toBool();
       if ( m_loggingIsEnabled ) {
@@ -68,20 +67,25 @@
       if ( rawWidth >= 0 && rawWidth < 20 ) {
         m_lassoWidth = rawWidth;
       }
+      // rotation angle
+      m_rotationSingleStep = settings.value("ImageLayer/rotationSingleStep", 1.0).toDouble();
     }
     QColor lassoColor() const { return m_lassoColor; }
     QString windowSize() const { return m_windowSize; }
     int lassoWidth() const { return m_lassoWidth; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
+    double rotationSingleStep() const { return m_rotationSingleStep; }
 
    private:
    
-    EditorStyle() : m_lassoColor(Qt::yellow), m_lassoWidth(0), m_loggingIsEnabled(true), m_windowSize("default") {}
+    EditorStyle() : m_lassoColor(Qt::yellow), m_lassoWidth(0), m_rotationSingleStep(1.0),
+                      m_loggingIsEnabled(true), m_windowSize("default") {}
     
     QColor m_lassoColor;
     QString m_windowSize;
     int m_lassoWidth;
     bool m_loggingIsEnabled;
+    double m_rotationSingleStep;
     
  };
 

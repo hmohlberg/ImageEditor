@@ -26,7 +26,7 @@
 #include <iostream>
 
 TransformHandleItem::TransformHandleItem( LayerItem* layer, Role role )
-    : QGraphicsEllipseItem(-5, -5, 10, 10),
+    : QGraphicsEllipseItem(-10, -10, 20, 20),
       m_layer(layer),
       m_role(role)
 {
@@ -34,14 +34,14 @@ TransformHandleItem::TransformHandleItem( LayerItem* layer, Role role )
   {
     setBrush(role == Rotate ? Qt::yellow : Qt::white);
     setPen(QPen(Qt::black, 0));
-    setFlag(ItemIgnoresTransformations);
+    setFlag(ItemIgnoresTransformations, false);
     setCursor(Qt::SizeAllCursor);
     setZValue(2000);
   }
 }
 
 TransformHandleItem::TransformHandleItem( HandleType type, TransformOverlay* overlay )
-    : QGraphicsEllipseItem(-6, -6, 12, 12)
+    : QGraphicsEllipseItem(-12, -12, 24, 24)
     , m_type(type)
     , m_overlay(overlay)
 {
@@ -50,6 +50,7 @@ TransformHandleItem::TransformHandleItem( HandleType type, TransformOverlay* ove
      pen.setWidth(1);
      setPen(pen);
      setZValue(9999999);
+     setFlag(ItemIgnoresTransformations, false);
      setFlag(QGraphicsItem::ItemIsMovable, false);
      setAcceptedMouseButtons(Qt::LeftButton);
      switch ( m_type ) {
@@ -72,13 +73,14 @@ TransformHandleItem::TransformHandleItem( HandleType type, TransformOverlay* ove
 }
 
 TransformHandleItem::TransformHandleItem( HandleType type, PerspectiveOverlay* overlay )
-    : QGraphicsEllipseItem(-6, -6, 12, 12)
+    : QGraphicsEllipseItem(-12, -12, 24, 24)
     , m_type(type)
     , m_perspectiveOverlay(overlay)
 {
     setBrush(Qt::cyan);
     setPen(QPen(Qt::black, 1));
     setZValue(9999999);
+    setFlag(ItemIgnoresTransformations, false);
     setFlag(QGraphicsItem::ItemIsMovable, false);
     setAcceptedMouseButtons(Qt::LeftButton);
     switch ( m_type ) {
@@ -93,6 +95,9 @@ TransformHandleItem::TransformHandleItem( HandleType type, PerspectiveOverlay* o
 }
 
 // --------------------- Mouse events ---------------------
+// - m_overlay != nullptr: scale
+// - m_perspectiveOverlay != nullptr: perspective
+// - m_layer != nullptr: cage warp
 void TransformHandleItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
 {
  qCDebug(logEditor) << "TransformHandleItem::mousePressEvent(): overlay=" << (m_overlay?"ok":"null") 

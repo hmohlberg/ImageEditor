@@ -44,9 +44,10 @@ class Layer {
     bool m_visible = true;
     bool m_active = true;
     
+    QGraphicsItem* m_item = nullptr;
+    
     QImage m_image;
     QPolygon m_polygon;
-    QGraphicsItem* m_item = nullptr;
     bool m_linkedToImage = false;
     
     Layer() = default;

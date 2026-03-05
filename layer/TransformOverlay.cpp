@@ -24,8 +24,11 @@
 #include "LayerItem.h"
 #include "TransformHandleItem.h"
 #include "CenterHandleItem.h"
+
+#include "../gui/MainWindow.h"
 #include "../undo/TransformLayerCommand.h"
 
+// --------------------- Constructor ---------------------
 TransformOverlay::TransformOverlay( LayerItem* layer, QUndoStack* undoStack )
     : m_layer(layer)
     , m_undoStack(undoStack)
@@ -35,9 +38,10 @@ TransformOverlay::TransformOverlay( LayerItem* layer, QUndoStack* undoStack )
     updateOverlay();
 }
 
+// --------------------- Methods ---------------------
 QVariant TransformOverlay::itemChange( GraphicsItemChange change, const QVariant &value ) 
 {
-  // qDebug() << "TransformOverlay::itemChange(): Processing...";
+  qCDebug(logEditor) << "TransformOverlay::itemChange(): Processing...";
   {
     if ( change == ItemVisibleHasChanged ) {
         bool isVisible = value.toBool();
@@ -147,7 +151,7 @@ void TransformOverlay::beginTransform()
 
 void TransformOverlay::endTransform()
 {
- // qDebug() << "TransformOverlay::endTransform(): Processing...";
+ qCDebug(logEditor) << "TransformOverlay::endTransform(): Processing...";
  {
     if ( !m_layer )
         return;
@@ -163,7 +167,7 @@ void TransformOverlay::endTransform()
 
 void TransformOverlay::reset()
 {
-  // qDebug() << "TransformOverlay::reset(): Processing";
+  qCDebug(logEditor) << "TransformOverlay::reset(): Processing";
   {
     if ( !m_layer || !m_transformCommand ) return; 
     m_layer->resetTotalTransform();
@@ -175,15 +179,17 @@ void TransformOverlay::reset()
 
 void TransformOverlay::applyHandleDrag( HandleType type, const QPointF& delta )
 {
-  // qDebug() << "TransformOverlay::applyHandleDrag(): Processing...";
+  qCDebug(logEditor) << "TransformOverlay::applyHandleDrag(): Processing...";
   {
     if ( !m_layer ) return;
     
-    bool isotropicScaling = true;
+    // check whether an isotropic scaling is requested
+    bool isotropicScaling = MainWindow::instance()->getLayerOperationParameter(LayerItem::OperationMode::Scale) > 0 ? true : false;
     if ( QApplication::keyboardModifiers() & Qt::AltModifier ) {
       isotropicScaling = false;
     }
 
+    // >>>
     QRectF r = m_layer->boundingRect();
     const qreal minSize = 5.0;
     const qreal aspect = r.height() / r.width(); // Das ursprüngliche Verhältnis

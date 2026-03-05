@@ -108,7 +108,6 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
             for ( int k = ks ; k <= ke ; k++ ) {
               const QUndoCommand* previousActiveCommand = m_undoStack->command(k);
               if ( previousActiveCommand != nullptr ) {
-                // qDebug() << "Previous command :" << previousActiveCommand->text();
                 if ( previousActiveCommand->text().startsWith("Scale Transform") ) {
                   if ( m_transformOverlay != nullptr ) {
                     m_transformOverlay->setVisible(false);
@@ -118,7 +117,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
                    LayerItem *layer = getSelectedItem(true);
                    if ( layer != nullptr ) layer->setCageVisible(false);
                 } else if ( previousActiveCommand->text().startsWith("Perspective Warp") ) {
-                   // qDebug() << " cleaning perspective warp mesh here";
+                   qDebug() << " *** cleaning perspective warp mesh here ***";
                 } else if ( previousActiveCommand->text().startsWith("Editable Polygon") ) {
                    EditablePolygonCommand *polyCommand = const_cast<EditablePolygonCommand*>(
                                             dynamic_cast<const EditablePolygonCommand*>(previousActiveCommand));
@@ -212,6 +211,7 @@ void ImageView::printself()
   qInfo() << " ImageView::printself():";
   qInfo() << "  + Pixmap items in scene:" << getScene()->items().count();
   qInfo() << "  + nEditablePolygons:" << m_editablePolygons.size();
+  qInfo() << "  + undoStackSize:" << m_undoStack->count();
   auto items = getScene()->items();
   for ( QGraphicsItem* item : items ) {
     if ( auto pixmapItem = qgraphicsitem_cast<QGraphicsPixmapItem*>(item) ) {
@@ -258,6 +258,7 @@ void ImageView::forcedUpdate()
   }
 }
 
+// ------------------------ UndoStack -------------------------------------
 void ImageView::rebuildUndoStack()
 {
   if ( !m_undoStack || m_layers.size() == 0 ) return;
@@ -358,6 +359,31 @@ void ImageView::rebuildUndoStack()
     m_undoStack->setIndex(0);
     m_undoStack->setIndex(m_undoStack->count());
     
+  }
+}
+
+// need a re-build of the undostack stack if only the commands of layer N are involved
+void ImageView::removeOperationsByIndexUndoStack( const QString &name, int index )
+{
+  qDebug() << "ImageView::removeOperationsByIndexUndoStack(): name =" << name << ", index =" << index;
+  {
+    if ( index < 0 || index >= m_undoStack->count() ) {
+      return;
+    }
+    QList<QUndoCommand*> keep;
+    // undo commands
+    m_undoStack->setIndex(index);
+    // restore
+    for ( int i=0 ; i<index ; ++i ) {
+      auto* cmd = const_cast<QUndoCommand*>(m_undoStack->command(i));
+      keep.append(static_cast<AbstractCommand*>(cmd)->clone());
+    }
+    // clear
+    m_undoStack->clear();
+    // rebuild
+    for ( auto* cmd : keep ) {
+      m_undoStack->push(cmd);
+    }
   }
 }
 
@@ -633,10 +659,8 @@ void ImageView::keyPressEvent( QKeyEvent* event )
              transformMode = LayerItem::OperationMode::Scale;
           } else if ( event->key() == Qt::Key_R ) {
              transformMode = LayerItem::OperationMode::Rotate;
-          } else if ( event->key() == Qt::Key_V ) {
-             transformMode = LayerItem::OperationMode::Flip; 
-          } else if ( event->key() == Qt::Key_F ) {
-             transformMode = LayerItem::OperationMode::Flop; 
+          } else if ( event->key() == Qt::Key_M ) {
+             transformMode = LayerItem::OperationMode::Flip;
           } else if ( event->key() == Qt::Key_W ) {
              transformMode = LayerItem::OperationMode::CageWarp; 
           } else if ( event->key() == Qt::Key_P ) {
@@ -676,7 +700,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
 {
   MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
   if ( mainWindow == nullptr ) return;  
-  qCDebug(logEditor) << "ImageView::mousePressEvent(): operationMode = " << mainWindow->getOperationMode() << ", polygonEnabled =" << m_polygonEnabled;
+  qDebug() << "ImageView::mousePressEvent(): operationMode = " << mainWindow->getOperationMode() << ", polygonEnabled =" << m_polygonEnabled;
   {
     if ( !scene() )
         return;     
@@ -732,17 +756,18 @@ void ImageView::mousePressEvent( QMouseEvent* event )
       }
       if ( clickedItem ) {
         clickedItem->setOperationMode(m_layerOperationMode);
+        mainWindow->setSelectedLayer(QString("Layer %1").arg(clickedItem->id()));
         if ( clickedItem->isSelected() == true ) {
-          clickedItem->setSelected(false);  // NO effect. Why?
+          clickedItem->setIsSelected(false);  // NO effect. Why?
         } else {
           for ( auto* item : m_scene->items() ) {
             auto* layer = dynamic_cast<LayerItem*>(item);
             if ( layer && layer != clickedItem )
-                layer->setSelected(false);
+                layer->setIsSelected(false);
           }
-          clickedItem->setSelected(true);
-          mainWindow->setSelectedLayer(QString("Layer %1").arg(clickedItem->id()));
+          clickedItem->setIsSelected(true);
         }
+        // set pointer
         if ( clickedItem->isCageWarp() && clickedItem->cageMesh().isActive() ) {
            m_activeLayer = clickedItem;
            m_selectedLayer = clickedItem;
@@ -796,9 +821,8 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         m_lassoPolygon << scenePos.toPoint();
         if ( !m_lassoPreview ) {
             m_lassoPreview = scene()->addPolygon(QPolygonF(m_lassoPolygon));
+            m_lassoPreview->setZValue(1000);
             m_lassoPreview->setPen(QPen(EditorStyle::instance().lassoColor(), EditorStyle::instance().lassoWidth()));
-            // QColor lassoColor = EditorStyle::instance().lassoColor();
-            // m_lassoPreview->setPen(QPen(Qt::yellow, 0));
         } else {
             m_lassoPreview->setPolygon(QPolygonF(m_lassoPolygon));
         }
@@ -1247,13 +1271,25 @@ void ImageView::cutSelection()
                        QGraphicsItem::ItemIsFocusable);
 
     m_scene->addItem(newLayer);
-    newLayer->setSelected(true);
+    newLayer->setIsSelected(true);
     newLayer->setFocus();
 
     clearSelection();
 }
 
 // ---------------------------- Layer methods -----------------------------
+LayerItem* ImageView::getLayerItem( const QString& name )
+{
+  qCDebug(logEditor) << "ImageView::getLayerItem(): name =" << name;
+  {
+    for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
+      auto* layer = dynamic_cast<LayerItem*>(item);
+      if ( layer ) return layer;
+    }
+    return nullptr;
+  }
+}
+
 LayerItem* ImageView::getSelectedItem( bool isActiveCageItem )
 {
    if ( isActiveCageItem ) {
@@ -1533,7 +1569,7 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     m_undoStack->push(cmd);
     newLayer->setPos(base->mapToScene(bounds.topLeft()));
     newLayer->setZValue(base->zValue()+1);
-    newLayer->setSelected(true);
+    newLayer->setIsSelected(true);
     // newLayer->setShowGreenBorder(true); // falls vorhanden
     // ITEM ALREADY IN SCENE: m_scene->addItem(newLayer);
     base->updatePixmap();
@@ -1795,4 +1831,19 @@ void ImageView::disablePerspectiveWarp()
     scene()->removeItem(m_perspectiveOverlay);
     delete m_perspectiveOverlay;
     m_perspectiveOverlay = nullptr;
+}
+
+// ---------------------------- --------------- -----------------------------
+// ---------------------------- --------------- -----------------------------
+
+void ImageView::setOverlayVisibility( int overlayType, bool isVisible )
+{
+  qDebug() << "ImageView::setOverlayVisibility(): type =" << overlayType << ", visible =" << isVisible;
+  {
+    if ( overlayType == 1 && m_transformOverlay != nullptr ) {
+      m_transformOverlay->setVisible(isVisible);
+    } else if ( overlayType == 1 && m_perspectiveOverlay != nullptr ) {
+     m_perspectiveOverlay->setVisible(isVisible);
+    }
+  }
 }

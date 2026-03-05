@@ -22,6 +22,7 @@
 
 #include "AbstractCommand.h"
 #include "../layer/LayerItem.h"
+#include "../core/Config.h"
 
 class MirrorLayerCommand : public AbstractCommand
 {
@@ -36,9 +37,10 @@ class MirrorLayerCommand : public AbstractCommand
     int id() const override { return 1006; }
     
     QString type() const override { return "MirrorLayer"; }
-    void undo() override { if ( m_layer ) m_layer->setMirror(m_mirrorPlane); }
-    void redo() override { if ( m_layer && !m_silent ) m_layer->setMirror(m_mirrorPlane); }
     bool mergeWith( const QUndoCommand* other ) override;
+    
+    void undo() override;
+    void redo() override;
     
     QJsonObject toJson() const override;
     static MirrorLayerCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers );
@@ -47,6 +49,9 @@ class MirrorLayerCommand : public AbstractCommand
 
     int m_layerId;
     int m_mirrorPlane;
+    
+    bool m_isMirroring;
+    
     LayerItem* m_layer;
     
 };

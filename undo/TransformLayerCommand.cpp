@@ -33,7 +33,7 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer,
       , m_name(name)
       , m_trafoType(trafoType)
 {
-  qCDebug(logEditor) << "TransformLayerCommand::TransformLayerCommand(): trafotype =" << m_trafoType << ", name =" << m_name;
+  qDebug() << "TransformLayerCommand::TransformLayerCommand(): trafotype =" << m_trafoType << ", name =" << m_name;
   {
     m_layerId = layer->id();
     setText(name);
@@ -71,7 +71,7 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer, const QTransform
       , m_oldTransform(oldTransform)
       , m_newTransform(newTransform)
 {
-  qCDebug(logEditor) << "TransformLayerCommand::TransformLayerCommand(): Base...";
+  qDebug() << "TransformLayerCommand::TransformLayerCommand(): Base...";
   {
     m_layerId = layer->id();
     m_name = QString("Scale Transform Layer %1").arg(m_layerId);
@@ -109,7 +109,7 @@ bool TransformLayerCommand::mergeWith( const QUndoCommand *other )
 // -------------------------------- Undo/Redo --------------------------------
 void TransformLayerCommand::undo() 
 {
-  qCDebug(logEditor) << "TransformLayerCommand::undo(): m_oldTransform =" << m_oldTransform;
+  qDebug() << "TransformLayerCommand::undo(): m_oldTransform =" << m_oldTransform;
   {
     if ( !m_layer ) return;
     m_layer->resetTotalTransform();
@@ -122,7 +122,7 @@ void TransformLayerCommand::undo()
 
 void TransformLayerCommand::redo() 
 {
-  qCDebug(logEditor) << "TransformLayerCommand::redo(): m_newTransform =" << m_newTransform;
+  qDebug() << "TransformLayerCommand::redo(): m_newTransform =" << m_newTransform;
   {
     if ( m_silent || !m_layer ) return;
     m_layer->setImageTransform(m_newTransform);
