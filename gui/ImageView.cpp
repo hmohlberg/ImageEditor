@@ -1838,7 +1838,7 @@ void ImageView::disablePerspectiveWarp()
 
 void ImageView::setOverlayVisibility( int overlayType, bool isVisible )
 {
-  qDebug() << "ImageView::setOverlayVisibility(): type =" << overlayType << ", visible =" << isVisible;
+  qCDebug(logEditor) << "ImageView::setOverlayVisibility(): type =" << overlayType << ", visible =" << isVisible;
   {
     if ( overlayType == 1 && m_transformOverlay != nullptr ) {
       m_transformOverlay->setVisible(isVisible);

@@ -780,7 +780,6 @@ void MainWindow::toggleLayerVisibility(  QListWidgetItem* item )
 
 void MainWindow::updateLayerList()
 {
-   qCDebug(logEditor) << "MainWindow::updateLayerList(): Processing...";
    rebuildLayerList();
 }
 
@@ -827,7 +826,7 @@ void MainWindow::rebuildLayerList()
 
 void MainWindow::setSelectedLayer( const QString &name )
 {
-  qDebug() << "MainWindow::setSelectedLayer(): name =" << name;
+  qCDebug(logEditor) << "MainWindow::setSelectedLayer(): name =" << name;
   {
     int index = m_selectLayerItem->findText(name);
     if ( index != -1 ) {
@@ -1282,7 +1281,7 @@ QComboBox* MainWindow::buildDefaultColorComboBox( const QString& name )
 
 void MainWindow::createToolbars()
 {
-  qDebug() << "MainWindow::createToolbars(): Processing...";
+  qCDebug(logEditor) << "MainWindow::createToolbars(): Processing...";
   {
     // ============================================================
     // create first toolbar
@@ -1786,7 +1785,7 @@ void MainWindow::info()
 
 void MainWindow::setLayerOperationMode( int mode ) 
 {
-  qDebug() << "MainWindow::setLayerOperationMode(): mode =" << mode;
+  qCDebug(logEditor) << "MainWindow::setLayerOperationMode(): mode =" << mode;
   {
     // OLDOLDOLD: m_transformLayerItem->setCurrentIndex(mode-3);
     switch ( mode ) {

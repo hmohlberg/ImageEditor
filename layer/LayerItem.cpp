@@ -215,7 +215,7 @@ void LayerItem::updateOriginalImage() {
 // ------------------------ Selected ------------------------
 void LayerItem::setIsSelected( bool isSelected )
 {
-  qDebug() << "LayerItem::setIsSelected(): name =" << name() << ", selected =" << isSelected;
+  qCDebug(logEditor) << "LayerItem::setIsSelected(): name =" << name() << ", selected =" << isSelected;
   QGraphicsItem::setSelected(isSelected);
 }
 
@@ -239,7 +239,7 @@ void LayerItem::setMirror( int mirrorPlane ) {
 // ------------------------ Transform ------------------------
 void LayerItem::resetTotalTransform()
 {
-  qDebug() << "LayerItem::rsetTransform(): Processing...";
+  qDebug() << "LayerItem::resetTransform(): Processing...";
   m_totalTransform = QTransform();
 }
 
