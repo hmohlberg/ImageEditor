@@ -221,17 +221,12 @@ void LayerItem::setIsSelected( bool isSelected )
 
 // ------------------------ Mirror ------------------------
 void LayerItem::setMirror( int mirrorPlane ) {
-  qDebug() << "LayerItem::setMirror(): mirrorPlane=" << mirrorPlane;
+  qCDebug(logEditor) << "LayerItem::setMirror(): mirrorPlane=" << mirrorPlane;
   {
     if ( mirrorPlane > 0 ) {
-      #if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
-       QImage flippedImage = m_image.flipped(mirrorPlane == 1 ? Qt::Vertical : Qt::Horizontal);
-      #else
-       QImage flippedImage = m_image.mirrored(mirrorPlane == 1 ? Qt::Vertical : Qt::Horizontal);
-      #endif
-      m_totalTransform.scale(mirrorPlane == 1 ? +1 : -1,mirrorPlane == 1 ? -1 : +1);
-      m_image = flippedImage;
-      updatePixmap();
+      QTransform transform;
+      transform.scale(mirrorPlane == 1 ? +1 : -1,mirrorPlane == 1 ? -1 : +1);
+      setImageTransform(transform);
     }
   }
 }
@@ -239,9 +234,11 @@ void LayerItem::setMirror( int mirrorPlane ) {
 // ------------------------ Transform ------------------------
 void LayerItem::resetTotalTransform()
 {
-  qDebug() << "LayerItem::resetTotalTransform(): Processing...";
-  m_totalTransform = QTransform();
-  setImageTransform(m_totalTransform);
+  qCDebug(logEditor) << "LayerItem::resetTotalTransform(): Processing...";
+  {
+    m_totalTransform = QTransform();
+    setImageTransform(m_totalTransform);
+  }
 }
 
 void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
@@ -338,7 +335,6 @@ void LayerItem::applyTriangleWarp()
      setPixmap(QPixmap::fromImage(warped.image));
      m_image = warped.image;
      QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
-     m_cageMesh.setOffset();
     } else {
      qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): WARNING: Image isNull...";
     } 
@@ -604,6 +600,20 @@ void LayerItem::setRotationAngle( double value )
 {
   qCDebug(logEditor) << "LayerItem::setRotationAngle(): value =" << value;
   {
+    /* ---
+    // --- set transform ---
+    QPointF c = boundingRect().center();
+    QTransform t = m_startTransform;
+    t.translate(c.x(), c.y());
+    t.rotate(value);
+    t.translate(-c.x(), -c.y());
+    // --- push ---
+    QString name = "Rotate Layer";
+    name += QString(" %1").arg(m_index);
+    TransformLayerCommand::LayerTransformType trafoType = TransformLayerCommand::LayerTransformType::Rotate;
+    m_undoStack->push(new TransformLayerCommand(this, m_startPos, pos(), m_totalTransform, transform(), name, trafoType));
+    m_currentRotation = value;
+    --- */
     // --- create undo command ---
     if ( m_transformLayerCommand == nullptr ) {
       QString name = "Rotate Layer";

@@ -42,24 +42,69 @@ namespace GeometryUtils
     // Barycentric Mapping eines Pixels innerhalb eines Dreiecks
     QPointF barycentric( const QPointF& p, const QVector<QPointF>& triSrc, const QVector<QPointF>& triDst )
     {
-       Q_ASSERT(triSrc.size() == 3 && triDst.size() == 3);
+       // Q_ASSERT(triSrc.size() == 3 && triDst.size() == 3);
        // Dreieck in Vektoren
-       QPointF v0 = triSrc[1] - triSrc[0];
-       QPointF v1 = triSrc[2] - triSrc[0];
-       QPointF v2 = p - triSrc[0];
-       double d00 = QPointF::dotProduct(v0, v0);
-       double d01 = QPointF::dotProduct(v0, v1);
-       double d11 = QPointF::dotProduct(v1, v1);
-       double d20 = QPointF::dotProduct(v2, v0);
-       double d21 = QPointF::dotProduct(v2, v1);
-       double denom = d00 * d11 - d01 * d01;
-       double v = (d11 * d20 - d01 * d21) / denom;
-       double w = (d00 * d21 - d01 * d20) / denom;
-       double u = 1.0 - v - w;
-       QPointF mapped = u*triDst[0] + v*triDst[1] + w*triDst[2];
-       return mapped;
+
+       if( triSrc.size() == 3 && triDst.size() == 3 ) {
+         QPointF v0 = triSrc[1] - triSrc[0];
+         QPointF v1 = triSrc[2] - triSrc[0];
+         QPointF v2 = p - triSrc[0];
+         double d00 = QPointF::dotProduct(v0, v0);
+         double d01 = QPointF::dotProduct(v0, v1);
+         double d11 = QPointF::dotProduct(v1, v1);
+         double d20 = QPointF::dotProduct(v2, v0);
+         double d21 = QPointF::dotProduct(v2, v1);
+         double denom = d00 * d11 - d01 * d01;
+         double v = (d11 * d20 - d01 * d21) / denom;
+         double w = (d00 * d21 - d01 * d20) / denom;
+         double u = 1.0 - v - w;
+         QPointF mapped = u*triDst[0] + v*triDst[1] + w*triDst[2];
+         return mapped;
+       }
+
+       if( triSrc.size() == 4 && triDst.size() == 4 ) {  // ok, it's a quad
+
+         QPointF Q(0,0);
+
+         QPointF v0 = triSrc[0] + triSrc[1] + triSrc[2] + triSrc[3];
+         QPointF v1 = -triSrc[0] + triSrc[1] + triSrc[2] - triSrc[3];
+         QPointF v2 = -triSrc[0] - triSrc[1] + triSrc[2] + triSrc[3];
+         QPointF v3 = triSrc[0] - triSrc[1] + triSrc[2] - triSrc[3];
+
+         for( int iter; iter < 10; iter++ ) {
+
+           QPointF rhs = 4.0 * p - v0 - Q.x() * v1 - Q.y() * v2 - Q.x() * Q.y() * v3;
+           double res = rhs.x() * rhs.x() + rhs.y() * rhs.y();
+           if( res <= 1.0e-10 ) {
+             break;
+           }
+
+           QPointF A0 = v1 + v3 * Q.y();
+           QPointF A1 = v2 + v3 * Q.x();
+
+           // matrix is  [ A0.x()  A1.x() ]
+           //            [ A0.y()  A1.y() ]
+
+           double det = A0.x() * A1.y() - A1.x() * A0.y();
+           if( det >= 0.0 ) return p;  // in this orientation, need det < 0.
+            
+           QPointF delta = { ( A1.y() * rhs.x() - A1.x() * rhs.y() ) / det,
+                             ( A0.x() * rhs.y() - A0.y() * rhs.x() ) / det };
+           Q += delta;
+         }
+
+         double weights[4] = { 0.25 * ( 1 - Q.x() ) * ( 1 - Q.y() ),
+                               0.25 * ( 1 + Q.x() ) * ( 1 - Q.y() ),
+                               0.25 * ( 1 + Q.x() ) * ( 1 + Q.y() ),
+                               0.25 * ( 1 - Q.x() ) * ( 1 + Q.y() ) };
+         QPointF mapped = weights[0] * triDst[0] + weights[1] * triDst[1] +
+                          weights[2] * triDst[2] + weights[3] * triDst[3];
+         return mapped;
+       }
+       return p;
+
     }
-    
+
     // Prüft, ob ein Punkt innerhalb eines Dreiecks liegt
     bool pointInTriangle( const QPointF& p, const QVector<QPointF>& tri )
     {
@@ -94,4 +139,3 @@ namespace GeometryUtils
         return layerTransform.inverted().map(scenePos);
     }
 }
-

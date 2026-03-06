@@ -57,6 +57,8 @@
       } else {
         QLoggingCategory::setFilterRules("editor.graphics.debug=false");
       }
+      // cage quads
+      m_useCageQuads = settings.value("Cage/quads", false).toBool();
       // lasso color
       QString rawColor = settings.value("Lasso/color", "yellow").toString();
       if ( QColor::isValidColorName(rawColor) ) {
@@ -74,17 +76,19 @@
     QString windowSize() const { return m_windowSize; }
     int lassoWidth() const { return m_lassoWidth; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
+    bool useCageQuads() const { return m_useCageQuads; }
     double rotationSingleStep() const { return m_rotationSingleStep; }
 
    private:
    
     EditorStyle() : m_lassoColor(Qt::yellow), m_lassoWidth(0), m_rotationSingleStep(1.0),
-                      m_loggingIsEnabled(true), m_windowSize("default") {}
+                      m_loggingIsEnabled(true), m_useCageQuads(false), m_windowSize("default") {}
     
     QColor m_lassoColor;
     QString m_windowSize;
     int m_lassoWidth;
     bool m_loggingIsEnabled;
+    bool m_useCageQuads;
     double m_rotationSingleStep;
     
  };

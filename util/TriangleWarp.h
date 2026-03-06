@@ -54,7 +54,52 @@ namespace TriangleWarp
     // compute new target image (transparent background)
     int rows = cageMesh.rows();
     int cols = cageMesh.cols();
-    for ( int y = 0; y + 1 < rows; ++y ) {
+    
+    if ( EditorStyle::instance().useCageQuads() == true ) {
+    
+      // --- QUADS WARP BY CLAUDE ---
+      for ( int y = 0; y + 1 < rows; ++y ) {
+        for ( int x = 0; x + 1 < cols; ++x ) {
+            int i00 = y*cols + x;
+            int i10 = i00 + 1;
+            int i01 = i00 + cols;
+            int i11 = i01 + 1;
+            QVector<QPointF> srcQuad{
+                QPointF(x * originalImage.width() / (cols-1), y * originalImage.height() / (rows-1)),
+                QPointF((x+1) * originalImage.width() / (cols-1), y * originalImage.height() / (rows-1)),
+                QPointF(x * originalImage.width() / (cols-1), (y+1) * originalImage.height() / (rows-1)),
+                QPointF((x+1) * originalImage.width() / (cols-1), (y+1) * originalImage.height() / (rows-1))
+            };
+            QVector<QPointF> dstQuad{
+                cageMesh.point(i00) - dstBounds.topLeft(),
+                cageMesh.point(i10) - dstBounds.topLeft(),
+                cageMesh.point(i01) - dstBounds.topLeft(),
+                cageMesh.point(i11) - dstBounds.topLeft()
+            };
+            // orient counter-clockwise
+            QVector<QPointF> quad{srcQuad[0], srcQuad[2], srcQuad[3], srcQuad[1]};
+            QVector<QPointF> quadDst{dstQuad[0], dstQuad[2], dstQuad[3], dstQuad[1]};
+            QVector<QPointF> tri1Dst{dstQuad[0], dstQuad[2], dstQuad[1]};
+            QVector<QPointF> tri2Dst{dstQuad[1], dstQuad[2], dstQuad[3]};
+            QRectF br1 = QPolygonF(quadDst).boundingRect();
+            for ( int py = int(br1.top()); py <= int(br1.bottom()); ++py ) {
+                for ( int px = int(br1.left()); px <= int(br1.right()); ++px ) {
+                    QPointF p(px + 0.5, py + 0.5);
+                    if ( ! ( GeometryUtils::pointInTriangle(p, tri1Dst) ||
+                             GeometryUtils::pointInTriangle(p, tri2Dst) ) ) continue;
+                    QPointF srcP = GeometryUtils::barycentric(p, quadDst, quad);
+                    if ( !originalImage.rect().contains(srcP.toPoint()) ) continue;
+                    QColor c = originalImage.pixelColor(int(srcP.x()), int(srcP.y()));
+                    warped.setPixelColor(px, py, c);
+                }
+            }
+        }
+     }
+    
+    } else {
+    
+     // --- TRIANGLE WARP ---
+     for ( int y = 0; y + 1 < rows; ++y ) {
         for ( int x = 0; x + 1 < cols; ++x ) {
             int i00 = y*cols + x;
             int i10 = i00 + 1;
@@ -81,7 +126,7 @@ namespace TriangleWarp
             QRectF br1 = QPolygonF(tri1Dst).boundingRect();
             for ( int py = int(br1.top()); py <= int(br1.bottom()); ++py ) {
                 for ( int px = int(br1.left()); px <= int(br1.right()); ++px ) {
-                    QPointF p(px + 0.5, py + 0.5);
+                    QPointF p(px, py);
                     if ( !GeometryUtils::pointInTriangle(p, tri1Dst) ) continue;
                     QPointF srcP = GeometryUtils::barycentric(p, tri1Dst, tri1);
                     if ( !originalImage.rect().contains(srcP.toPoint()) ) continue;
@@ -93,7 +138,7 @@ namespace TriangleWarp
             QRectF br2 = QPolygonF(tri2Dst).boundingRect();
             for ( int py = int(br2.top()); py <= int(br2.bottom()); ++py ) {
                 for ( int px = int(br2.left()); px <= int(br2.right()); ++px ) {
-                    QPointF p(px + 0.5, py + 0.5);
+                    QPointF p(px, py);
                     if ( !GeometryUtils::pointInTriangle(p, tri2Dst) ) continue;
                     QPointF srcP = GeometryUtils::barycentric(p, tri2Dst, tri2);
                     if ( !originalImage.rect().contains(srcP.toPoint()) ) continue;
@@ -102,7 +147,10 @@ namespace TriangleWarp
                 }
             }
         }
-    }
+     }
+    
+    } 
+    
     return { warped, QPointF(0,0) };
    }
   }

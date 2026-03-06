@@ -912,7 +912,8 @@ void ImageView::mouseDoubleClickEvent( QMouseEvent* event )
 
 void ImageView::mouseMoveEvent( QMouseEvent* event )
 {
-    //  qCDebug(logEditor) << "ImageView::mouseMoveEvent(): m_painting=" << m_maskPainting << ", m_paintToolEnabled " << m_paintToolEnabled;
+  qCDebug(logEditor) << "ImageView::mouseMoveEvent(): m_painting=" << m_maskPainting << ", m_paintToolEnabled " << m_paintToolEnabled;
+  {
     if ( !scene() )
         return;
         
@@ -1027,12 +1028,14 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
         return;
     }
     
-    // Letzte Mausposition merken
+    // --- Letzte Mausposition merken ---
     m_lastMousePos = event->pos();
     viewport()->update();
     
     // >>>
     QGraphicsView::mouseMoveEvent(event);
+    
+  }
 }
 
 void ImageView::mouseReleaseEvent( QMouseEvent* event )

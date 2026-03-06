@@ -127,7 +127,7 @@ void TransformLayerCommand::setRotationAngle( double rotation )
 // -------------------------------- Merge transforms --------------------------------
 bool TransformLayerCommand::mergeWith( const QUndoCommand *other ) 
 {
-  qCDebug(logEditor) << "TransformLayerCommand::mergeWith(): Processing...";
+  qDebug() << "TransformLayerCommand::mergeWith(): Processing...";
   {
     if ( other->id() != id() ) return false;
     const TransformLayerCommand *otherCmd = static_cast<const TransformLayerCommand*>(other);
