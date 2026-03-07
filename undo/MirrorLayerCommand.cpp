@@ -55,11 +55,11 @@ MirrorLayerCommand::MirrorLayerCommand( LayerItem* layer, const int idx, int mir
 void MirrorLayerCommand::printMessage( bool isUndo )
 {
   if ( m_mirrorPlane == 2 ) {
-     MainWindow::instance()->showMessage(QString("Mirrored layer %1 horizontally").arg(m_layerId));
+     IMainSystem::instance()->showMessage(QString("Mirrored layer %1 horizontally").arg(m_layerId));
   } else if ( m_mirrorPlane == 1 ) {
-     MainWindow::instance()->showMessage(QString("Mirrored layer %1 vertically").arg(m_layerId));
+     IMainSystem::instance()->showMessage(QString("Mirrored layer %1 vertically").arg(m_layerId));
   } else {
-     MainWindow::instance()->showMessage(QString("Invalid mirror plane for layer %1").arg(m_layerId),1);
+     IMainSystem::instance()->showMessage(QString("Invalid mirror plane for layer %1").arg(m_layerId),1);
   }
 }
 

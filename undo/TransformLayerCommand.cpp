@@ -35,7 +35,7 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer,
       , m_name(name)
       , m_trafoType(trafoType)
 {
-  qDebug() << "TransformLayerCommand::TransformLayerCommand(): trafotype =" << m_trafoType << ", name =" << m_name;
+  qCDebug(logEditor) << "TransformLayerCommand::TransformLayerCommand(): trafotype =" << m_trafoType << ", name =" << m_name;
   {
     m_layerId = layer->id();
     m_totalTransform = m_newTransform;
@@ -75,7 +75,7 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer, const QTransform
       , m_oldTransform(oldTransform)
       , m_newTransform(newTransform)
 {
-  qDebug() << "TransformLayerCommand::TransformLayerCommand(): Base...";
+  qCDebug(logEditor) << "TransformLayerCommand::TransformLayerCommand(): Base...";
   {
     m_totalTransform = m_newTransform;
     m_trafoType = LayerTransformType::Scale;
@@ -103,13 +103,13 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer, const QTransform
 void TransformLayerCommand::printMessage( bool isUndo )
 {
   if ( m_trafoType == LayerTransformType::Scale ) {
-    MainWindow::instance()->showMessage(QString("Scaled layer %1 by (%2:%3)").arg(m_layerId).
+    IMainSystem::instance()->showMessage(QString("Scaled layer %1 by (%2:%3)").arg(m_layerId).
                                arg(m_totalTransform.m11()).arg(m_totalTransform.m22()));
   } else if ( m_trafoType == LayerTransformType::Rotate ) {
-    MainWindow::instance()->showMessage(QString("Rotated layer %1 by %2 degrees").arg(m_layerId)
+    IMainSystem::instance()->showMessage(QString("Rotated layer %1 by %2 degrees").arg(m_layerId)
                      .arg( isUndo ? -m_rotationAngle : m_rotationAngle));
   } else {
-    MainWindow::instance()->showMessage(QString("Invalid trafoType %1 for layer %2").arg(m_trafoType).arg(m_layerId),1);
+    IMainSystem::instance()->showMessage(QString("Invalid trafoType %1 for layer %2").arg(m_trafoType).arg(m_layerId),1);
   }
 }
 
@@ -127,7 +127,7 @@ void TransformLayerCommand::setRotationAngle( double rotation )
 // -------------------------------- Merge transforms --------------------------------
 bool TransformLayerCommand::mergeWith( const QUndoCommand *other ) 
 {
-  qDebug() << "TransformLayerCommand::mergeWith(): Processing...";
+  qCDebug(logEditor) << "TransformLayerCommand::mergeWith(): Processing...";
   {
     if ( other->id() != id() ) return false;
     const TransformLayerCommand *otherCmd = static_cast<const TransformLayerCommand*>(other);
@@ -140,7 +140,7 @@ bool TransformLayerCommand::mergeWith( const QUndoCommand *other )
 // -------------------------------- Undo/Redo --------------------------------
 void TransformLayerCommand::undo() 
 {
-  qDebug() << "TransformLayerCommand::undo(): m_oldTransform =" << m_oldTransform;
+ qCDebug(logEditor) << "TransformLayerCommand::undo(): m_oldTransform =" << m_oldTransform;
   {
     if ( !m_layer ) return;
     m_layer->resetTotalTransform();
@@ -155,7 +155,7 @@ void TransformLayerCommand::undo()
 
 void TransformLayerCommand::redo() 
 {
-  qDebug() << "TransformLayerCommand::redo(): m_newTransform =" << m_newTransform;
+  qCDebug(logEditor) << "TransformLayerCommand::redo(): m_newTransform =" << m_newTransform;
   {
     if ( m_silent || !m_layer ) return;
     m_totalTransform *= m_newTransform;

@@ -52,9 +52,9 @@ CageWarpCommand::CageWarpCommand( LayerItem* layer,
 void CageWarpCommand::printMessage( bool isUndo )
 {
   if ( isUndo ) {
-     MainWindow::instance()->showMessage(QString("Undo cage warp of layer %1").arg(m_layerId));
+     IMainSystem::instance()->showMessage(QString("Undo cage warp of layer %1").arg(m_layerId));
   } else {
-     MainWindow::instance()->showMessage(QString("Cage warp of layer %1").arg(m_layerId));
+     IMainSystem::instance()->showMessage(QString("Cage warp of layer %1").arg(m_layerId));
   }
 }
 

@@ -25,6 +25,8 @@
 #include "../undo/PolygonMovePointCommand.h"
 #include "../undo/PolygonSmoothCommand.h"
 #include "../undo/PolygonReduceCommand.h"
+
+#include "../gui/MainWindow.h"
 #include "../core/Config.h"
 
 #include <QDebug>
@@ -113,8 +115,7 @@ void EditablePolygon::remove()
 
 QPointF EditablePolygon::point( int idx ) const
 {
-    if ( idx < 0 || idx >= m_polygon.size() )
-        return {};
+    if ( idx < 0 || idx >= m_polygon.size() ) return {};
     return m_polygon[idx];
 }
 
@@ -126,24 +127,22 @@ void EditablePolygon::addPoint( const QPointF& p )
 
 void EditablePolygon::setPoint( int idx, const QPointF& p )
 {
-    if ( idx < 0 || idx >= m_polygon.size() )
-        return;
+    if ( idx < 0 || idx >= m_polygon.size() ) return;
     m_polygon[idx] = p;
     emit changed();
 }
 
 void EditablePolygon::insertPoint( int idx, const QPointF& p )
 {
-    if ( idx < 0 || idx > m_polygon.size() )
-        return;
+    if ( idx < 0 || idx > m_polygon.size() ) return;
+    IMainSystem::instance()->showMessage(QString("Inserted point (%1:%2) at position %3").arg(p.x()).arg(p.y()).arg(idx));
     m_polygon.insert(idx, p);
     emit changed();
 }
 
 void EditablePolygon::removePoint( int idx )
 {
-    if ( idx < 0 || idx >= m_polygon.size() )
-        return;
+    if ( idx < 0 || idx >= m_polygon.size() ) return;
     m_polygon.removeAt(idx);
     emit changed();
 }

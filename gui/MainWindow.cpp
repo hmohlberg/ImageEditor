@@ -72,18 +72,16 @@
 #include <iostream>
 
 /* ============================================================
- * Static instance
- * ============================================================ */
- 
-MainWindow* MainWindow::m_instance = nullptr;
-
-/* ============================================================
  * Constructor
  * ============================================================ */
 MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWindow(parent)
 {
   qCDebug(logEditor) << "MainWindow::MainWindow(): Processing...";
-  {
+  { 
+    // connect
+    IMainSystem::setInstance(this);
+    
+    // setup paths
     QString imagePath = options.value("imagePath").toString("");
     QString historyPath = options.value("historyPath").toString("");
     QString outputPath = options.value("outputPath").toString("");
@@ -127,8 +125,8 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
 
     // >>>
     createActions();
-    createToolbars();
     createStatusbar();
+    createToolbars();
     createDockWidgets();
 
     // >>>
@@ -171,16 +169,8 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
        this->setMinimumSize(800, 600);
     }
     show();
-    fitToWindow();
-    
-    // setup singleton-patterm
-    m_instance = this;
-    
+    fitToWindow();    
   }    
-}
-
-MainWindow* MainWindow::instance() {
-    return m_instance;
 }
 
 MainWindow::~MainWindow() {
@@ -621,6 +611,8 @@ void MainWindow::createMaskImage()
 // ---------------------- Create ----------------------
 void MainWindow::createDockWidgets() 
 {
+  qCDebug(logEditor) << "MainWindow::createDockWidgets(): Processing...";
+  {
    // layer dock
    m_layerDock = new QDockWidget("Layers", this);
    m_layerDock->setAllowedAreas(Qt::RightDockWidgetArea);
@@ -744,7 +736,7 @@ void MainWindow::createDockWidgets()
         }
     }
    });
-   
+ }  
 }
 
 void MainWindow::toggleDocks() 
@@ -994,7 +986,7 @@ void MainWindow::duplicateLayer()
 
 void MainWindow::mergeLayer()
 {
-  qDebug() << "MainWindow::mergeLayer() Processing...";
+  qDebug() << "MainWindow::mergeLayer() NOT YET CODED";
   {
   
   }
@@ -1019,6 +1011,8 @@ void MainWindow::renameLayer()
 // --------------------------------- Actions ---------------------------------
 void MainWindow::createActions()
 {
+  qCDebug(logEditor) << "MainWindow::createActions(): Processing...";
+  {
     m_infoAction = new QAction(tr("Info"), this);
     connect(m_infoAction, &QAction::triggered, this, &MainWindow::info);
     
@@ -1120,6 +1114,7 @@ void MainWindow::createActions()
     m_polygonControlAction = new QAction("Polygon", this);
     m_polygonControlAction->setCheckable(true);
     connect(m_polygonControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
+  }
 }
 
 void MainWindow::updateControlButtonState() 
@@ -1700,18 +1695,25 @@ void MainWindow::createToolbars()
 
 void MainWindow::showMessage( const QString& message, int msgType )
 {
-  if ( msgType == 1 ) {
-     m_messageLabel->setStyleSheet("QLabel { color : red; font-weight: bold; }");
-     m_messageLabel->setText(QString("ERROR: %1").arg(message));
-  } else {
-     m_messageLabel->setStyleSheet("QLabel { color : yellow; font-weight: normal; }");
-     m_messageLabel->setText(message);
+  qCDebug(logEditor) << "MainWindow::showMessage(): message =" << message;
+  {
+    if ( m_messageLabel != nullptr ) {
+      if ( msgType == 1 ) {
+        m_messageLabel->setStyleSheet("QLabel { color : red; font-weight: bold; }");
+        m_messageLabel->setText(QString("ERROR: %1").arg(message));
+      } else {
+        m_messageLabel->setStyleSheet("QLabel { color : yellow; font-weight: normal; }");
+        m_messageLabel->setText(message);
+      }
+      // QTimer::singleShot(5000, m_messageLabel, &QLabel::clear);
+    }
   }
-  // QTimer::singleShot(5000, m_messageLabel, &QLabel::clear);
 }
 
 void MainWindow::createStatusbar()
 {
+  qCDebug(logEditor) << "MainWindow::createStatusbar(): Processing...";
+  {
     m_messageLabel = new QLabel("Ready", this);
     m_messageLabel->setFrameStyle(QFrame::NoFrame);
     statusBar()->insertWidget(0, m_messageLabel);
@@ -1743,6 +1745,7 @@ void MainWindow::createStatusbar()
         cursorColorLabel->setToolTip(QString("R:%1 G:%2 B:%3 A:%4")
                                  .arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha()));
     });
+  }
 }
 
 /* =================== Misc =================== */
@@ -1837,6 +1840,11 @@ int MainWindow::setActivePolygon( const QString& polygonName )
     m_polygonIndexBox->setCurrentIndex(index);
   } 
   return index;
+}
+
+QString MainWindow::getSelectedLayerItemName() 
+{ 
+  return m_selectedLayerItemName; 
 }
 
 /* =================== Signal calls =================== */

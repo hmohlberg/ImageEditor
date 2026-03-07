@@ -184,7 +184,7 @@ void TransformOverlay::applyHandleDrag( HandleType type, const QPointF& delta )
     if ( !m_layer ) return;
     
     // check whether an isotropic scaling is requested
-    bool isotropicScaling = MainWindow::instance()->getLayerOperationParameter(LayerItem::OperationMode::Scale) > 0 ? true : false;
+    bool isotropicScaling = IMainSystem::instance()->getLayerOperationParameter(LayerItem::OperationMode::Scale) > 0 ? true : false;
     if ( QApplication::keyboardModifiers() & Qt::AltModifier ) {
       isotropicScaling = false;
     }

@@ -81,6 +81,8 @@ static qreal distanceToPolygon(const QPointF& p, const QPolygonF& poly)
 ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
 		m_parent(parent)
 {   
+  qCDebug(logEditor) << "ImageView::ImageView(): Processing...";
+  {
     m_scene = new QGraphicsScene(this);
     m_scene->setItemIndexMethod(QGraphicsScene::NoIndex); // Hack to prevent crash
     // setup 
@@ -98,7 +100,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
       // *** have to go to all commands between last and current index ***
       // qDebug() << "ImageView::ImageView(): lastIndex =" << m_lastIndex << ", currentIndex =" << currentIndex;
       if ( currentIndex == 0 ) {
-        MainWindow::instance()->showMessage(QString("Initial state"));
+        IMainSystem::instance()->showMessage(QString("Initial state"));
       } else if ( currentIndex > 0 ) {
         const QUndoCommand* justFinishedCommand = m_undoStack->command(currentIndex - 1);
         if ( justFinishedCommand != nullptr ) {
@@ -205,6 +207,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
     setScene(new QGraphicsScene(this));
     setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
    */
+  }
 }
 
 // ------------------------ Self info -------------------------------------
@@ -702,7 +705,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
 {
   MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
   if ( mainWindow == nullptr ) return;  
-  qDebug() << "ImageView::mousePressEvent(): operationMode = " << mainWindow->getOperationMode() << ", polygonEnabled =" << m_polygonEnabled;
+  qCDebug(logEditor) << "ImageView::mousePressEvent(): operationMode = " << mainWindow->getOperationMode() << ", polygonEnabled =" << m_polygonEnabled;
   {
     if ( !scene() )
         return;     

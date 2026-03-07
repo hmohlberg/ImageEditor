@@ -16,7 +16,9 @@
 */
 
 #include "MoveLayerCommand.h"
+
 #include "../core/Config.h"
+#include "../core/IMainSystem.h"
 #include "../gui/MainWindow.h"
 
 #include <QPainter>
@@ -42,10 +44,10 @@ MoveLayerCommand::MoveLayerCommand( LayerItem* layer, const QPointF& oldPos, con
 void MoveLayerCommand::printMessage( bool isUndo )
 {
   if ( isUndo ) {
-    MainWindow::instance()->showMessage(QString("Moved layer %1 from position (%2:%3) to position (%4:%5)").arg(m_layerId).
+    IMainSystem::instance()->showMessage(QString("Moved layer %1 from position (%2:%3) to position (%4:%5)").arg(m_layerId).
                                arg(qRound(m_newPos.x())).arg(qRound(m_newPos.y())).arg(qRound(m_oldPos.x())).arg(qRound(m_oldPos.y())));
   } else {
-    MainWindow::instance()->showMessage(QString("Moved layer %1 from position (%2:%3) to position (%4:%5)").arg(m_layerId).
+    IMainSystem::instance()->showMessage(QString("Moved layer %1 from position (%2:%3) to position (%4:%5)").arg(m_layerId).
                                arg(qRound(m_oldPos.x())).arg(qRound(m_oldPos.y())).arg(qRound(m_newPos.x())).arg(qRound(m_newPos.y())));
   }
 }
@@ -53,7 +55,7 @@ void MoveLayerCommand::printMessage( bool isUndo )
 // -------------- Merge  -------------- 
 bool MoveLayerCommand::mergeWith( const QUndoCommand* other )
 {
-  qDebug() << "MoveLayerCommand::mergeWith(): Processing...";
+  qCDebug(logEditor) << "MoveLayerCommand::mergeWith(): Processing...";
   {
    if ( other->id() != id() )
         return false;
@@ -69,7 +71,7 @@ bool MoveLayerCommand::mergeWith( const QUndoCommand* other )
 // -------------- Undo / redo -------------- 
 void MoveLayerCommand::undo() 
 { 
-  qDebug() << "MoveLayerCommand::undo(): old_pos =" << m_oldPos;
+  qCDebug(logEditor) << "MoveLayerCommand::undo(): old_pos =" << m_oldPos;
   {
     if ( !m_layer ) return;
     m_layer->setPos(m_oldPos);
@@ -79,7 +81,7 @@ void MoveLayerCommand::undo()
 
 void MoveLayerCommand::redo()
 { 
-  qDebug() << "MoveLayerCommand::redo(): old_pos= " << m_oldPos << " -> new_pos =" << m_newPos;
+  qCDebug(logEditor) << "MoveLayerCommand::redo(): old_pos= " << m_oldPos << " -> new_pos =" << m_newPos;
   {
     if ( m_silent || !m_layer ) return;
     m_layer->setPos(m_newPos); 

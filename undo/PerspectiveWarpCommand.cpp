@@ -50,9 +50,9 @@ PerspectiveWarpCommand::PerspectiveWarpCommand(
 void PerspectiveWarpCommand::printMessage( bool isUndo )
 {
   if ( isUndo ) {
-     MainWindow::instance()->showMessage(QString("Undo perspective warp of layer %1").arg(m_layerId));
+     IMainSystem::instance()->showMessage(QString("Undo perspective warp of layer %1").arg(m_layerId));
   } else {
-     MainWindow::instance()->showMessage(QString("Perspective warp of layer %1").arg(m_layerId));
+     IMainSystem::instance()->showMessage(QString("Perspective warp of layer %1").arg(m_layerId));
   }
 }
 

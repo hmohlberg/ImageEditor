@@ -34,6 +34,8 @@
 #include <unistd.h>
 
 #include "core/Config.h"
+#include "core/IMainSystem.h"
+#include "core/BatchMain.h"
 #include "core/ImageLoader.h"
 #include "core/ImageProcessor.h"
 
@@ -41,6 +43,7 @@
 
 
 // ---------------------- Init ----------------------
+IMainSystem* IMainSystem::m_instance = nullptr;
 bool Config::verbose = false;
 bool Config::isWhiteBackgroundImage = true;
 
@@ -244,6 +247,7 @@ int main( int argc, char *argv[] )
     // --- check whether batch processing is requested ---
     if ( batchProcessing ) {
       QCoreApplication *app = new QCoreApplication(argc,argv);
+      BatchMain batch;
       app->setApplicationName("ImageEditor");
       app->setApplicationVersion("1.0");
       QJsonObject parsedOptions = parser(app,argc);

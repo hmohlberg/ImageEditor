@@ -18,6 +18,7 @@
 #pragma once
 
 #include "../core/Config.h"
+#include "../core/IMainSystem.h"
 
 #include <QCoreApplication>
 #include <QCheckBox>
@@ -33,7 +34,7 @@
 class ImageView;
 class LayerItem;
 
-class MainWindow : public QMainWindow
+class MainWindow : public QMainWindow, public IMainSystem
 {
     Q_OBJECT
     
@@ -45,13 +46,12 @@ class MainWindow : public QMainWindow
     //            bool useVulkan = false, QWidget* parent = nullptr );
                 
     explicit MainWindow( const QJsonObject& options, QWidget* parent = nullptr );
-    static MainWindow* instance();
     ~MainWindow();
                 
     // --- ---
     void updateLayerList();
     
-    // ----------------- global setter and getter -----------------
+    // --- global setter and getter ---
     ImageView* getViewer() const { return m_imageView; }
     void setMainOperationMode( MainOperationMode = ImageLayer );
     MainOperationMode getOperationMode() const { return m_operationMode; }
@@ -60,9 +60,11 @@ class MainWindow : public QMainWindow
     void setPolygonOperationMode( int mode );
     void setSelectedLayer( const QString &name );
     void updateLayerOperationParameter( int mode, double value );
-    double getLayerOperationParameter( int mode );
-    QString getSelectedLayerItemName() const { return m_selectedLayerItemName; }
-    void showMessage( const QString& message, int msgType=0 );
+    
+    // --- override methods ---
+    void showMessage( const QString& message, int msgType=0 ) override;
+    double getLayerOperationParameter( int mode ) override;
+    QString getSelectedLayerItemName() override;
     
  protected:
 
@@ -109,8 +111,6 @@ class MainWindow : public QMainWindow
     void createActions();
     void createToolbars();
     void createStatusbar();
-    
-    static MainWindow* m_instance;
     
     QComboBox* buildDefaultColorComboBox( const QString& name = "Label" );
     

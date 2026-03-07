@@ -21,6 +21,7 @@
 #include "CageControlPointItem.h"
 #include "CageOverlayItem.h"
 
+#include "../core/IMainSystem.h"
 #include "../gui/MainWindow.h"
 #include "../gui/ImageView.h"
 #include "../undo/TransformLayerCommand.h"
@@ -674,7 +675,7 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
       } else if ( m_operationMode == OperationMode::Perspective ) {
           qCDebug(logEditor) << " + perpective call +";
       } else if ( m_operationMode == OperationMode::Flip ) {
-          if ( MainWindow::instance()->getLayerOperationParameter(LayerItem::OperationMode::Flip) > 0 ) {
+          if ( IMainSystem::instance()->getLayerOperationParameter(LayerItem::OperationMode::Flip) > 0 ) {
             m_undoStack->push(new MirrorLayerCommand(this, m_index, 1));
           } else {
             m_undoStack->push(new MirrorLayerCommand(this, m_index, 2));
@@ -686,10 +687,10 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
 {
-  qDebug() << "LayerItem::mousePressEvent(): layer =" << name() << ", zValue = " << zValue() << ", operationMode =" << m_operationMode << ", active=" << m_mouseOperationActive;
+  qCDebug(logEditor) << "LayerItem::mousePressEvent(): layer =" << name() << ", zValue = " << zValue() << ", operationMode =" << m_operationMode << ", active=" << m_mouseOperationActive;
   {
-    // qDebug() << " selectedLayerItemName =" << MainWindow::instance()->getSelectedLayerItemName();
-    // if ( MainWindow::instance()->getSelectedLayerItemName() != name() ) {
+    // qDebug() << " selectedLayerItemName =" << IMainSystem::instance()->getSelectedLayerItemName();
+    // if ( IMainSystem::instance()->getSelectedLayerItemName() != name() ) {
     //   event->ignore();
     //   return;
     // }
