@@ -599,44 +599,21 @@ void LayerItem::setOperationMode( OperationMode mode )
 
 void LayerItem::setRotationAngle( double value )
 {
-  qCDebug(logEditor) << "LayerItem::setRotationAngle(): value =" << value;
+  qCDebug(logEditor) << "LayerItem::setRotationAngle(): rotationAngle =" << value;
   {
-    /* ---
-    // --- set transform ---
-    QPointF c = boundingRect().center();
-    QTransform t = m_startTransform;
-    t.translate(c.x(), c.y());
-    t.rotate(value);
-    t.translate(-c.x(), -c.y());
-    // --- push ---
+    double deltaRotation = value-m_currentRotation;
+    m_currentRotation += deltaRotation;
     QString name = "Rotate Layer";
-    name += QString(" %1").arg(m_index);
     TransformLayerCommand::LayerTransformType trafoType = TransformLayerCommand::LayerTransformType::Rotate;
-    m_undoStack->push(new TransformLayerCommand(this, m_startPos, pos(), m_totalTransform, transform(), name, trafoType));
-    m_currentRotation = value;
-    --- */
-    // --- create undo command ---
-    if ( m_transformLayerCommand == nullptr ) {
-      QString name = "Rotate Layer";
-      TransformLayerCommand::LayerTransformType trafoType = TransformLayerCommand::LayerTransformType::Rotate;
-      name += QString(" %1").arg(m_index);
-      // m_startTransform
-      m_transformLayerCommand = new TransformLayerCommand(this, m_startPos, pos(), m_totalTransform, transform(), name, trafoType);
-      m_undoStack->push(m_transformLayerCommand);
-    }
-    // --- update layer ---
+    name += QString(" %1").arg(m_index);
     QPointF c = boundingRect().center();
-    QTransform t = m_startTransform;
+    QTransform t = transform();
     t.translate(c.x(), c.y());
-    t.rotate(value);
+    t.rotate(deltaRotation);
     t.translate(-c.x(), -c.y());
-    setTransform(t);
-    m_currentRotation = value;
-    // --- update undo command ---
-    m_transformLayerCommand->setRotationAngle(value);
-    m_transformLayerCommand->setTransform(t);
-    // >>>
-    update();
+    m_undoStack->push(
+       new TransformLayerCommand(this, m_startPos, pos(), m_startTransform, t, name, trafoType)
+    );
   }
 }
 
@@ -706,13 +683,11 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
           m_startTransform = transform();
           QGraphicsPixmapItem::mousePressEvent(event);
        } else if ( m_operationMode == OperationMode::Rotate ) {
-       
           QPointF clickPos = event->scenePos();
           QPointF center = mapToScene(boundingRect().center());
           double angleRad = std::atan2(clickPos.y() - center.y(), clickPos.x() - center.x());
           m_startMouseAngle = angleRad * 180.0 / M_PI;
           m_startLayerRotation = m_currentRotation;
-          
           m_mouseOperationActive = true; 
           m_startPos = pos();
          // m_startTransform = transform();
@@ -770,9 +745,7 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
       return;
     }
     if ( m_operationMode == OperationMode::Translate ) {
-        qCDebug(logEditor) << "LayerItem::mouseReleaseEvent(): MoveLayer " << m_index << " processing...";
         if ( pos() != m_startPos ) {
-            // create new (only if really new otherwise it will merge automatically and no new entry will be created)
             m_undoStack->push(
                 new MoveLayerCommand(this, m_startPos, pos(), m_index)
             );

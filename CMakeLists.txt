@@ -61,6 +61,7 @@ set(SOURCES
     undo/CageMoveCommand.cpp
     undo/CageWarpCommand.cpp
     undo/DeleteLayerCommand.cpp
+    undo/DeleteUndoEntryCommand.cpp
     undo/LassoCutCommand.cpp
     undo/PaintCommand.cpp
     undo/PaintStrokeCommand.cpp
@@ -106,6 +107,7 @@ set(HEADERS
     undo/CageMoveCommand.h
     undo/CageWarpCommand.h
     undo/DeleteLayerCommand.h
+    undo/DeleteUndoEntryCommand.h
     undo/PaintCommand.h
     undo/PaintStrokeCommand.h
     undo/InvertLayerCommand.h

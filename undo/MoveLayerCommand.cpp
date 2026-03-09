@@ -71,9 +71,9 @@ bool MoveLayerCommand::mergeWith( const QUndoCommand* other )
 // -------------- Undo / redo -------------- 
 void MoveLayerCommand::undo() 
 { 
-  qCDebug(logEditor) << "MoveLayerCommand::undo(): old_pos =" << m_oldPos;
+  qCDebug(logEditor) << "MoveLayerCommand::undo(): deleted =" << m_deleted << ", old_pos =" << m_oldPos;
   {
-    if ( !m_layer ) return;
+    if ( !m_layer || m_deleted ) return;
     m_layer->setPos(m_oldPos);
     printMessage(true);
   }
@@ -83,7 +83,7 @@ void MoveLayerCommand::redo()
 { 
   qCDebug(logEditor) << "MoveLayerCommand::redo(): old_pos= " << m_oldPos << " -> new_pos =" << m_newPos;
   {
-    if ( m_silent || !m_layer ) return;
+    if ( m_silent || !m_layer || m_deleted ) return;
     m_layer->setPos(m_newPos); 
     printMessage();
   }

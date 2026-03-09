@@ -30,6 +30,21 @@
 namespace QWidgetUtils
 {
 
+  // extract last integer number from a string
+  int getLayerIndexFromString( const QString &text ) {
+    QString buffer;
+    bool foundDigit = false;
+    for (int i = text.length() - 1; i >= 0; --i) {
+      if (text[i].isDigit()) {
+        buffer.prepend(text[i]);
+        foundDigit = true;
+      } else if (foundDigit) {
+        break; 
+      }
+    }
+    return buffer.toInt();
+  }
+
   QWidget* getSeparatorLine() {
     QWidget* line = new QWidget();
     line->setFixedWidth(1);

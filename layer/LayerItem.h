@@ -164,8 +164,6 @@ class LayerItem : public QGraphicsPixmapItem
     CageMesh m_cageMesh;
     CageOverlayItem* m_cageOverlay = nullptr;
     PerspectiveTransform m_perspective;
-    
-    TransformLayerCommand* m_transformLayerCommand = nullptr;
 
 	Layer* m_layer = nullptr;
 	

@@ -28,6 +28,7 @@
 #include "../layer/LayerItem.h"
 #include "../undo/AbstractCommand.h"
 #include "../undo/PaintStrokeCommand.h"
+#include "../undo/PerspectiveWarpCommand.h"
 #include "../undo/TransformLayerCommand.h"
 #include "../undo/LassoCutCommand.h"
 #include "../undo/MirrorLayerCommand.h"
@@ -94,7 +95,7 @@ bool ImageProcessor::process( const QString& filePath )
  { 
     QFile f(filePath);
     if ( !f.open(QIODevice::ReadOnly) ) {
-     qDebug() << "ImageProcessor::load(): Cannot open '" << filePath << "'!";
+     qDebug() << LogColor::Red << "ImageProcessor::load(): Cannot open '" << filePath << "'!" << LogColor::Reset;
      return false;
     }
     QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
@@ -119,7 +120,7 @@ bool ImageProcessor::process( const QString& filePath )
            Config::isWhiteBackgroundImage = loader.hasWhiteBackground();
            buildMainImageLayer();
           } else {
-            qDebug() << "ImageProcessor::load(): Cannot find '" << fullfilename << "'!";
+            qDebug() << LogColor::Red << "ImageProcessor::load(): Cannot find '" << fullfilename << "'!" << LogColor::Reset;
             return false;
           }
         }
@@ -157,22 +158,24 @@ bool ImageProcessor::process( const QString& filePath )
         QJsonObject cmdObj = v.toObject();
         QString type = cmdObj["type"].toString();
         QString text = cmdObj["text"].toString();
-        qDebug() << "ImageProcessor::load(): Found undo call: type=" << type << ", text=" << text;
+        qDebug() << "ImageProcessor::load(): Processing undo call: type=" << type << ", text=" << text;
         AbstractCommand* cmd = nullptr;
-        if ( type == "PaintStrokeCommand" ) {
+        if ( type == "PaintStroke" || type == "PaintStrokeCommand" ) {
            cmd = PaintStrokeCommand::fromJson(cmdObj, m_layers);
-        } else if ( type == "LassoCutCommand" ) {
+        } else if ( type == "LassoCut" || type == "LassoCutCommand" ) {
            cmd = LassoCutCommand::fromJson(cmdObj, m_layers);
-        } else if ( type == "MoveLayer" ) {
+        } else if ( type == "MoveLayer" || type == "MoveLayerCommand" ) {
            cmd = MoveLayerCommand::fromJson(cmdObj, m_layers);
-        } else if ( type == "MirrorLayer" ) {
+        } else if ( type == "MirrorLayer" || type == "MirrorLayerCommand" ) {
            cmd = MirrorLayerCommand::fromJson(cmdObj, m_layers);
-        } else if ( type == "CageWarp" ) {
+        } else if ( type == "CageWarp" || type == "CageWarpCommand" ) {
            cmd = CageWarpCommand::fromJson(cmdObj, m_layers);
-        } else if ( type == "TransformLayerCommand" ) {
+        } else if ( type == "TransformLayer" || type == "TransformLayerCommand" ) {
            cmd = TransformLayerCommand::fromJson(cmdObj, m_layers);
+        } else if ( type == "PerspectiveWarp" || type == "PerspectiveWarpCommand" ) {
+           cmd = PerspectiveWarpCommand::fromJson(cmdObj, m_layers);
         } else {
-           qDebug() << "ImageProcessor::load(): Not yet processed.";
+           qDebug() << LogColor::Red << "ImageProcessor::load(): Command " << type << " not yet processed." << LogColor::Reset;
         }
         // ggf. weitere Command-Typen hier hinzufügen
         if ( cmd ) {

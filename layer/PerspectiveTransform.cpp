@@ -16,6 +16,7 @@
 */
 
 #include "PerspectiveTransform.h"
+#include "../core/Config.h"
 
 #include <QPainter>
 
@@ -50,7 +51,7 @@ void PerspectiveTransform::setTargetPoint( int idx, const QPointF& p )
 
 void PerspectiveTransform::applyConstraints( int idx )
 {
-  qDebug() << "PerspectiveTransform::applyConstraints(): index =" << idx;
+  qCDebug(logEditor) << "PerspectiveTransform::applyConstraints(): index =" << idx;
   {
     if ( m_constraints.testFlag(KeepInBounds) ) {
         QRectF bounds = QPolygonF(m_src).boundingRect();
@@ -88,7 +89,7 @@ void PerspectiveTransform::applyConstraints( int idx )
 
 void PerspectiveTransform::setSourceQuad( const QVector<QPointF>& src )
 {
-  qDebug() << "PerspectiveTransform::setSourceQuad(): source =" << src;
+  qCDebug(logEditor) << "PerspectiveTransform::setSourceQuad(): source =" << src;
   {
     if ( src.size() != 4 ) return;
     m_src = src;
@@ -98,7 +99,7 @@ void PerspectiveTransform::setSourceQuad( const QVector<QPointF>& src )
 
 void PerspectiveTransform::setTargetQuad( const QVector<QPointF>& dst )
 {
-  qDebug() << "PerspectiveTransform::setTargetQuad(): destination =" << dst;
+  qCDebug(logEditor) << "PerspectiveTransform::setTargetQuad(): destination =" << dst;
   {
     if ( dst.size() != 4 ) return;
     m_dst = dst;
@@ -113,7 +114,7 @@ bool PerspectiveTransform::isValid() const
 
 QTransform PerspectiveTransform::transform() const
 {
-  qDebug() << "PerspectiveTransform::transform(): Processing...";
+  qCDebug(logEditor) << "PerspectiveTransform::transform(): Processing...";
   {
     QTransform t;
     if ( !isValid() )
@@ -125,7 +126,7 @@ QTransform PerspectiveTransform::transform() const
 
 QImage PerspectiveTransform::apply( const QImage& srcImage ) const
 {
-  qDebug() << "PerspectiveTransform::apply(): Processing...";
+  qCDebug(logEditor) << "PerspectiveTransform::apply(): Processing...";
   {
     if ( !isValid() )
         return srcImage;

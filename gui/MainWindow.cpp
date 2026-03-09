@@ -26,6 +26,7 @@
 #include "../undo/PaintStrokeCommand.h"
 #include "../undo/TransformLayerCommand.h"
 #include "../undo/PerspectiveWarpCommand.h"
+#include "../undo/DeleteUndoEntryCommand.h"
 #include "../undo/LassoCutCommand.h"
 #include "../undo/MirrorLayerCommand.h"
 #include "../undo/MoveLayerCommand.h"
@@ -729,10 +730,16 @@ void MainWindow::createDockWidgets()
                     "the command with the option of restoring it.");
         int result = QWidgetUtils::showIconDialog(this,QString("Delete %1").arg(cmd->text()),labelText);
         if ( result == 1 ) {
+           // --- sort required so that the requested layer is at the end ---
            int currentIndex = m_imageView->undoStack()->index();
            m_imageView->removeOperationsByIndexUndoStack(cmd->text(),currentIndex-1);
         } else if ( result == 2 ) {
-           qDebug() << " *** delete ***"; 
+           QUndoStack *undoStack = m_imageView->undoStack();
+           if ( undoStack ) {
+             QString name = cmd->text();
+             int layerId = QWidgetUtils::getLayerIndexFromString(name);
+             undoStack->push(new DeleteUndoEntryCommand(undoStack,name,layerId));
+           }
         }
     }
    });

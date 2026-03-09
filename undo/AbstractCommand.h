@@ -58,6 +58,8 @@ class AbstractCommand : public QUndoCommand
     static AbstractCommand* fromJson( const QJsonObject& obj, ImageView* view );
     
     // --- ---
+    void markDeleted( bool v ) { m_deleted = v; }
+    bool isDeleted() const { return m_deleted; }
     void setSilent( bool silent ) { m_silent = silent; }
     QString timeString() const { return m_timestamp.toString("HH:mm"); }
     void setIcon( const QIcon &icon ) { m_icon = icon; }
@@ -70,6 +72,7 @@ class AbstractCommand : public QUndoCommand
   protected:
   
     bool m_silent = false;
+    bool m_deleted = false;
     
   private:
 

@@ -26,6 +26,15 @@
  #include <iostream>
  
  // >>>
+ struct LogColor {
+    static constexpr const char* Red    = "\033[91m";
+    static constexpr const char* Green  = "\033[92m";
+    static constexpr const char* Yellow = "\033[93m";
+    static constexpr const char* Blue   = "\033[94m";
+    static constexpr const char* Reset  = "\033[0m";
+ };
+ 
+ // >>>
  Q_DECLARE_LOGGING_CATEGORY(logEditor)
 
  // ---------------- Constructor ----------------

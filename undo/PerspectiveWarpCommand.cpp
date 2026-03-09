@@ -73,12 +73,14 @@ void PerspectiveWarpCommand::apply( const QVector<QPointF>& quad )
 // -------------- Undo / redo --------------
 void PerspectiveWarpCommand::undo()
 {
+    if ( !m_layer || m_deleted ) return;
     apply(m_before);
     printMessage(true);
 }
 
 void PerspectiveWarpCommand::redo()
 {
+    if ( !m_layer || m_deleted ) return;
     apply(m_after);
     printMessage();
 }

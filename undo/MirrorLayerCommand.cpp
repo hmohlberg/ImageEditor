@@ -68,7 +68,7 @@ void MirrorLayerCommand::undo()
 {
   qCDebug(logEditor)  << "MirrorLayerCommand::undo(): Processing...";
   {
-    if ( !(m_layer && m_isMirroring) ) return; 
+    if ( m_deleted || !(m_layer && m_isMirroring) ) return; 
     m_layer->setMirror(m_mirrorPlane);
     printMessage(true);
   }
@@ -78,7 +78,7 @@ void MirrorLayerCommand::redo()
 {
   qCDebug(logEditor) << "MirrorLayerCommand::redo(): Processing...";
   {
-    if ( !(m_layer && !m_silent && m_isMirroring) ) return; 
+    if ( m_deleted || !(m_layer && !m_silent && m_isMirroring) ) return; 
     m_layer->setMirror(m_mirrorPlane);
     printMessage();
   }

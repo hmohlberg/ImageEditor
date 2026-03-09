@@ -142,7 +142,7 @@ void TransformLayerCommand::undo()
 {
  qCDebug(logEditor) << "TransformLayerCommand::undo(): m_oldTransform =" << m_oldTransform;
   {
-    if ( !m_layer ) return;
+    if ( !m_layer || m_deleted ) return;
     m_layer->resetTotalTransform();
     m_layer->setImageTransform(m_oldTransform);
     if ( m_trafoType == LayerTransformType::Scale ) {
@@ -157,7 +157,7 @@ void TransformLayerCommand::redo()
 {
   qCDebug(logEditor) << "TransformLayerCommand::redo(): m_newTransform =" << m_newTransform;
   {
-    if ( m_silent || !m_layer ) return;
+    if ( m_silent || !m_layer || m_deleted ) return;
     m_totalTransform *= m_newTransform;
     m_layer->setImageTransform(m_newTransform);
     if ( m_trafoType == LayerTransformType::Scale ) {

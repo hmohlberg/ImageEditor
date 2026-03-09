@@ -18,35 +18,38 @@
 #pragma once
 
 #include <QUndoCommand>
-#include <QPointF>
 
 #include "AbstractCommand.h"
 #include "../layer/LayerItem.h"
 
-class DeleteLayerCommand : public AbstractCommand
+class DeleteUndoEntryCommand : public AbstractCommand
 {
 
  public:
-
-    DeleteLayerCommand( LayerItem* layer, const QPointF& pos, const int idx=0, QUndoCommand* parent = nullptr );
+ 
+    DeleteUndoEntryCommand( QUndoStack* stack, const QString& name, int layerId, QUndoCommand* parent = nullptr );
     
-    AbstractCommand* clone() const override { return new DeleteLayerCommand(m_layer, m_pos, m_layerId); }
+    AbstractCommand* clone() const override { return new DeleteUndoEntryCommand(m_stack,m_name,m_layerId); }
     
-    QString type() const override { return "DeleteLayer"; }
+    QString type() const override { return "DeleteUndoEntry"; }
     LayerItem* layer() const override { return m_layer; }
-    int id() const override { return 1055; }
-    
-    void undo() override;
+    int id() const override { return 1155; }
+
     void redo() override;
+    void undo() override;
+    
+    void printMessage( bool isUndo=false );
     
     QJsonObject toJson() const override;
-    static DeleteLayerCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers );
+    static DeleteUndoEntryCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers );
 
  private:
-
+ 
     int m_layerId = 0;
     LayerItem* m_layer = nullptr;
+    QString m_name;
     
-    QPointF m_pos;
+    QUndoStack* m_stack = nullptr;
+    AbstractCommand* m_target = nullptr;
     
 };
