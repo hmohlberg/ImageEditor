@@ -170,6 +170,10 @@ void LayerItem::setFileInfo( const QString &filePath )
   }
 }
 
+void LayerItem::setOriginalImage( const QImage& originalImage ) {
+  m_originalImage = originalImage;
+}
+
 const QImage& LayerItem::originalImage() {
 	if ( m_originalImage.format() != QImage::Format_ARGB32 )
            m_originalImage = m_originalImage.convertToFormat(QImage::Format_ARGB32);
@@ -327,7 +331,7 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 }
 
 // ------------------------ Cage ------------------------
-void LayerItem::applyTriangleWarp()
+QImage LayerItem::applyTriangleWarp()
 {
   qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): meshActive=" << m_cageMesh.isActive() << ",  m_cageEnabled=" << m_cageEnabled << ", m_cageEditing=" << m_cageEditing;
   {
@@ -336,9 +340,11 @@ void LayerItem::applyTriangleWarp()
      setPixmap(QPixmap::fromImage(warped.image));
      m_image = warped.image;
      QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
+     return m_image.copy();
     } else {
-     qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): WARNING: Image isNull...";
-    } 
+     qDebug() << "LayerItem::applyTriangleWarp(): WARNING: Image isNull...";
+    }
+    return QImage(); 
   }
 }
 
@@ -612,7 +618,7 @@ void LayerItem::setRotationAngle( double value )
     t.rotate(deltaRotation);
     t.translate(-c.x(), -c.y());
     m_undoStack->push(
-       new TransformLayerCommand(this, m_startPos, pos(), m_startTransform, t, name, trafoType)
+       new TransformLayerCommand(this, m_startPos, pos(), m_currentRotation, m_startTransform, t, name, trafoType)
     );
   }
 }

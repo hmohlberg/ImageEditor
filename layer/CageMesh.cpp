@@ -16,6 +16,7 @@
 */
 
 #include "CageMesh.h"
+#include "../core/Config.h"
 
 #include <QDebug>
 #include <QtMath>
@@ -37,7 +38,7 @@ void CageMesh::printself()
 // ------------------------------  ------------------------------
 void CageMesh::create( const QRectF& bounds, int cols, int rows )
 {
-  qDebug() << "CageMesh::create(): cols=" << cols << ", rows=" << rows;
+  qCDebug(logEditor) << "CageMesh::create(): cols=" << cols << ", rows=" << rows;
   {
     m_cols = cols;
     m_rows = rows;
@@ -187,35 +188,6 @@ void CageMesh::addNewSpring(int idxA, int idxB)
     m_springs.append(s);
 }
 
-/*
-void CageMesh::rebuildSprings()
-{
-    m_springs.clear();
-    for (int y = 0; y < m_rows; ++y) {
-        for (int x = 0; x < m_cols; ++x) {
-            int current = y * m_cols + x;
-            // --- 1. STRUKTURFEDERN (Nachbarn) ---
-            if (x < m_cols - 1) addSpring(current, current + 1); // Horizontal
-            if (y < m_rows - 1) addSpring(current, current + m_cols); // Vertikal
-            // --- 2. SCHERFEDERN (Diagonalen) ---
-            if (x < m_cols - 1 && y < m_rows - 1) {
-                addNewSpring(current, (y + 1) * m_cols + (x + 1)); // TL -> BR
-                addNewSpring(y * m_cols + (x + 1), (y + 1) * m_cols + x); // TR -> BL
-            }
-            // --- 3. BIEGEFEDERN (Überspringen einen Punkt) ---
-            // Horizontaler Widerstand gegen Knicke
-            if (x < m_cols - 2) {
-                addNewSpring(current, current + 2);
-            }
-            // Vertikaler Widerstand gegen Knicke
-            if (y < m_rows - 2) {
-                addNewSpring(current, (y + 2) * m_cols + x);
-            }
-        }
-    }
-}
-*/
-
 // ----------------- THE DIAGONAL SPRING MODELL -----------------
 
 void CageMesh::setActive( bool active )
@@ -253,10 +225,10 @@ void CageMesh::setPoint( int i, const QPointF& pos )
 
 void CageMesh::setPoints( const QVector<QPointF>& pts )
 {
-  qDebug() << "CageMesh::setPoints(): points=" << pts.size();
+  qCDebug(logEditor) << "CageMesh::setPoints(): points=" << pts.size();
   {
     if ( pts.size() != m_points.size() ) {
-        printself();
+        // printself();
         return;
     }
     m_points = pts;
@@ -306,32 +278,9 @@ void CageMesh::relax()
     }
 }
 
-/*
-void CageMesh::relax( int iterations )
-{
-  qDebug() << "CageMesh::relax(): niterations=" << iterations;
-  {
-    const qreal stiffness = 0.5; // Federhärte
-    for ( int it = 0; it < iterations; ++it ) {
-        for ( const auto& s : m_springs ) {
-            QPointF& p1 = m_points[s.a];
-            QPointF& p2 = m_points[s.b];
-            QPointF delta = p2 - p1;
-            qreal dist = std::hypot(delta.x(), delta.y());
-            if ( dist < 1e-6 ) continue;
-            qreal diff = (dist - s.restLength) / dist;
-            QPointF corr = delta * 0.5 * stiffness * diff;
-            p1 += corr;
-            p2 -= corr;
-        }
-    }
-  }
-}
-*/
-
 void CageMesh::enforceConstraints( int idx )
 {
-  // qDebug() << "CageMesh::enforceConstraints(): index=" << idx;
+  qCDebug(logEditor) << "CageMesh::enforceConstraints(): index=" << idx;
   {
     const QPointF p = m_points[idx];
     const int x = idx % m_cols;

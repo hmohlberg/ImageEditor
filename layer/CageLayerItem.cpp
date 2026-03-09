@@ -75,7 +75,7 @@ void CageLayerItem::endCageEdit()
 {
     m_editing = false;
     if ( undoStack() && m_startTransform != transform() )
-        undoStack()->push(new TransformLayerCommand(this, m_startPos, pos(), m_startTransform, transform()));
+        undoStack()->push(new TransformLayerCommand(this, m_startPos, pos(), 0.0, m_startTransform, transform()));
 }
 
 void CageLayerItem::setCagePoint( int idx, const QPointF& pos )

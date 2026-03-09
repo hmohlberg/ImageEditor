@@ -54,9 +54,9 @@ class CageWarpCommand : public AbstractCommand
       m_columns = n;
     }
     
-    void setImage( const QImage& image ) { m_image = image; }
+    void setImage( const QImage& image ) { m_warpedImage = image; }
     void save_image() {
-      m_image.save("/tmp/imageeditor_backuppic.png");
+      m_warpedImage.save("/tmp/imageeditor_backuppic.png");
     }
 
   private:
@@ -75,6 +75,7 @@ class CageWarpCommand : public AbstractCommand
     QVector<QPointF> m_before;  // Startposition der Cage-Punkte
     QVector<QPointF> m_after;   // Endposition der Cage-Punkte
     
-    QImage m_image;
+    QImage m_originalImage;
+    QImage m_warpedImage;
     
 };

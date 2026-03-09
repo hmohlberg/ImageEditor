@@ -70,17 +70,14 @@ void CageWarpCommand::pushNewWarpStep( const QVector<QPointF>& points )
 // ---------------------- Undo/Redo ----------------------
 void CageWarpCommand::undo()
 {
-  // qDebug() << "CageWarpCommand::undo(): m_beforepoints =" << m_before.size();
+  qCDebug(logEditor) << "CageWarpCommand::undo(): m_beforepoints =" << m_before.size();
   {
     if ( !m_layer ) return;
-    // Cage auf Startposition zurücksetzen
     CageMesh mesh = m_layer->cageMesh();
     mesh.setPoints(m_before);
-    // m_layer->cageMesh().setPoints(m_before);
-    // Triangle Warp auf Bild anwenden
-    // ??? m_layer->applyTriangleWarp();
     m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,false);
-    m_layer->resetPixmap(); // holt das originale image
+    m_layer->setOriginalImage(m_originalImage);
+    m_layer->resetPixmap();
     printMessage(true);
   }
 }
@@ -90,18 +87,11 @@ void CageWarpCommand::redo()
   qCDebug(logEditor) << "CageWarpCommand::redo(): rows =" << m_rows << ", columns =" << m_columns << ", points =" << m_after.size();
   {
     if ( m_silent || !m_layer ) return;
-    // Cage auf Endposition setzen
-    
+    m_originalImage = m_layer->originalImage();
     m_layer->initCage(m_after,m_rect,m_rows,m_columns);
-    
-    // CageMesh mesh = m_layer->cageMesh();
-    // mesh.setPoints(m_after);
-    
-    // m_layer->cageMesh().setPoints(m_after);
-    // Triangle Warp auf Bild anwenden
-    
     m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,true);
-    m_layer->applyTriangleWarp();
+    m_warpedImage = m_layer->applyTriangleWarp();
+    m_layer->setOriginalImage(m_warpedImage);
     printMessage();
   }
 }

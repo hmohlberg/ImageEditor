@@ -21,12 +21,23 @@
 #include <QPointF>
 #include <QPolygonF>
 #include <QTransform>
+#include <QGraphicsPixmapItem>
 
 namespace GeometryUtils
 {
     
     // >>>
-    QPointF getBilinearCoords(const QPointF &p, const QVector<QPointF> &dstQuad, const QVector<QPointF> &srcQuad) {
+    inline QString getGeometryString( QGraphicsPixmapItem *item ) {
+       if ( !item ) return QString();
+       int w = item->pixmap().width();
+       int h = item->pixmap().height();
+       int x = static_cast<int>(item->scenePos().x());
+       int y = static_cast<int>(item->scenePos().y());
+       return QString("%1x%2+%3+%4").arg(w).arg(h).arg(x).arg(y);
+    }
+    
+    // >>>
+    inline QPointF getBilinearCoords(const QPointF &p, const QVector<QPointF> &dstQuad, const QVector<QPointF> &srcQuad) {
        // Relative Koordinaten u, v im Einheitsquadrat berechnen (0 bis 1)
        // Wir nutzen hier die dstQuad Eckpunkte: p00, p10, p11, p01
        QPointF p00 = dstQuad[0];
@@ -65,7 +76,7 @@ namespace GeometryUtils
     }
     
     // Berechnet eine 3x3 homogene Transformationsmatrix, die quadSrc auf quadDst abbildet
-    QTransform quadToQuad( const QPolygonF& src, const QPolygonF& dst )
+    inline QTransform quadToQuad( const QPolygonF& src, const QPolygonF& dst )
     {
         if ( src.size() != 4 || dst.size() != 4 )
             return QTransform();
@@ -80,7 +91,7 @@ namespace GeometryUtils
     }
     
     // Barycentric Mapping eines Pixels innerhalb eines Dreiecks
-    QPointF barycentric( const QPointF& p, const QVector<QPointF>& triSrc, const QVector<QPointF>& triDst )
+    inline QPointF barycentric( const QPointF& p, const QVector<QPointF>& triSrc, const QVector<QPointF>& triDst )
     {
        // Q_ASSERT(triSrc.size() == 3 && triDst.size() == 3);
        // Dreieck in Vektoren
@@ -135,7 +146,7 @@ namespace GeometryUtils
     }
 
     // Prüft, ob ein Punkt innerhalb eines Dreiecks liegt
-    bool pointInTriangle( const QPointF& p, const QVector<QPointF>& tri )
+    inline bool pointInTriangle( const QPointF& p, const QVector<QPointF>& tri )
     {
        QPointF a = tri[0], b = tri[1], c = tri[2];
        double s = a.y()*c.x() - a.x()*c.y() + (c.y() - a.y())*p.x() + (a.x() - c.x())*p.y();
@@ -145,14 +156,14 @@ namespace GeometryUtils
        return A < 0 ? (s <= 0 && s+t >= A) : (s >= 0 && s+t <= A);
     }
     
-    bool pointInQuad(const QPointF &p, const QVector<QPointF> &quad) {
+    inline bool pointInQuad(const QPointF &p, const QVector<QPointF> &quad) {
        if ( quad.size() < 4 ) return false;
        QVector<QPointF> tri1 = {quad[0], quad[1], quad[2]};
        QVector<QPointF> tri2 = {quad[0], quad[2], quad[3]};  
        return pointInTriangle(p, tri1) || pointInTriangle(p, tri2);
     }
     
-    QTransform triangleToTriangle( const QPointF& a1, const QPointF& b1, const QPointF& c1,
+    inline QTransform triangleToTriangle( const QPointF& a1, const QPointF& b1, const QPointF& c1,
                                      const QPointF& a2, const QPointF& b2, const QPointF& c2 ) 
     {
 		QTransform t1, t2;

@@ -35,6 +35,7 @@ class TransformLayerCommand : public AbstractCommand
         LayerItem* layer,
         const QPointF& oldPos, 
         const QPointF& newPos,
+        const double rotation,
         const QTransform& oldTransform,
         const QTransform& newTransform,
         const QString& name="Transform Layer",
@@ -44,7 +45,7 @@ class TransformLayerCommand : public AbstractCommand
     TransformLayerCommand( LayerItem* layer, const QTransform& oldTransform,
         const QTransform& newTransform, QUndoCommand* parent = nullptr );
     
-    AbstractCommand* clone() const override { return new TransformLayerCommand(m_layer, m_oldPos, m_newPos, m_oldTransform, m_newTransform, m_name); }
+    AbstractCommand* clone() const override { return new TransformLayerCommand(m_layer, m_oldPos, m_newPos, m_rotationAngle, m_oldTransform, m_newTransform, m_name); }
     
     void printMessage( bool isUndo=false );
     void setRotationAngle( double rotation );

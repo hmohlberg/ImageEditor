@@ -32,6 +32,8 @@
 #include "../undo/InvertLayerCommand.h"
 #include "../undo/DeleteLayerCommand.h"
 #include "../undo/LassoCutCommand.h"
+
+#include "../util/GeometryUtils.h"
 #include "../util/QUndoSortDialog.h"
 #include "../util/QImageUtils.h"
 #include "../util/MaskUtils.h"
@@ -760,7 +762,8 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         }
       }
       if ( clickedItem ) {
-        IMainSystem::instance()->showMessage(QString("Selected layer %1").arg(clickedItem->name()));
+        QString geometryString = GeometryUtils::getGeometryString(clickedItem);
+        IMainSystem::instance()->showMessage(QString("Selected layer %1 with geometry %2").arg(clickedItem->name()).arg(geometryString));
         clickedItem->setOperationMode(m_layerOperationMode);
         mainWindow->setSelectedLayer(QString("Layer %1").arg(clickedItem->id()));
         if ( clickedItem->isSelected() == true ) {
@@ -1305,7 +1308,6 @@ LayerItem* ImageView::getSelectedItem( bool isActiveCageItem )
      for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
        auto* layer = dynamic_cast<LayerItem*>(item);
        if ( layer && layer->getType() != LayerItem::MainImage ) {
-         qDebug() << " isSelected =" << ( layer->isSelected() ? "selected" : "none" );
          if ( layer->hasActiveCage() ) {
            return layer;
          }
@@ -1335,7 +1337,6 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
   qCDebug(logEditor) << "ImageView::setLayerOperationMode(): mode =" << mode << ", m_polygonEnabled =" << m_polygonEnabled;
   {
     if ( m_layerOperationMode == LayerItem::OperationMode::Scale ) {
-      qDebug() << " + clean-up scale mode...";
       disableTransformMode();
     } else if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
       qDebug() << " + clean-up cage-warp mode...";
@@ -1401,18 +1402,6 @@ void ImageView::setCageWarpRelaxationSteps( int nRelaxationSteps )
     if ( layer != nullptr ) {
      layer->setCageWarpProperty(1,nRelaxationSteps);
     }
-    /*
-    for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
-      auto* layer = dynamic_cast<LayerItem*>(item);
-      if ( layer && layer->getType() != LayerItem::MainImage ) {
-        qDebug() << " isSelected =" << ( layer->isSelected() ? "selected" : "none" );
-        if ( layer->hasActiveCage() ) {
-         layer->setCageWarpRelaxationSteps(nRelaxationSteps);
-         return;
-        }
-      }
-    }
-    */
   }
 }
 

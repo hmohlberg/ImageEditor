@@ -168,7 +168,7 @@ void TransformHandleItem::mouseReleaseEvent( QGraphicsSceneMouseEvent *e )
       if ( m_layer->undoStack() && m_startTransform != m_layer->transform() ) {
         m_layer->undoStack()->push(
             new TransformLayerCommand(
-                m_layer, m_pressScenePos, m_pressScenePos, m_startTransform, m_layer->transform()));
+                m_layer, m_pressScenePos, m_pressScenePos, 0.0, m_startTransform, m_layer->transform()));
       }
     }
   }

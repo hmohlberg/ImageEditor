@@ -24,12 +24,13 @@
 
 // -------------------------------- Constructor --------------------------------
 TransformLayerCommand::TransformLayerCommand( LayerItem* layer,
-    const QPointF& oldPos, const QPointF& newPos, const QTransform& oldTransform,
+    const QPointF& oldPos, const QPointF& newPos, const double rotation, const QTransform& oldTransform,
     const QTransform& newTransform, const QString& name, const LayerTransformType& trafoType, QUndoCommand* parent )
     : AbstractCommand(parent)
       , m_layer(layer)
       , m_oldPos(oldPos)
       , m_newPos(newPos)
+      , m_rotationAngle(rotation)
       , m_oldTransform(oldTransform)
       , m_newTransform(newTransform)
       , m_name(name)
@@ -231,6 +232,7 @@ TransformLayerCommand* TransformLayerCommand::fromJson( const QJsonObject& obj, 
     QPoint newPos(newPointObj["x"].toInt(), newPointObj["y"].toInt());
 
     // transforms
+    double rotationAngle = obj["rotationAngle"].toDouble();
     QJsonObject oldTransformObj = obj["oldTransform"].toObject();
     QTransform oldTransform(
       oldTransformObj["m11"].toDouble(), oldTransformObj["m12"].toDouble(), oldTransformObj["m13"].toDouble(),
@@ -249,6 +251,7 @@ TransformLayerCommand* TransformLayerCommand::fromJson( const QJsonObject& obj, 
         layer,
         oldPos,
         newPos,
+        rotationAngle,
         oldTransform,
         newTransform,
         name,
