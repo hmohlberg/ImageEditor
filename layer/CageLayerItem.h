@@ -24,7 +24,8 @@ class CageControlPointItem;
 class CageLayerItem : public LayerItem
 {
 
-public:
+ public:
+
     CageLayerItem( const QPixmap& pix, const QPolygonF& cagePolygon = QPolygonF() );
 
     void setCagePoint( int idx, const QPointF& pos );
@@ -37,10 +38,12 @@ public:
     void disableCage();
     bool cageEnabled() const;
 
-protected:
+ protected:
+ 
     void paint( QPainter*, const QStyleOptionGraphicsItem*, QWidget* ) override;
 
-private:
+ private:
+ 
     QVector<QPointF> m_cage;
     QVector<CageControlPointItem*> m_points;
     QTransform m_startTransform;

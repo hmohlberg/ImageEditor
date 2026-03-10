@@ -117,7 +117,7 @@ namespace GeometryUtils
          QPointF v1 = -triSrc[0] + triSrc[1] + triSrc[2] - triSrc[3];
          QPointF v2 = -triSrc[0] - triSrc[1] + triSrc[2] + triSrc[3];
          QPointF v3 = triSrc[0] - triSrc[1] + triSrc[2] - triSrc[3];
-         for ( int iter; iter < 10; iter++ ) {
+         for ( int iter = 0 ; iter < 10; iter++ ) {
            QPointF rhs = 4.0 * p - v0 - Q.x() * v1 - Q.y() * v2 - Q.x() * Q.y() * v3;
            double res = rhs.x() * rhs.x() + rhs.y() * rhs.y();
            if( res <= 1.0e-10 ) {

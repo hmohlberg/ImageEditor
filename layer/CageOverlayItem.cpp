@@ -22,7 +22,7 @@
 
 CageOverlayItem::CageOverlayItem( LayerItem* layer ) : m_layer(layer)
 {
-    setZValue(10000);          // immer über dem Bild
+    setZValue(10000);
     setAcceptedMouseButtons(Qt::NoButton);
 }
 
@@ -33,6 +33,8 @@ QRectF CageOverlayItem::boundingRect() const
 
 void CageOverlayItem::paint( QPainter* p, const QStyleOptionGraphicsItem*, QWidget* )
 {
+  // qDebug() << "CageOverlayItem::paint(): Processing...";
+  {
     const CageMesh& mesh = m_layer->cageMesh();
     if ( mesh.pointCount() == 0 )
         return;
@@ -43,19 +45,20 @@ void CageOverlayItem::paint( QPainter* p, const QStyleOptionGraphicsItem*, QWidg
     int rows = mesh.rows();
     const auto& pts = mesh.points();
     // horizontale Linien
-    for (int y = 0; y < rows; ++y) {
-        for (int x = 0; x + 1 < cols; ++x) {
+    for ( int y = 0; y < rows; ++y ) {
+        for ( int x = 0; x + 1 < cols; ++x ) {
             int i1 = y * cols + x;
             int i2 = i1 + 1;
             p->drawLine(pts[i1], pts[i2]);
         }
     }
     // vertikale Linien
-    for (int x = 0; x < cols; ++x) {
-        for (int y = 0; y + 1 < rows; ++y) {
+    for ( int x = 0; x < cols; ++x ) {
+        for ( int y = 0; y + 1 < rows; ++y ) {
             int i1 = y * cols + x;
             int i2 = i1 + cols;
             p->drawLine(pts[i1], pts[i2]);
         }
     }
+  }
 }

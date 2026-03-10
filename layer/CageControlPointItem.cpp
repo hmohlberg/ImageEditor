@@ -35,8 +35,9 @@ CageControlPointItem::CageControlPointItem( LayerItem* layer, int index )
 
 void CageControlPointItem::mousePressEvent( QGraphicsSceneMouseEvent *e )
 {
-  qCDebug(logEditor) << "CageControlPointItem::mousePressEvent((): Processing...";
+  qDebug() << "CageControlPointItem::mousePressEvent((): Processing...";
   {
+    m_lastPos = e->scenePos();
     // m_startPoint = m_layer->mapFromScene(e->scenePos());
     // m_layer->beginCageEdit();
   }
@@ -44,10 +45,17 @@ void CageControlPointItem::mousePressEvent( QGraphicsSceneMouseEvent *e )
 
 void CageControlPointItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
 {
-  qCDebug(logEditor)  << "CageControlPointItem::mouseMoveEvent((): Processing...";
+  qDebug()  << "CageControlPointItem::mouseMoveEvent((): Processing...";
   {
+    // QPointF currentPos = e->scenePos();
+    // QPointF delta = currentPos - m_lastPos;
+    // m_layer->setCagePoint(m_index, delta);
+    // m_lastPos = currentPos;
+    // e->accept();
+    
     m_layer->setCagePoint(m_index, e->scenePos());
     e->accept();
+    
     // QPointF scenePos = e->scenePos();
     // QPointF layerLocalPos = m_layer->mapFromScene(scenePos);
     // setPos(layerLocalPos);
@@ -58,7 +66,7 @@ void CageControlPointItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
 
 void CageControlPointItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* e )
 {
-  qCDebug(logEditor)  << "CageControlPointItem::mouseReleaseEvent((): Processing...";
+  qDebug()  << "CageControlPointItem::mouseReleaseEvent((): Processing...";
   {
     // m_layer->endCageEdit(m_index,m_startPoint);
     e->accept();

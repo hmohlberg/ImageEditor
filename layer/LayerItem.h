@@ -49,6 +49,8 @@ class LayerItem : public QGraphicsPixmapItem
     LayerItem( const QPixmap& pixmap, QGraphicsItem* parent = nullptr );
     LayerItem( const QImage& image, QGraphicsItem* parent = nullptr );
     
+    QRectF boundingRect() const override;
+    
     void paintStrokeSegment( const QPoint& p0, const QPoint &p1, const QColor &color, int radius, float hardness );
 
     QImage& image( int id=0 );
@@ -110,6 +112,7 @@ class LayerItem : public QGraphicsPixmapItem
     void setCagePoint( int idx, const QPointF& pos );
     void setCagePoints( const QVector<QPointF>& pts );
     void initCage( const QVector<QPointF>& pts, const QRectF& rect, int rows, int columns );
+    void resetCageToPixmap();
     QVector<QPointF> cagePoints() const;
     QImage applyTriangleWarp();
     void applyCageWarp();

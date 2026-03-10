@@ -38,7 +38,7 @@ void CageMesh::printself()
 // ------------------------------  ------------------------------
 void CageMesh::create( const QRectF& bounds, int cols, int rows )
 {
-  qCDebug(logEditor) << "CageMesh::create(): cols=" << cols << ", rows=" << rows;
+  qDebug() << "CageMesh::create(): cols=" << cols << ", rows=" << rows;
   {
     m_cols = cols;
     m_rows = rows;
@@ -81,6 +81,8 @@ void CageMesh::update( const QRectF& bounds, int cols, int rows )
 
 void CageMesh::coarsen( const QRectF& bounds, int newCols, int newRows )
 {
+  qDebug() << "CageMesh::coarsen(): newCols=" << newCols << ", newRows=" << newRows;
+  {
     QVector<QPointF> nextPoints;
     QVector<QPointF> nextOriginalPoints;
     nextPoints.reserve(newCols * newRows);
@@ -92,24 +94,24 @@ void CageMesh::coarsen( const QRectF& bounds, int newCols, int newRows )
             nextOriginalPoints.push_back(m_originalPoints[oldIndex]);
         }
     }
-
     // Daten aktualisieren
     m_points = nextPoints;
     m_originalPoints = nextOriginalPoints;
     m_cols = newCols;
     m_rows = newRows;
-
     // Wichtig: Federn müssen komplett neu aufgebaut werden!
     rebuildSprings();
+  }
 }
 
 void CageMesh::refine( const QRectF& bounds, int newCols, int newRows ) 
 {
+  qDebug() << "CageMesh::refine(): newCols=" << newCols << ", newRows=" << newRows;
+  {
     QVector<QPointF> nextPoints;
     QVector<QPointF> nextOriginalPoints;
     nextPoints.reserve(newCols * newRows);
     nextOriginalPoints.reserve(newCols * newRows);
-
     // Hilfsfunktion zur Interpolation von m_points
     auto getPoint = [&]( int oldX, int oldY ) {
         return m_points[oldY * m_cols + oldX];
@@ -118,7 +120,6 @@ void CageMesh::refine( const QRectF& bounds, int newCols, int newRows )
     const qreal dy = bounds.height() / (newRows - 1);
     for ( int y = 0; y < newRows; ++y ) {
         for ( int x = 0; x < newCols; ++x ) {
-        
             // Berechne die Position im alten Gitter (0.0, 0.5, 1.0, 1.5...)
             qreal oldX_f = x / 2.0;
             qreal oldY_f = y / 2.0;
@@ -135,22 +136,19 @@ void CageMesh::refine( const QRectF& bounds, int newCols, int newRows )
             QPointF p11 = getPoint(x1, y1);
             QPointF interpolatedPoint = (1-tx)*(1-ty)*p00 + tx*(1-ty)*p10 + (1-tx)*ty*p01 + tx*ty*p11;
             nextPoints.push_back(interpolatedPoint);
-            
             // Für OriginalPoints berechnen wir einfach das neue regelmäßige Gitter
             // (Oder nutzen dieselbe Interpolation auf m_originalPoints)
             QPointF p( bounds.left() + x * dx, bounds.top()  + y * dy );
             nextOriginalPoints.push_back(p);
         }
     }
-    
     m_originalPoints = nextOriginalPoints;
     m_points = nextPoints;
     m_cols = newCols;
     m_rows = newRows;
-    
     // Federn: horizontal + vertikal
     rebuildSprings();
-    
+  }  
 }
 
 void CageMesh::rebuildSprings()

@@ -46,7 +46,7 @@ void CenterHandleItem::paint( QPainter* painter,
 void CenterHandleItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
 {
     m_lastPos = e->scenePos();
-    if(m_overlay) m_overlay->beginTransform();
+    if( m_overlay ) m_overlay->beginTransform();
     e->accept();
 }
 
@@ -54,12 +54,12 @@ void CenterHandleItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
 {
     QPointF delta = e->scenePos() - m_lastPos;
     m_lastPos = e->scenePos();
-    if(m_overlay) m_overlay->translateLayer(delta);
+    if( m_overlay ) m_overlay->translateLayer(delta);
     e->accept();
 }
 
 void CenterHandleItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* e )
 {
-    if(m_overlay) m_overlay->endTransform();
+    if( m_overlay ) m_overlay->endTransform();
     e->accept();
 }

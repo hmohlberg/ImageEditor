@@ -79,7 +79,7 @@ namespace TriangleWarp
         QRectF br = QPolygonF(dstQuad).boundingRect();
         for ( int py = int(br.top()); py <= int(br.bottom()); ++py ) {
             for ( int px = int(br.left()); px <= int(br.right()); ++px ) {
-                QPointF p(px + 0.5, py + 0.5);
+                QPointF p(px, py);
                 if ( !GeometryUtils::pointInQuad(p, dstQuad) ) continue;
                 QPointF srcP = GeometryUtils::getBilinearCoords(p, dstQuad, srcQuad);
                 if ( !originalImage.rect().contains(srcP.toPoint()) ) continue;

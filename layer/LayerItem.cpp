@@ -75,6 +75,13 @@ void LayerItem::applyPerspective()
    setPixmap(QPixmap::fromImage(warped));
 }
 
+QRectF LayerItem::boundingRect() const
+{
+    QRectF pixmapRect(offset(), pixmap().size());
+    QRectF cageRect = QPolygonF(m_cageMesh.points()).boundingRect();
+    return pixmapRect.united(cageRect);
+}
+
 // per default moveable layer item
 // NOTE: QGraphicsItem::ItemIsSelectable expands the size of the QGraphicsPixmapItem by +1+1 !   
 void LayerItem::init() 
@@ -514,9 +521,59 @@ void LayerItem::updateCagePoint( TransformHandleItem* handle, const QPointF& loc
   }
 }
 
+void LayerItem::resetCageToPixmap()
+{
+    prepareGeometryChange();
+    qreal w = pixmap().width();
+    qreal h = pixmap().height();
+    setOffset(0, 0);
+    QList<QPointF> resetPoints;
+    resetPoints << QPointF(0, 0);     // Index 0
+    resetPoints << QPointF(w, 0);     // Index 1
+    resetPoints << QPointF(w, h);     // Index 2
+    resetPoints << QPointF(0, h);     // Index 3
+    m_cageMesh.setPoints(resetPoints);
+    for (int i = 0; i < m_handles.size(); ++i) {
+        if (i < resetPoints.size()) {
+            m_handles[i]->setPos(resetPoints[i]);
+        }
+    }
+    m_cageMesh.relax();
+    update();
+}
+
+/** BEST */
+
 void LayerItem::setCagePoint( int idx, const QPointF& pos )
 {
-  qCDebug(logEditor) << "LayerItem::setCagePoint(): index=" << idx << ", pos=(" << pos.x() << ":" << pos.y() << ")...";
+    QPointF localPos = mapFromScene(pos);
+    m_cageMesh.setPoint(idx,localPos);
+    QRectF newBounds = QPolygonF(m_cageMesh.points()).boundingRect();
+    if ( newBounds.x() != 0 || newBounds.y() != 0 ) {
+        qreal dx = newBounds.x();
+        qreal dy = newBounds.y();
+        prepareGeometryChange();
+        setPos(mapToScene(QPointF(dx, dy)));
+        // setOffset(offset() - QPointF(dx, dy));
+        QList<QPointF> pts = m_cageMesh.points();
+        for ( int i = 0; i < pts.size(); ++i ) {
+            pts[i] -= QPointF(dx, dy);
+        }
+        m_cageMesh.setPoints(pts);
+    }
+    for ( int i = 0; i < m_handles.size(); ++i ) {
+        m_handles[i]->setPos(m_cageMesh.point(i));
+    }
+    m_cageMesh.relax();
+    update(); 
+}
+
+/** */
+
+/* OLD - VERSION
+void LayerItem::setCagePoint( int idx, const QPointF& pos )
+{
+  qDebug() << "LayerItem::setCagePoint(): index =" << idx << ", pos =(" << pos.x() << ":" << pos.y() << ")...";
   {
     QRectF bounds_before = QPolygonF(m_cageMesh.points()).boundingRect();
     QPointF local = mapFromScene(pos);
@@ -531,6 +588,7 @@ void LayerItem::setCagePoint( int idx, const QPointF& pos )
     update(); 
   } 
 }
+*/
 
 void LayerItem::commitCageTransform( const QVector<QPointF> &cage )
 {
@@ -744,7 +802,7 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
 {
-  qCDebug(logEditor) << "LayerItem::mouseReleaseEvent(): index=" << m_index << ", name=" << name();
+  qCDebug(logEditor) << "LayerItem::mouseReleaseEvent(): index =" << m_index << ", name =" << name();
   {
     if ( !m_undoStack ) {
       QGraphicsPixmapItem::mouseReleaseEvent(event);
