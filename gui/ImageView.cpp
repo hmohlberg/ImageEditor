@@ -919,7 +919,7 @@ void ImageView::mouseDoubleClickEvent( QMouseEvent* event )
 
 void ImageView::mouseMoveEvent( QMouseEvent* event )
 {
-  qCDebug(logEditor) << "ImageView::mouseMoveEvent(): m_painting=" << m_maskPainting << ", m_paintToolEnabled " << m_paintToolEnabled;
+  qCDebug(logEditor) << "ImageView::mouseMoveEvent(): m_painting =" << m_maskPainting << ", m_paintToolEnabled =" << m_paintToolEnabled;
   {
     if ( !scene() )
         return;

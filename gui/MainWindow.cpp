@@ -131,6 +131,7 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     createDockWidgets();
 
     // >>>
+    qDebug() << "MainWindow::MainWindow(): Loading image or project..."; 
     bool hasMainImage = false;
     if ( !imagePath.isEmpty() && historyPath.isEmpty() ) {
      hasMainImage = loadImage(imagePath);
@@ -145,6 +146,7 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     }
     
     // >>>
+    qDebug() << "MainWindow::MainWindow(): Set style..."; 
     if ( EditorStyle::instance().windowSize() == "maximum" ) {
        this->showMaximized();
     } else if ( EditorStyle::instance().windowSize() == "fullscreen" ) {
@@ -555,17 +557,13 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
 
 void MainWindow::loadHistory( const QString& file )
 {
+  qCDebug(logEditor) << "MainWindow::loadHistory(): filename =" << file;
+  {
     QFile f(file);
     if ( !f.open(QIODevice::ReadOnly) )
         return;
-    QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
-    QJsonArray arr = doc.array();
-    m_imageView->undoStack()->clear();
-    for ( const auto& v : arr ) {
-        auto* cmd = AbstractCommand::fromJson(v.toObject(),m_imageView);
-        if ( !cmd ) continue;
-        m_imageView->undoStack()->push(cmd);
-    }
+    loadProject(file, m_layerItem == nullptr ? false : true ); 
+  }
 }
 
 void MainWindow::openHistory()
@@ -1848,5 +1846,10 @@ void MainWindow::newLassoLayerCreated()
 
 void MainWindow::cutSelection() { m_imageView->cutSelection(); }
 void MainWindow::zoom1to1() { m_imageView->resetTransform(); }
-void MainWindow::fitToWindow() { m_imageView->fitInView(m_layerItem,Qt::KeepAspectRatio); }
 void MainWindow::forcedUpdate() { m_imageView->forcedUpdate(); }
+
+void MainWindow::fitToWindow() { 
+  if ( m_layerItem != nullptr ) {
+     m_imageView->fitInView(m_layerItem,Qt::KeepAspectRatio); 
+  }
+}
