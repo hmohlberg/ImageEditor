@@ -101,7 +101,7 @@ class MainWindow : public QMainWindow, public IMainSystem
 
  private:
     
-    bool checkUnsavedData();
+    bool checkUnsavedData( bool isCloseProgram = true );
     bool loadImage( const QString& );
     void loadHistory( const QString& );
     bool saveProject( const QString& );

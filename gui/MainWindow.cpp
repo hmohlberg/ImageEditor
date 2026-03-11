@@ -131,7 +131,6 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     createDockWidgets();
 
     // >>>
-    qDebug() << "MainWindow::MainWindow(): Loading image or project..."; 
     bool hasMainImage = false;
     if ( !imagePath.isEmpty() && historyPath.isEmpty() ) {
      hasMainImage = loadImage(imagePath);
@@ -146,7 +145,6 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     }
     
     // >>>
-    qDebug() << "MainWindow::MainWindow(): Set style..."; 
     if ( EditorStyle::instance().windowSize() == "maximum" ) {
        this->showMaximized();
     } else if ( EditorStyle::instance().windowSize() == "fullscreen" ) {
@@ -185,14 +183,18 @@ MainWindow::~MainWindow() {
 }
 
 // ---------------------- Catch close/exit event ----------------------
-bool MainWindow::checkUnsavedData()
+bool MainWindow::checkUnsavedData( bool isCloseProgram  )
 {
+  qCDebug(logEditor) << "MainWindow::checkUnsavedData(): closeProgram =" << isCloseProgram;
+  {
     if ( m_imageView->undoStack()->isClean() )
       return true;
+    QString msg = isCloseProgram ? "quit the program" : "continue";
     auto reply = QMessageBox::question( this, "ImageEditor",
-                            tr("There are unsaved changes.\nDo you really want to quit the program?"),
+                            tr("There are unsaved changes.\nDo you really want to %1?").arg(msg),
                             QMessageBox::Cancel | QMessageBox::No | QMessageBox::Yes,QMessageBox::Yes);
     return (reply == QMessageBox::Yes);
+  }
 }
 
 void MainWindow::closeEvent( QCloseEvent *event ) 
@@ -238,7 +240,17 @@ bool MainWindow::loadImage( const QString& filePath )
 
 void MainWindow::openImage()
 {
+  qCDebug(logEditor) << "MainWindow::openImage(): Processing...";
+  {
     bool isMaskImage = sender() == m_openMaskImageAction ? true : false;
+    if ( !isMaskImage ) {
+     if ( checkUnsavedData(false) == false ) {
+      return;
+     }
+     m_imageView->undoStack()->clear();
+     m_imageView->clearLayers();
+     rebuildLayerList();
+    }
     QString title = isMaskImage ? QString("Open mask image") : QString("Open image");
     QString fileName = QFileDialog::getOpenFileName(this,
                         title, QString(),
@@ -250,6 +262,7 @@ void MainWindow::openImage()
     } else {
       loadImage(fileName);
     }
+  }
       
 /*
     QPixmap pix(fileName);

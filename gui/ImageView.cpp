@@ -1370,12 +1370,14 @@ LayerItem* ImageView::baseLayer()
 
 void ImageView::clearLayers()
 {
+    qDeleteAll(m_layers);
+    m_layers.clear();
 }
 
 void ImageView::createLassoLayer()
 {
-  createNewLayer(m_lassoPolygon,"Lasso Layer");
-  emit lassoLayerAdded();
+    createNewLayer(m_lassoPolygon,"Lasso Layer");
+    emit lassoLayerAdded();
 }
 
 LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QString &name )
