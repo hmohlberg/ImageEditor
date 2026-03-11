@@ -1521,10 +1521,14 @@ void MainWindow::createToolbars()
     stiffnessSpin->setValue(0.0);
     m_canvasWarpLayerToolbar->addWidget(stiffnessSpin);
     connect(stiffnessSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), m_imageView, &ImageView::setCageWarpStiffness);
+    // --- Reset cage ---
+    QPushButton *resetCageAction = new QPushButton("Reset");
+    connect(resetCageAction, &QPushButton::clicked, m_imageView, &ImageView::setCageWarpReset);
+    m_canvasWarpLayerToolbar->addWidget(resetCageAction);
     // --- Update for Debugging ---
-    QPushButton *updateAction = new QPushButton("Update");
-    connect(updateAction, &QPushButton::clicked, this, &MainWindow::forcedUpdate);
-    m_canvasWarpLayerToolbar->addWidget(updateAction);
+    // QPushButton *updateAction = new QPushButton("Update");
+    // connect(updateAction, &QPushButton::clicked, this, &MainWindow::forcedUpdate);
+    // m_canvasWarpLayerToolbar->addWidget(updateAction);
     // --- add control group to toolbar
     m_canvasWarpLayerToolbar->setVisible(false);
     

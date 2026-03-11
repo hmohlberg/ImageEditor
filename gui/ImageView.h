@@ -134,6 +134,7 @@ class ImageView : public QGraphicsView
     void setCageWarpFixBoundary( bool isChecked );
     void setCageWarpRelaxationSteps( int nRelaxationSteps );
     void setCageWarpStiffness( double stiffness );
+    void setCageWarpReset();
     void setOverlayVisibility( int overlayType, bool isVisible );
     void setCageVisible( LayerItem* layer, LayerItem::OperationMode mode, bool isVisible );
     void setMaskTool( MaskTool t );

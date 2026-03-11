@@ -340,7 +340,7 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 // ------------------------ Cage ------------------------
 QImage LayerItem::applyTriangleWarp()
 {
-  qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): meshActive=" << m_cageMesh.isActive() << ",  m_cageEnabled=" << m_cageEnabled << ", m_cageEditing=" << m_cageEditing;
+  qDebug() << "LayerItem::applyTriangleWarp(): meshActive =" << m_cageMesh.isActive() << ",  m_cageEnabled =" << m_cageEnabled << ", m_cageEditing =" << m_cageEditing;
   {
     TriangleWarp::WarpResult warped = TriangleWarp::warp(m_originalImage,m_cageMesh);
     if ( !warped.image.isNull() ) {
@@ -468,19 +468,22 @@ int LayerItem::changeNumberOfActiveCagePoints( int step )
      columns += step*ds;
      int rows = m_cageMesh.rows();
      rows += step*ds;
-     // update cage
-     m_cageMesh.needUpdate();
-     m_cageMesh.update(boundingRect(),std::max(3,rows),std::max(3,columns));
-     // update handles
-     qDeleteAll(m_handles);
-     m_handles.clear();
-     for ( int i = 0; i < m_cageMesh.pointCount(); ++i ) {
-      auto* h = new CageControlPointItem(this, i);
-      h->setParentItem(this);
-      h->setPos(m_cageMesh.point(i));
-      m_handles << h;
+     if ( rows >= 3 && columns >= 3 ) {
+      // update cage
+      m_cageMesh.needUpdate();
+      m_cageMesh.update(boundingRect(),std::max(3,rows),std::max(3,columns));
+      // update handles
+      qDeleteAll(m_handles);
+      m_handles.clear();
+      for ( int i = 0; i < m_cageMesh.pointCount(); ++i ) {
+       auto* h = new CageControlPointItem(this, i);
+       h->setParentItem(this);
+       h->setPos(m_cageMesh.point(i));
+       m_handles << h;
+      }
+      return rows;
      }
-     return rows;
+     return 0;
   }
 }
 
@@ -523,29 +526,39 @@ void LayerItem::updateCagePoint( TransformHandleItem* handle, const QPointF& loc
 
 void LayerItem::resetCageToPixmap()
 {
+  qCDebug(logEditor) << "LayerItem::resetCageToPixmap(): size =" << m_handles.size();
+  {
     prepareGeometryChange();
     qreal w = pixmap().width();
     qreal h = pixmap().height();
     setOffset(0, 0);
     QList<QPointF> resetPoints;
-    resetPoints << QPointF(0, 0);     // Index 0
-    resetPoints << QPointF(w, 0);     // Index 1
-    resetPoints << QPointF(w, h);     // Index 2
-    resetPoints << QPointF(0, h);     // Index 3
+    int nrc = qSqrt(m_handles.size());
+    qreal dx = w/(nrc-1);
+    qreal dy = h/(nrc-1);
+    for ( int i=0 ; i<nrc ; i++ ) {
+      qreal y = i*dy;
+      for ( int j=0 ; j<nrc ; j++ ) {
+        qreal x = j*dx;
+        resetPoints << QPointF(x, y);
+      }
+    }
     m_cageMesh.setPoints(resetPoints);
-    for (int i = 0; i < m_handles.size(); ++i) {
-        if (i < resetPoints.size()) {
+    for ( int i = 0; i < m_handles.size(); ++i ) {
+        if ( i < resetPoints.size() ) {
             m_handles[i]->setPos(resetPoints[i]);
         }
     }
-    m_cageMesh.relax();
-    update();
+    applyTriangleWarp();
+  }
 }
 
 /** BEST */
 
 void LayerItem::setCagePoint( int idx, const QPointF& pos )
 {
+  qCDebug(logEditor) << "LayerItem::setCagePoint(): index =" << idx << ", point =" << pos;
+  {
     QPointF localPos = mapFromScene(pos);
     m_cageMesh.setPoint(idx,localPos);
     QRectF newBounds = QPolygonF(m_cageMesh.points()).boundingRect();
@@ -565,7 +578,8 @@ void LayerItem::setCagePoint( int idx, const QPointF& pos )
         m_handles[i]->setPos(m_cageMesh.point(i));
     }
     m_cageMesh.relax();
-    update(); 
+    update();
+  }
 }
 
 /** */

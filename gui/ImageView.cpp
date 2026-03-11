@@ -1354,73 +1354,8 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
        layer->setOperationMode(mode);
      }
     }
-  /*
-	for ( auto* item : m_scene->items() ) {
-        auto* layer = dynamic_cast<LayerItem*>(item);
-        if ( layer && layer->isSelected() ) {
-          layer->setTransformMode(mode);
-        }
-    }
-   */
   }
 }
-
-void ImageView::setIncreaseNumberOfCageControlPoints() 
-{
-   if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() && m_cageWarpCommand != nullptr ) return;
-   int n = m_selectedLayer->changeNumberOfActiveCagePoints(+1);
-   m_cageWarpCommand->setNumberOfRowsAndColumns(n);
-}
-
-void ImageView::setDecreaseNumberOfCageControlPoints() 
-{
-   if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() ) return;
-   m_selectedLayer->changeNumberOfActiveCagePoints(-1);
-}
-
-void ImageView::setNumberOfCageControlPoints( int nControlPoints ) 
-{
-  qCDebug(logEditor) << "ImageView::setNumberOfCageControlPoints(): nControlPoints=" << nControlPoints;
-  {
-    for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
-      auto* layer = dynamic_cast<LayerItem*>(item);
-      if ( layer && layer->getType() != LayerItem::MainImage ) {
-        if ( layer->hasActiveCage() ) {
-         layer->setNumberOfActiveCagePoints(nControlPoints);
-         return;
-        }
-      }
-    }
-  }
-}
-
-void ImageView::setCageWarpRelaxationSteps( int nRelaxationSteps )
-{
-  qCDebug(logEditor) << "ImageView::setCageWarpRelaxationSteps(): nRelaxationSteps=" << nRelaxationSteps;
-  {
-    LayerItem *layer = getSelectedItem(true);
-    if ( layer != nullptr ) {
-     layer->setCageWarpProperty(1,nRelaxationSteps);
-    }
-  }
-}
-
-void ImageView::setCageWarpStiffness( double stiffness )
-{
-  LayerItem *layer = getSelectedItem(true);
-  if ( layer != nullptr ) {
-    layer->setCageWarpProperty(2,stiffness);
-  }
-}
-
-void ImageView::setCageWarpFixBoundary( bool isChecked )
-{
-  LayerItem *layer = getSelectedItem(true);
-  if ( layer != nullptr ) {
-    layer->setCageWarpProperty(3,isChecked);
-  }
-}
-
 
 LayerItem* ImageView::baseLayer()
 {
@@ -1578,8 +1513,83 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
 }
 
 // ---------------------------- --------------- -----------------------------
+// ---------------------------- CageWarp methods ----------------------------
+// ---------------------------- --------------- -----------------------------
+// ToDo: 
+//   + increase/decrease needs an udate
+//   + reset not yet implemented
+// ---------------------------- --------------- -----------------------------
+
+void ImageView::setCageWarpReset()
+{
+  qDebug() << "ImageView::setCageWarpReset(): Processing...";
+  {
+    if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() ) return;
+    m_selectedLayer->resetCageToPixmap();
+  }
+}
+
+void ImageView::setIncreaseNumberOfCageControlPoints() 
+{
+   if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() && m_cageWarpCommand != nullptr ) return;
+   int n = m_selectedLayer->changeNumberOfActiveCagePoints(+1);
+   m_cageWarpCommand->setNumberOfRowsAndColumns(n);
+}
+
+void ImageView::setDecreaseNumberOfCageControlPoints() 
+{
+   if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() ) return;
+   int n = m_selectedLayer->changeNumberOfActiveCagePoints(-1);
+   if ( n != 0 ) m_selectedLayer->applyTriangleWarp();
+}
+
+void ImageView::setNumberOfCageControlPoints( int nControlPoints ) 
+{
+  qCDebug(logEditor) << "ImageView::setNumberOfCageControlPoints(): nControlPoints=" << nControlPoints;
+  {
+    for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
+      auto* layer = dynamic_cast<LayerItem*>(item);
+      if ( layer && layer->getType() != LayerItem::MainImage ) {
+        if ( layer->hasActiveCage() ) {
+         layer->setNumberOfActiveCagePoints(nControlPoints);
+         return;
+        }
+      }
+    }
+  }
+}
+
+void ImageView::setCageWarpRelaxationSteps( int nRelaxationSteps )
+{
+  qCDebug(logEditor) << "ImageView::setCageWarpRelaxationSteps(): nRelaxationSteps=" << nRelaxationSteps;
+  {
+    LayerItem *layer = getSelectedItem(true);
+    if ( layer != nullptr ) {
+     layer->setCageWarpProperty(1,nRelaxationSteps);
+    }
+  }
+}
+
+void ImageView::setCageWarpStiffness( double stiffness )
+{
+  LayerItem *layer = getSelectedItem(true);
+  if ( layer != nullptr ) {
+    layer->setCageWarpProperty(2,stiffness);
+  }
+}
+
+void ImageView::setCageWarpFixBoundary( bool isChecked )
+{
+  LayerItem *layer = getSelectedItem(true);
+  if ( layer != nullptr ) {
+    layer->setCageWarpProperty(3,isChecked);
+  }
+}
+
+// ---------------------------- --------------- -----------------------------
 // ---------------------------- Polygon methods -----------------------------
 // ---------------------------- --------------- -----------------------------
+
 EditablePolygonCommand* ImageView::getPolygonUndoCommand( const QString& name, bool isSelected )
 {
   if ( name == "" ) {
