@@ -55,10 +55,12 @@ EditablePolygonCommand::EditablePolygonCommand( LayerItem *layer, QGraphicsScene
 // ------------------------ Methods ------------------------
 void EditablePolygonCommand::printMessage( bool isUndo )
 {
-  if ( isUndo ) {
+  if ( auto *ms = IMainSystem::instance() ) {
+    if ( isUndo ) {
      IMainSystem::instance()->showMessage(QString("Deleted polygon %1").arg(m_name)); 
-  } else {
+    } else {
      IMainSystem::instance()->showMessage(QString("Created polygon %1 with %2 points").arg(m_name).arg(m_polygon.count()));
+    }
   }
 }
 

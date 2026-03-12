@@ -135,7 +135,9 @@ void EditablePolygon::setPoint( int idx, const QPointF& p )
 void EditablePolygon::insertPoint( int idx, const QPointF& p )
 {
     if ( idx < 0 || idx > m_polygon.size() ) return;
-    IMainSystem::instance()->showMessage(QString("Inserted point (%1:%2) at position %3").arg(p.x()).arg(p.y()).arg(idx));
+    if ( auto *ms = IMainSystem::instance() ) {
+      IMainSystem::instance()->showMessage(QString("Inserted point (%1:%2) at position %3").arg(p.x()).arg(p.y()).arg(idx));
+    }
     m_polygon.insert(idx, p);
     emit changed();
 }

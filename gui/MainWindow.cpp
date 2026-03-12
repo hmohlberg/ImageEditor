@@ -175,11 +175,18 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
 }
 
 MainWindow::~MainWindow() {
-  #ifdef HASITK
-    std::cout << "MainWindow::~MainWindow(): Delete all..." << std::endl;
-    itk::MultiThreaderBase::SetGlobalDefaultNumberOfThreads(1);
-    // delete ui;
-  #endif
+  qCDebug(logEditor) << "MainWindow::~MainWindow(): begin " << this
+             << "instance =" << IMainSystem::instance() << "this as IMainSystem* =" << static_cast<IMainSystem*>(this);
+  {
+    #ifdef HASITK
+     std::cout << "MainWindow::~MainWindow(): Delete all..." << std::endl;
+     itk::MultiThreaderBase::SetGlobalDefaultNumberOfThreads(1);
+     // delete ui;
+    #endif
+    if ( IMainSystem::instance() == static_cast<IMainSystem*>(this) ) {
+      IMainSystem::setInstance(nullptr); //  this has also result in a crash even on my mac
+    }
+  }
 }
 
 // ---------------------- Catch close/exit event ----------------------
@@ -517,7 +524,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
         QJsonObject cmdObj = v.toObject();
         QString type = cmdObj["type"].toString();
         QString text = cmdObj["text"].toString();
-        // qDebug() << "MainWindow::loadProject(): Found undo call: type=" << type << ", text=" << text;
+        qDebug() << "MainWindow::loadProject(): Found undo call: type=" << type << ", text=" << text;
         AbstractCommand* cmd = nullptr;
         if ( type == "PaintStroke" || type == "PaintStrokeCommand" ) {
            cmd = PaintStrokeCommand::fromJson(cmdObj, layers);
@@ -657,7 +664,7 @@ void MainWindow::createDockWidgets()
    connect(m_imageView, &ImageView::layerAdded, this, &MainWindow::rebuildLayerList);
    connect(m_imageView, &ImageView::lassoLayerAdded, this, &MainWindow::newLassoLayerCreated);
    // Reihenfolge Drag & Drop → Scene aktualisieren
-   connect(m_layerList->model(), &QAbstractItemModel::rowsMoved, [this]() {
+   connect(m_layerList->model(), &QAbstractItemModel::rowsMoved, this, [this]() {
      const int count = m_layerList->count();
      for ( int i=0 ; i<count ; ++i ) {
        QListWidgetItem* item = m_layerList->item(i);
@@ -1603,7 +1610,7 @@ void MainWindow::createToolbars()
       }
       m_imageView->setMaskLabel(numOnly.toInt());
     });
-    connect(applyClassImageItem, &QComboBox::currentTextChanged,this, [this,maskIndexBox](const QString& text){
+    connect(applyClassImageItem, &QComboBox::currentTextChanged, this, [this,maskIndexBox](const QString& text){
       QString maskClassName = maskIndexBox->currentText();
       if ( text.startsWith("Ignore") ) {
          m_imageView->setMaskCutTool(maskClassName,ImageView::MaskCutTool::Ignore);
@@ -1655,7 +1662,7 @@ void MainWindow::createToolbars()
     // --- Mask image ---
     QComboBox* applyMaskImageItem = new QComboBox();
     applyMaskImageItem->addItems({"Ignore mask","Mask labels","Only mask labels","Copy where mask"});
-    connect(applyMaskImageItem, &QComboBox::currentTextChanged,this, [this](const QString& text){
+    connect(applyMaskImageItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
       // std::cout << "applyMaskImageItem(): " << text.toStdString() << std::endl;
       QString name = "Label 0";
       if ( text.startsWith("Ignore") ) {

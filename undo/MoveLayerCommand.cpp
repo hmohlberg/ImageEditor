@@ -43,12 +43,14 @@ MoveLayerCommand::MoveLayerCommand( LayerItem* layer, const QPointF& oldPos, con
 
 void MoveLayerCommand::printMessage( bool isUndo )
 {
-  if ( isUndo ) {
+  if ( auto *ms = IMainSystem::instance() ) {
+   if ( isUndo ) {
     IMainSystem::instance()->showMessage(QString("Moved layer %1 from position (%2:%3) to position (%4:%5)").arg(m_layerId).
                                arg(qRound(m_newPos.x())).arg(qRound(m_newPos.y())).arg(qRound(m_oldPos.x())).arg(qRound(m_oldPos.y())));
-  } else {
+   } else {
     IMainSystem::instance()->showMessage(QString("Moved layer %1 from position (%2:%3) to position (%4:%5)").arg(m_layerId).
                                arg(qRound(m_oldPos.x())).arg(qRound(m_oldPos.y())).arg(qRound(m_newPos.x())).arg(qRound(m_newPos.y())));
+   }
   }
 }
 

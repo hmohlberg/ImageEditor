@@ -103,14 +103,16 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer, const QTransform
 
 void TransformLayerCommand::printMessage( bool isUndo )
 {
-  if ( m_trafoType == LayerTransformType::Scale ) {
-    IMainSystem::instance()->showMessage(QString("Scaled layer %1 by (%2:%3)").arg(m_layerId).
+  if ( auto *ms = IMainSystem::instance() ) {
+    if ( m_trafoType == LayerTransformType::Scale ) {
+      IMainSystem::instance()->showMessage(QString("Scaled layer %1 by (%2:%3)").arg(m_layerId).
                                arg(m_totalTransform.m11()).arg(m_totalTransform.m22()));
-  } else if ( m_trafoType == LayerTransformType::Rotate ) {
-    IMainSystem::instance()->showMessage(QString("Rotated layer %1 by %2 degrees").arg(m_layerId)
+    } else if ( m_trafoType == LayerTransformType::Rotate ) {
+      IMainSystem::instance()->showMessage(QString("Rotated layer %1 by %2 degrees").arg(m_layerId)
                      .arg( isUndo ? -m_rotationAngle : m_rotationAngle));
-  } else {
-    IMainSystem::instance()->showMessage(QString("Invalid trafoType %1 for layer %2").arg(m_trafoType).arg(m_layerId),1);
+    } else {
+      IMainSystem::instance()->showMessage(QString("Invalid trafoType %1 for layer %2").arg(m_trafoType).arg(m_layerId),1);
+    }
   }
 }
 

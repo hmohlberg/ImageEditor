@@ -56,9 +56,11 @@ LassoCutCommand::LassoCutCommand( LayerItem* originalLayer, LayerItem* newLayer,
 
 void LassoCutCommand::printMessage( bool isUndo )
 {
-  IMainSystem::instance()->showMessage(QString("Created layer %1 with id %2 of size (%3x%4) at position (%5:%6)")
+  if ( auto *ms = IMainSystem::instance() ) {
+    IMainSystem::instance()->showMessage(QString("Created layer %1 with id %2 of size (%3x%4) at position (%5:%6)")
                                 .arg(m_name).arg(m_newLayerId).arg(m_bounds.width()).arg(m_bounds.height())
                                 .arg(m_bounds.x()).arg(m_bounds.y()) );
+  }
 }
 
 // ---------------------- Undo/Redo ----------------------

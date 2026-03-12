@@ -51,10 +51,12 @@ CageWarpCommand::CageWarpCommand( LayerItem* layer,
 // ---------------------- Methods ----------------------
 void CageWarpCommand::printMessage( bool isUndo )
 {
-  if ( isUndo ) {
+  if ( auto *ms = IMainSystem::instance() ) {
+    if ( isUndo ) {
      IMainSystem::instance()->showMessage(QString("Undo cage warp of layer %1").arg(m_layerId));
-  } else {
+    } else {
      IMainSystem::instance()->showMessage(QString("Cage warp of layer %1").arg(m_layerId));
+    }
   }
 }
 

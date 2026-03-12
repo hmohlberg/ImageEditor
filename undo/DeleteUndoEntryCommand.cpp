@@ -45,11 +45,13 @@ DeleteUndoEntryCommand::DeleteUndoEntryCommand( QUndoStack* stack, const QString
 
 void DeleteUndoEntryCommand::printMessage( bool isUndo )
 {
-   if ( isUndo ) {
+  if ( auto *ms = IMainSystem::instance() ) {
+    if ( isUndo ) {
      IMainSystem::instance()->showMessage(QString("Undo delete command %1").arg(m_name)); 
-   } else {
+    } else {
      IMainSystem::instance()->showMessage(QString("Deleted command %1").arg(m_name)); 
-   }
+    }
+  }
 }
 
 //-------------- Undo / redo  -------------- 

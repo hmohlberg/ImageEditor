@@ -102,7 +102,9 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
       // *** have to go to all commands between last and current index ***
       // qDebug() << "ImageView::ImageView(): lastIndex =" << m_lastIndex << ", currentIndex =" << currentIndex;
       if ( currentIndex == 0 ) {
-        IMainSystem::instance()->showMessage(QString("Initial state"));
+        if ( auto *ms = IMainSystem::instance() ) {
+          IMainSystem::instance()->showMessage(QString("Initial state"));
+        }
       } else if ( currentIndex > 0 ) {
         const QUndoCommand* justFinishedCommand = m_undoStack->command(currentIndex - 1);
         if ( justFinishedCommand != nullptr ) {
@@ -763,7 +765,9 @@ void ImageView::mousePressEvent( QMouseEvent* event )
       }
       if ( clickedItem ) {
         QString geometryString = GeometryUtils::getGeometryString(clickedItem);
-        IMainSystem::instance()->showMessage(QString("Selected layer %1 with geometry %2").arg(clickedItem->name()).arg(geometryString));
+        if ( auto *ms = IMainSystem::instance() ) {
+          IMainSystem::instance()->showMessage(QString("Selected layer %1 with geometry %2").arg(clickedItem->name()).arg(geometryString));
+        }
         clickedItem->setOperationMode(m_layerOperationMode);
         mainWindow->setSelectedLayer(QString("Layer %1").arg(clickedItem->id()));
         if ( clickedItem->isSelected() == true ) {
@@ -1370,11 +1374,8 @@ LayerItem* ImageView::baseLayer()
 
 void ImageView::clearLayers()
 {
-  qDebug() << "ImageView::clearLayers(): Processing...";
-  {
     qDeleteAll(m_layers);
     m_layers.clear();
-  }
 }
 
 void ImageView::createLassoLayer()
