@@ -184,7 +184,7 @@ MainWindow::~MainWindow() {
      // delete ui;
     #endif
     if ( IMainSystem::instance() == static_cast<IMainSystem*>(this) ) {
-      IMainSystem::setInstance(nullptr); //  this has also result in a crash even on my mac
+      IMainSystem::setInstance(nullptr); //  This also caused my Mac to crash.
     }
   }
 }
