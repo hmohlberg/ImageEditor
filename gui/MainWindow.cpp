@@ -161,7 +161,7 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
          bestScreen = i;
         }
        }
-       QScreen * screen = QGuiApplication::screens().at(bestScreen);
+       QScreen *screen = QGuiApplication::screens().at(bestScreen);
        QSize totalSize = screen->size();
        QRect ScreenGeometry = QGuiApplication::screens().at(bestScreen)->geometry();
        move(ScreenGeometry.topLeft());
@@ -208,14 +208,33 @@ void MainWindow::closeEvent( QCloseEvent *event )
 
 // ---------------------- Load and Save ----------------------
 // -> m_imageView->getScene()->addItem(m_layerItem);
-bool MainWindow::loadImage( const QString& filePath )
+bool MainWindow::loadImage( const QString& filePath, bool askForNewLoad )
 {
-  qCDebug(logEditor) << "MainWindow::loadImage(): filePath=" << filePath;
+  qCDebug(logEditor) << "MainWindow::loadImage(): filePath =" << filePath << ", askForNewLoad =" << askForNewLoad;
   {
     ImageLoader loader;
     if ( !loader.load(filePath) ) {
-      qInfo() << "Warning: Could not load main image " << filePath;
-      return false;
+      if ( askForNewLoad ) {
+        QString updatedPath;
+        if ( QWidgetUtils::handleMissingImage(filePath,updatedPath) == true ) {
+          if ( loader.load(updatedPath) ) {
+            QFileInfo fileInfo(updatedPath);
+            m_mainImageName = fileInfo.fileName();
+          } else {
+            showMessage(QString("Still invalid main image path '%1'. Loading aborted").arg(updatedPath),1);
+            return false;
+          }
+        } else {
+          showMessage(QString("Invalid main image path '%1'. Loading aborted").arg(filePath),1);
+          return false;
+        }
+      } else {
+        showMessage(QString("Could not load main image %1").arg(filePath),1);
+        return false;
+      }
+    } else {
+      QFileInfo fileInfo(filePath);
+      m_mainImageName = fileInfo.fileName();
     }
     Config::isWhiteBackgroundImage = loader.hasWhiteBackground();
     auto* scene = m_imageView->getScene();
@@ -263,21 +282,6 @@ void MainWindow::openImage()
       loadImage(fileName);
     }
   }
-      
-/*
-    QPixmap pix(fileName);
-    if ( !pix.isNull() ) {
-      if ( isMaskImage ) {
-       m_imageView->loadMaskImage(fileName);
-      } else {
-        m_layerItem = new LayerItem(pix);
-        m_layerItem->setParent(this);
-        m_imageView->getScene()->addItem(m_layerItem);
-      }
-      fitToWindow();
-    }
-*/
-
 }
 
 void MainWindow::saveAsImage()
@@ -345,6 +349,7 @@ bool MainWindow::saveProject( const QString& filePath )
     QUndoStack* undoStack = m_imageView->undoStack();
     
     QJsonArray layerArray;
+    
     // --- Main Layer ---
     if ( m_layerItem != nullptr ) {
      QJsonObject mainObj;
@@ -364,7 +369,8 @@ bool MainWindow::saveProject( const QString& filePath )
      }
      layerArray.append(mainObj);
     }
-    // --- 1. Layers ---
+    
+    // --- Layers ---
     const auto& layers = m_imageView->layers();
     for ( int i = layers.size()-1; i >= 0; --i ) {
         Layer* layer = layers[i];
@@ -386,7 +392,7 @@ bool MainWindow::saveProject( const QString& filePath )
     }
     root["layers"] = layerArray;
 
-    // --- 3. Undo/Redo Stack ---
+    // --- Undo/Redo Stack ---
     QJsonArray undoArray;
     for ( int i = 0; i < undoStack->count(); ++i ) {
         auto* cmd = dynamic_cast<const AbstractCommand*>(undoStack->command(i));
@@ -395,13 +401,13 @@ bool MainWindow::saveProject( const QString& filePath )
     }
     root["undoStack"] = undoArray;
 
-    // --- 4. Write JSON to file ---
+    // --- Write JSON to file ---
     QFile f(filePath);
     if (!f.open(QIODevice::WriteOnly)) return false;
     f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     f.close();
     
-    // --- 5. set clean flag in undo stack ---
+    // --- Set clean flag in undo stack ---
     m_imageView->undoStack()->setClean();
     
     return true;
@@ -418,11 +424,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
     if ( !doc.isObject() ) return false;
     QJsonObject root = doc.object();
     
-    // --- 1. Clear current scene ---
-    QUndoStack* undoStack = m_imageView->undoStack();
-    undoStack->clear();
-    
-    // --- 2. Parsing layers (does not contain layer postions) ---
+    // --- Loading and verify main image ---
     QJsonArray layerArray = root["layers"].toArray();
     if ( !skipMainImage ) {
       for ( const QJsonValue& v : layerArray ) {
@@ -433,12 +435,40 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
           QString filename = layerObj["filename"].toString();
           QString pathname = layerObj["pathname"].toString();
           QString fullfilename = pathname+"/"+filename;
-          if ( !loadImage(fullfilename) ) {
-           qCDebug(logEditor) << "MainWindow::loadProject(): Cannot find '" << fullfilename << "'!";
+          if ( !loadImage(fullfilename,true) ) {
+           showMessage(QString("Cannot find '%1'").arg(fullfilename),1);
+           return false;
           }
         }
       }
     }
+    
+    // --- Check whether the main input image and the main project image are identical ---
+    for ( const QJsonValue& v : layerArray ) {
+       QJsonObject layerObj = v.toObject();
+       QString name = layerObj["name"].toString();
+       int id = layerObj["id"].toInt();
+       if ( id == 0 ) {
+          QString filename = layerObj["filename"].toString();
+          if ( filename != m_mainImageName ) {
+            if ( QWidgetUtils::showImageMismatchError(m_mainImageName,filename) ) {
+             QUndoStack* undoStack = m_imageView->undoStack();
+             if ( undoStack != nullptr ) undoStack->clear();
+             m_imageView->clearLayers();
+             return loadProject(filePath,false);
+            } else {
+             showMessage(QString("Abort loading '%1'").arg(filePath),1);
+             return false;
+            }
+          }
+       }
+    }
+    
+    // --- Clear current scene ---
+    QUndoStack* undoStack = m_imageView->undoStack();
+    if ( undoStack != nullptr ) undoStack->clear();
+    
+    // --- Parsing layers (does not contain layer postions) ---
     int nCreatedLayers = 0;
     for ( const QJsonValue& v : layerArray ) {
       QJsonObject layerObj = v.toObject();
@@ -581,12 +611,15 @@ void MainWindow::loadHistory( const QString& file )
 
 void MainWindow::openHistory()
 {
+  qDebug() << "MainWindow::openHistory(): Open history...";
+  {
     QString fileName = QFileDialog::getOpenFileName(this,
                         tr("Open JSON history file"), QString(),
                         tr("JSON Files (*.json);;All Files (*)"));
     if ( fileName.isEmpty() )
       return;
     loadHistory(fileName);
+  }
 }
 
 // ---------------------- Mask Image ----------------------

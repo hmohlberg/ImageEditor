@@ -32,7 +32,7 @@ class IMainSystem {
     
     // Global access point
     static IMainSystem* instance() { return m_instance; }
-    static void setInstance(IMainSystem* inst) { m_instance = inst; }
+    static void setInstance( IMainSystem* inst ) { m_instance = inst; }
 
  protected:
  

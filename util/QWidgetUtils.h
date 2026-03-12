@@ -25,6 +25,8 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QStyle>
+#include <QMessageBox>
+#include <QFileDialog>
 #include <QApplication>
 
 namespace QWidgetUtils
@@ -63,6 +65,7 @@ namespace QWidgetUtils
     return QBrush(pix);
   }
   
+  // --- --- ---
   int showIconDialog( QWidget *parent, const QString &title, const QString &labeltext ) {
     QDialog dialog(parent);
     dialog.setWindowTitle(title);
@@ -112,6 +115,48 @@ namespace QWidgetUtils
 
     dialog.exec();
     return result;
-}
+  }
+  
+  // --- --- ---
+  bool handleMissingImage( const QString &imagePath, QString &outNewPath ) {
+    QMessageBox msgBox;
+    msgBox.setWindowTitle("Could not find image");
+    msgBox.setText(QString("The image could not be found at the following path:\n\n%1").arg(imagePath));
+    msgBox.setInformativeText("Do you want to cancel loading the project or select another file?");
+    msgBox.setIcon(QMessageBox::Warning);
+    QPushButton *searchButton = msgBox.addButton("Select new image path...", QMessageBox::ActionRole);
+    QPushButton *abortButton = msgBox.addButton("Abort loading", QMessageBox::RejectRole);
+    msgBox.exec();
+    if ( msgBox.clickedButton() == searchButton ) {
+        QString fileName = QFileDialog::getOpenFileName(nullptr, 
+            "Select Image", "", "Image (*.png *.bmp *.jpg *.mnc)");
+        if ( !fileName.isEmpty() ) {
+            outNewPath = fileName;
+            return true;
+        }
+    }
+    return false;
+  }
+  
+  // --- --- ---
+  bool showImageMismatchError( const QString &imagePath, const QString &projectPath ) {
+    QMessageBox msgBox;
+    msgBox.setIcon(QMessageBox::Critical);
+    msgBox.setWindowTitle("Error loading the project file");
+    msgBox.setText("Abort: Main images do not match.");
+    msgBox.setInformativeText(QString(
+        "Main images in the viewer and from the project file do not match.\n\n"
+        "Main image in viewer: %1\n"
+        "Main image in project file: %2\n\n"
+        "Do you want to cancel loading or clear old data and reload project data?"
+    ).arg(imagePath).arg(projectPath));
+    QPushButton *clearDataButton = msgBox.addButton("Clear previous data and reload", QMessageBox::ActionRole);
+    QPushButton *abortButton = msgBox.addButton("Abort loading", QMessageBox::RejectRole);
+    msgBox.exec();
+    if ( msgBox.clickedButton() == clearDataButton ) {
+      return true;
+    }
+    return false;
+  }
 
 }

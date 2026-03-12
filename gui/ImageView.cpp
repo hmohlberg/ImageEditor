@@ -1370,8 +1370,11 @@ LayerItem* ImageView::baseLayer()
 
 void ImageView::clearLayers()
 {
+  qDebug() << "ImageView::clearLayers(): Processing...";
+  {
     qDeleteAll(m_layers);
     m_layers.clear();
+  }
 }
 
 void ImageView::createLassoLayer()

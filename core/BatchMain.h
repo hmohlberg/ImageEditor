@@ -18,6 +18,7 @@
 #pragma once
 
 #include <QString>
+#include <QDebug>
 
 class BatchMain : public IMainSystem {
  
@@ -27,7 +28,8 @@ class BatchMain : public IMainSystem {
         IMainSystem::setInstance(this); 
     }
     void showMessage( const QString &text, int msgType=0 ) override {
-        printf("%s\n", text.toLocal8Bit().constData()); // Ausgabe in Konsole
+        // printf("%s\n", text.toLocal8Bit().constData()); // Ausgabe in Konsole
+        qDebug() << "BATCHMAIN: " << text;
     }
     double getLayerOperationParameter( int mode ) override {
         return 0.0;

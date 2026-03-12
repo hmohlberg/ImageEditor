@@ -102,7 +102,7 @@ class MainWindow : public QMainWindow, public IMainSystem
  private:
     
     bool checkUnsavedData( bool isCloseProgram = true );
-    bool loadImage( const QString& );
+    bool loadImage( const QString&, bool askForNewLoad=false );
     void loadHistory( const QString& );
     bool saveProject( const QString& );
     bool loadProject( const QString&, bool );
@@ -178,6 +178,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     QDoubleSpinBox* m_rotationLayerAngleSpin = nullptr;
     
     QString m_selectedLayerItemName;
+    QString m_mainImageName;
     
     bool m_updatingLayerList = false;
     bool m_saveImageDataInProjectFile = false;
