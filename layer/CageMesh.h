@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <QImage>
 #include <QVector>
 #include <QPointF>
 #include <QRectF>
@@ -45,6 +46,9 @@ class CageMesh
 
     void create( const QRectF& bounds, int cols, int rows );
     void update( const QRectF& bounds, int cols, int rows );
+    
+    QImage& image() { return m_image; }
+    void setImage( const QImage& image ) { m_image = image; }
     
     void rebuildSprings();
     
@@ -78,6 +82,9 @@ class CageMesh
     
     void needUpdate() { m_needUpdate = true; }
     
+    void setIsInitialized() { m_isInitialized = true; }
+    bool isInitialized() const { return m_isInitialized; }
+    
     void printself();
     
   private:
@@ -88,9 +95,10 @@ class CageMesh
     void addNewSpring( int idxA, int idxB );
     
   private:
-
+  
     bool m_active = true;
     bool m_needUpdate = false;
+    bool m_isInitialized = false;
     
     bool m_fixedBoundaries = true;
     double m_stiffness = 0.0;
@@ -98,6 +106,8 @@ class CageMesh
     
     int m_cols = 3;
     int m_rows = 3;
+    
+    QImage m_image;
     
     QPointF m_offset = QPointF(0,0);
     

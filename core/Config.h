@@ -56,6 +56,7 @@
       static EditorStyle inst;
       return inst;
     }
+    
     void load( const QString &path ) {
       QSettings settings(path, QSettings::IniFormat);
       // qDebug() << "Available keys:" << settings.allKeys();
@@ -66,35 +67,69 @@
       } else {
         QLoggingCategory::setFilterRules("editor.graphics.debug=false");
       }
-      // cage quads
+      // Cage quads
       m_useCageQuads = settings.value("Cage/quads", false).toBool();
-      // lasso color
+      // Cage color
+      QString cageWarpColor = settings.value("Cage/color", "green").toString();
+       if ( QColor::isValidColorName(cageWarpColor) ) {
+        m_cageWarpColor = QColor::fromString(cageWarpColor);
+      }
+      // Lasso color
       QString rawColor = settings.value("Lasso/color", "yellow").toString();
       if ( QColor::isValidColorName(rawColor) ) {
         m_lassoColor = QColor::fromString(rawColor);
       }
-      // lasso width
+      // Lasso width
       int rawWidth = settings.value("Lasso/width", 2).toInt();
       if ( rawWidth >= 0 && rawWidth < 20 ) {
         m_lassoWidth = rawWidth;
       }
-      // rotation angle
+      // ImageLayer rotation angle
       m_rotationSingleStep = settings.value("ImageLayer/rotationSingleStep", 1.0).toDouble();
+      // ImageLayer transformationMode
+      QString transformMode = settings.value("ImageLayer/transformationMode", "fast").toString().trimmed().toLower();
+      if ( transformMode == "fast" || transformMode == "fasttransformation" ) {
+        m_transformationMode = Qt::FastTransformation;
+      } else if ( transformMode == "smooth" || transformMode == "smoothtransformation" ) {
+        m_transformationMode = Qt::SmoothTransformation;
+      }
+      
     }
+    
     QColor lassoColor() const { return m_lassoColor; }
+    QColor cageWarpColor() const { return m_cageWarpColor; }
     QString windowSize() const { return m_windowSize; }
     int lassoWidth() const { return m_lassoWidth; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
     double rotationSingleStep() const { return m_rotationSingleStep; }
+    Qt::TransformationMode transformationMode() const { return m_transformationMode; }
 
    private:
    
-    EditorStyle() : m_lassoColor(Qt::yellow), m_lassoWidth(0), m_rotationSingleStep(1.0),
-                      m_loggingIsEnabled(true), m_useCageQuads(false), m_windowSize("default") {}
+    EditorStyle()
+        : m_lassoColor(Qt::red), 
+          m_lassoWidth(3), 
+          m_rotationSingleStep(0.5),
+          m_loggingIsEnabled(false), 
+          m_useCageQuads(false), 
+          m_windowSize("default"),
+          m_cageWarpColor(Qt::green), 
+          m_transformationMode(Qt::FastTransformation) 
+    { 
+      if ( m_loggingIsEnabled ) {
+        QLoggingCategory::setFilterRules("editor.graphics.debug=true");
+      } else {
+        QLoggingCategory::setFilterRules("editor.graphics.debug=false");
+      }
+    }
     
     QColor m_lassoColor;
+    QColor m_cageWarpColor;
     QString m_windowSize;
+    
+    Qt::TransformationMode m_transformationMode;
+    
     int m_lassoWidth;
     bool m_loggingIsEnabled;
     bool m_useCageQuads;

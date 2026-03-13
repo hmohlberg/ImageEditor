@@ -90,7 +90,7 @@ void LayerItem::init()
              QGraphicsItem::ItemIsMovable |
              QGraphicsItem::ItemSendsGeometryChanges |
              QGraphicsItem::ItemIsFocusable);
-  setTransformationMode(Qt::SmoothTransformation);
+  setTransformationMode(EditorStyle::instance().transformationMode());
   setAcceptedMouseButtons(Qt::LeftButton);
   setShapeMode(QGraphicsPixmapItem::BoundingRectShape);
   // setShapeMode(QGraphicsPixmapItem::MaskShape); // the better choice but complex
@@ -98,12 +98,12 @@ void LayerItem::init()
   setZValue(2);
   m_showBoundingBox = true;
 
-  // default color  
+  // Lasso pen
   m_lassoPen = QPen(Qt::green);
-  m_lassoPen.setWidth(0); // immer 1px auf Bildschirm
+  m_lassoPen.setWidth(0);
   m_lassoPen.setStyle(Qt::SolidLine);
   
-  // Selektions-Pen
+  // Selection pen
   m_selectedPen = QPen(Qt::red);
   m_selectedPen.setWidth(0);
   m_selectedPen.setStyle(Qt::SolidLine);
@@ -123,11 +123,6 @@ void LayerItem::printself( bool debugSave )
   qInfo() << "  + operation mode =" << m_operationMode;
   qInfo() << "  + bounding box =" << m_showBoundingBox;
   qInfo() << "  + parent ="  << ( m_parent != nullptr ? "null" : "ok" );
-  // if ( debugSave && m_index == 1 ) {
-  //  std::cout << " LayerItem::printself(): Saving image data... " << std::endl;
-  //  m_image.save("/tmp/LayerItem_image.png");
-  //  m_originalImage.save("/tmp/LayerItem_originalimage.png");
-  // }
 }
 
 // ------------------------ Getter / Setter ------------------------
@@ -340,9 +335,10 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 // ------------------------ Cage ------------------------
 QImage LayerItem::applyTriangleWarp()
 {
-  qDebug() << "LayerItem::applyTriangleWarp(): meshActive =" << m_cageMesh.isActive() << ",  m_cageEnabled =" << m_cageEnabled << ", m_cageEditing =" << m_cageEditing;
+  qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): meshActive =" << m_cageMesh.isActive() << ",  m_cageEnabled =" << m_cageEnabled << ", m_cageEditing =" << m_cageEditing;
   {
-    TriangleWarp::WarpResult warped = TriangleWarp::warp(m_originalImage,m_cageMesh);
+    TriangleWarp::WarpResult warped = TriangleWarp::warp(m_cageMesh.image(),m_cageMesh);
+    // TriangleWarp::WarpResult warped = TriangleWarp::warp(m_originalImage,m_cageMesh); 
     if ( !warped.image.isNull() ) {
      setPixmap(QPixmap::fromImage(warped.image));
      m_image = warped.image;
@@ -365,6 +361,8 @@ void LayerItem::enableCage( int cols, int rows )
   qCDebug(logEditor) << "LayerItem::enableCage(): cols =" << cols << ", rows =" << rows << ", enabled =" << m_cageEnabled;
   {
     m_cageMesh.create(boundingRect(), cols, rows);
+    m_cageMesh.setImage(m_image);
+    m_cageMesh.setIsInitialized();
     m_cageEnabled = true;     
     if ( !scene() )
       return;

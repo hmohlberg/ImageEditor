@@ -143,15 +143,25 @@ bool TransformLayerCommand::mergeWith( const QUndoCommand *other )
 // -------------------------------- Undo/Redo --------------------------------
 void TransformLayerCommand::undo() 
 {
- qCDebug(logEditor) << "TransformLayerCommand::undo(): m_oldTransform =" << m_oldTransform;
+  qCDebug(logEditor) << "TransformLayerCommand::undo(): m_oldTransform =" << m_oldTransform;
   {
     if ( !m_layer || m_deleted ) return;
-    m_layer->resetTotalTransform();
-    m_layer->setImageTransform(m_oldTransform);
+    bool invertible = false;
+    QTransform inv = m_newTransform.inverted(&invertible);
+    if ( invertible ) {
+      m_layer->setImageTransform(inv);
+      m_totalTransform *= inv;
+    } else {
+      // old errornous code
+      m_layer->resetTotalTransform();
+      m_layer->setImageTransform(m_oldTransform);
+      m_totalTransform = QTransform();
+    }
+    
     if ( m_trafoType == LayerTransformType::Scale ) {
       m_layer->setCageVisible(LayerItem::OperationMode::Scale,false);
     }
-    m_totalTransform = QTransform();
+    // m_totalTransform = QTransform();
     printMessage(true);
   }
 }

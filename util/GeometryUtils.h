@@ -75,26 +75,27 @@ namespace GeometryUtils
        return res;
     }
     
-    // Berechnet eine 3x3 homogene Transformationsmatrix, die quadSrc auf quadDst abbildet
+    // Calculates a 3x3 homogeneous transformation matrix that maps quadSrc to quadDst.
     inline QTransform quadToQuad( const QPolygonF& src, const QPolygonF& dst )
     {
         if ( src.size() != 4 || dst.size() != 4 )
             return QTransform();
-        // Einfacher Ansatz: affine Transformationsmatrix von 4 Punkten
         QTransform t;
-        t.setMatrix(
-            dst[1].x() - dst[0].x(), dst[2].x() - dst[0].x(), dst[0].x(),
-            dst[1].y() - dst[0].y(), dst[2].y() - dst[0].y(), dst[0].y(),
-            0, 0, 1
-        );
+        if ( !QTransform::quadToQuad(src, dst, t) ) {
+          // fall back to old solution. not the best but better than nothing
+          t.setMatrix(
+             dst[1].x() - dst[0].x(), dst[2].x() - dst[0].x(), dst[0].x(),
+             dst[1].y() - dst[0].y(), dst[2].y() - dst[0].y(), dst[0].y(),
+             0, 0, 1
+          );
+        }
         return t;
     }
     
-    // Barycentric Mapping eines Pixels innerhalb eines Dreiecks
+    // Barycentric mapping of a pixel within a triangle
     inline QPointF barycentric( const QPointF& p, const QVector<QPointF>& triSrc, const QVector<QPointF>& triDst )
     {
        // Q_ASSERT(triSrc.size() == 3 && triDst.size() == 3);
-       // Dreieck in Vektoren
        if( triSrc.size() == 3 && triDst.size() == 3 ) {
          QPointF v0 = triSrc[1] - triSrc[0];
          QPointF v1 = triSrc[2] - triSrc[0];
@@ -145,7 +146,7 @@ namespace GeometryUtils
 
     }
 
-    // Prüft, ob ein Punkt innerhalb eines Dreiecks liegt
+    // Checks whether a point lies within a triangle
     inline bool pointInTriangle( const QPointF& p, const QVector<QPointF>& tri )
     {
        QPointF a = tri[0], b = tri[1], c = tri[2];
@@ -180,7 +181,7 @@ namespace GeometryUtils
     	return t2 * t1.inverted();                                 
     }
 
-    // Konvertiert Scene-Koordinaten in Layer-Koordinaten
+    // Converts scene coordinates to layer coordinates
     inline QPointF sceneToLayer( const QPointF& scenePos, const QTransform& layerTransform )
     {
         return layerTransform.inverted().map(scenePos);

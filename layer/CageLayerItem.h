@@ -47,6 +47,7 @@ class CageLayerItem : public LayerItem
     QVector<QPointF> m_cage;
     QVector<CageControlPointItem*> m_points;
     QTransform m_startTransform;
+    
     bool m_cageEnabled = false;
     bool m_editing = false;
     void createDefaultBoundingBox();
