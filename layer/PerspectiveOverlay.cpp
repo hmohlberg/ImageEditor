@@ -24,6 +24,7 @@
 #include "LayerItem.h"
 #include "TransformHandleItem.h"
 #include "../core/Config.h"
+#include "../util/GeometryUtils.h"
 #include "../undo/PerspectiveWarpCommand.h"
 
 PerspectiveOverlay::PerspectiveOverlay( LayerItem* layer, QUndoStack* undoStack )
@@ -141,13 +142,15 @@ void PerspectiveOverlay::endWarp()
     if ( !m_layer ) return;
     if ( !m_dragging ) return;
     m_dragging = false;
-    if ( m_currentQuad == m_startQuad )
+    if ( m_currentQuad == m_startQuad ) {
         return;
+    }
     if ( !m_warpCommand ) {
       m_warpCommand = new PerspectiveWarpCommand(m_layer,m_initialQuad,m_currentQuad);
       m_undoStack->push(m_warpCommand);
     } else {
       m_warpCommand->setAfterQuad(m_finalQuad);
+      updateOverlay(true);        // added by CLAUDE
     }
   }
 }
@@ -169,9 +172,14 @@ void PerspectiveOverlay::moveCorner( PerspectiveCorner corner, const QPointF& sc
     m_currentQuad[int(corner)] = localPos;
     m_finalQuad[int(corner)] = localPos;
     QTransform warp;
+#if 0
     if ( QTransform::quadToQuad(m_startQuad, m_currentQuad, warp) ) {
       m_layer->setTransform(warp * m_startTransform); // Vorschau
     }
+#else
+    warp = GeometryUtils::quadToQuad( m_startQuad, m_currentQuad );
+    m_layer->setTransform(warp * m_startTransform); // Vorschau
+#endif
     updateOverlay(true);
   }
 }

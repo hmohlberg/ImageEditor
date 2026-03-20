@@ -67,6 +67,7 @@
       } else {
         QLoggingCategory::setFilterRules("editor.graphics.debug=false");
       }
+      m_hasPerspective = settings.value("Main/perspective", false).toBool();
       // Cage quads
       m_useCageQuads = settings.value("Cage/quads", false).toBool();
       // Cage color
@@ -102,6 +103,7 @@
     int lassoWidth() const { return m_lassoWidth; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
+    bool hasPerspective() const { return m_hasPerspective; }
     double rotationSingleStep() const { return m_rotationSingleStep; }
     Qt::TransformationMode transformationMode() const { return m_transformationMode; }
 
@@ -113,6 +115,7 @@
           m_rotationSingleStep(0.5),
           m_loggingIsEnabled(false), 
           m_useCageQuads(false), 
+          m_hasPerspective(false),
           m_windowSize("default"),
           m_cageWarpColor(Qt::green), 
           m_transformationMode(Qt::FastTransformation) 
@@ -133,6 +136,7 @@
     int m_lassoWidth;
     bool m_loggingIsEnabled;
     bool m_useCageQuads;
+    bool m_hasPerspective;
     double m_rotationSingleStep;
     
  };

@@ -107,8 +107,9 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
       QSlider::groove:horizontal { height: 4px; background: #1e1e1e; }
       QSlider::handle:horizontal { width: 10px; background: #707070; margin: -4px 0; }
       QComboBox { background-color: #3a3a3a; border: 1px solid #1e1e1e; padding: 3px; }
-      QComboBox QAbstractItemView { background-color: #2a2a2a; selection-background-color: #505050; }
-      QComboBox:item:disabled { color: gray; font-style: italic; }
+      QComboBox QAbstractItemView { background-color: #2a2a2a; color: #e0e0e0; border: 
+               1px solid #1e1e1e; outline: 0; selection-background-color: #505050; selection-color: #ffffff; }
+      QComboBox QAbstractItemView::item { padding: 3px 6px; }
     )");
     if ( imagePath == "" ) {
       setWindowTitle("ImageEditor - "+historyPath); 
@@ -184,7 +185,7 @@ MainWindow::~MainWindow() {
      // delete ui;
     #endif
     if ( IMainSystem::instance() == static_cast<IMainSystem*>(this) ) {
-      IMainSystem::setInstance(nullptr); //  This also caused my Mac to crash.
+      IMainSystem::setInstance(nullptr); //  this has also result in a crash even on my mac
     }
   }
 }
@@ -1457,7 +1458,23 @@ void MainWindow::createToolbars()
     });
     // --- operation modus ---
     m_transformLayerItem = new QComboBox();
-    m_transformLayerItem->addItems({"Translate","Rotate","Scale","Mirror","Perspective","Cage transform"}); // Perspective
+    auto *view = new QListView(m_transformLayerItem);
+    view->setMouseTracking(true);
+    m_transformLayerItem->setView(view);
+    m_transformLayerItem->addItems({"Translate","Rotate","Scale","Mirror","Perspective","Cage transform"});
+    if ( !EditorStyle::instance().hasPerspective() ) {
+      // disable entries (4=Perpective)
+      const int perspectiveIndex = m_transformLayerItem->findText("Perspective");
+      auto *model = qobject_cast<QStandardItemModel*>(m_transformLayerItem->model());
+      if ( model && perspectiveIndex >= 0 ) {
+        if ( QStandardItem *item = model->item(perspectiveIndex) ) {
+          item->setFlags(item->flags() & ~(Qt::ItemIsEnabled | Qt::ItemIsSelectable));
+        }
+      }
+      m_transformLayerItem->view()->setItemDelegate(
+          new ComboItemDelegate(perspectiveIndex, m_transformLayerItem->view()));
+    }
+    // >>>
     m_layerToolbar->addWidget(m_transformLayerItem);
     connect(m_transformLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
       // --- get transform mode ---

@@ -78,17 +78,66 @@ namespace GeometryUtils
     // Calculates a 3x3 homogeneous transformation matrix that maps quadSrc to quadDst.
     inline QTransform quadToQuad( const QPolygonF& src, const QPolygonF& dst )
     {
-        if ( src.size() != 4 || dst.size() != 4 )
+        if ( src.size() != 4 || dst.size() != 4 ) {
             return QTransform();
-        QTransform t;
-        if ( !QTransform::quadToQuad(src, dst, t) ) {
-          // fall back to old solution. not the best but better than nothing
-          t.setMatrix(
-             dst[1].x() - dst[0].x(), dst[2].x() - dst[0].x(), dst[0].x(),
-             dst[1].y() - dst[0].y(), dst[2].y() - dst[0].y(), dst[0].y(),
-             0, 0, 1
-          );
         }
+
+        QTransform t;
+
+        if( QTransform::quadToQuad( src, dst, t ) ) {
+            return t;
+        }
+
+        // fallback
+        int N = 4;
+        double sA = 0.0, sAA = 0.0, sB = 0.0, sBB = 0.0, sAB = 0;
+        double rhsX = 0.0, rhsXA = 0.0, rhsXB = 0.0;
+        double rhsY = 0.0, rhsYA = 0.0, rhsYB = 0.0;
+
+        for( int i = 0; i < N; i++ ) {
+          sA += src[i].x();
+          sAA += src[i].x() * src[i].x();
+          sB += src[i].y();
+          sBB += src[i].y() * src[i].y();
+          sAB += src[i].x() * src[i].y();
+          rhsX += dst[i].x();
+          rhsXA += dst[i].x() * src[i].x();
+          rhsXB += dst[i].x() * src[i].y();
+          rhsY += dst[i].y();
+          rhsYA += dst[i].y() * src[i].x();
+          rhsYB += dst[i].y() * src[i].y();
+        }
+
+        double det = sA * ( sAB * sB - sA * sBB ) -
+                     sB * ( sAA * sB - sA * sAB ) +
+                     N * ( sAA * sBB - sAB * sAB );
+
+        // Solve by Cramer's method.
+        if( det > 0.0 ) {
+          double m11 = ( rhsX * ( sAB * sB - sA * sBB ) -
+                         rhsXA * ( sB * sB - N * sBB ) +
+                         rhsXB * ( sB * sA - N * sAB ) ) / det;
+          double m12 = ( rhsY * ( sAB * sB - sA * sBB ) -
+                         rhsYA * ( sB * sB - N * sBB ) +
+                         rhsYB * ( sB * sA - N * sAB ) ) / det;
+
+          double m21 = ( -rhsX * ( sAA * sB - sA * sAB ) +
+                         rhsXA * ( sA * sB - N * sAB ) -
+                         rhsXB * ( sA * sA - N * sAA ) ) / det;
+          double m22 = ( -rhsY * ( sAA * sB - sA * sAB ) +
+                         rhsYA * ( sA * sB - N * sAB ) -
+                         rhsYB * ( sA * sA - N * sAA ) ) / det;
+
+          double dx = ( rhsX * ( sAA * sBB - sAB * sAB ) -
+                        rhsXA * ( sA * sBB - sB * sAB ) +
+                        rhsXB * ( sA * sAB - sAA * sB ) ) / det;
+          double dy = ( rhsY * ( sAA * sBB - sAB * sAB ) -
+                        rhsYA * ( sA * sBB - sB * sAB ) +
+                        rhsYB * ( sA * sAB - sAA * sB ) ) / det;
+
+          t.setMatrix( m11, m12, 0, m21, m22, 0, dx, dy, 1 );
+        }
+
         return t;
     }
     
@@ -113,6 +162,7 @@ namespace GeometryUtils
          return mapped;
        }
        if( triSrc.size() == 4 && triDst.size() == 4 ) {  // ok, it's a quad
+
          QPointF Q(0,0);
          QPointF v0 = triSrc[0] + triSrc[1] + triSrc[2] + triSrc[3];
          QPointF v1 = -triSrc[0] + triSrc[1] + triSrc[2] - triSrc[3];
@@ -129,7 +179,7 @@ namespace GeometryUtils
            // matrix is  [ A0.x()  A1.x() ]
            //            [ A0.y()  A1.y() ]
            double det = A0.x() * A1.y() - A1.x() * A0.y();
-           if( det >= 0.0 ) return p;  // in this orientation, need det < 0.  
+           if( det <= 0.0 ) return p;  // in this orientation, need det > 0.  
            QPointF delta = { ( A1.y() * rhs.x() - A1.x() * rhs.y() ) / det,
                              ( A0.x() * rhs.y() - A0.y() * rhs.x() ) / det };
            Q += delta;
@@ -167,17 +217,13 @@ namespace GeometryUtils
     inline QTransform triangleToTriangle( const QPointF& a1, const QPointF& b1, const QPointF& c1,
                                      const QPointF& a2, const QPointF& b2, const QPointF& c2 ) 
     {
-		QTransform t1, t2;
-        t1.setMatrix(
-        	a1.x(), b1.x(), c1.x(),
-        	a1.y(), b1.y(), c1.y(),
-        	1, 1, 1
-    	);
-    	t2.setMatrix(
-        	a2.x(), b2.x(), c2.x(),
-        	a2.y(), b2.y(), c2.y(),
-        	1, 1, 1
-    	);
+            QTransform t1, t2;
+            t1.setMatrix( a1.x(), a1.y(), 0,
+                          b1.x(), b1.y(), 0,
+                          c1.x(), c1.y(), 1 );
+            t2.setMatrix( a2.x(), a2.y(), 0,
+                          b2.x(), b2.y(), 0,
+                          c2.x(), c2.y(), 1 );
     	return t2 * t1.inverted();                                 
     }
 

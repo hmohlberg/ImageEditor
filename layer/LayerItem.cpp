@@ -337,6 +337,7 @@ QImage LayerItem::applyTriangleWarp()
 {
   qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): meshActive =" << m_cageMesh.isActive() << ",  m_cageEnabled =" << m_cageEnabled << ", m_cageEditing =" << m_cageEditing;
   {
+
     TriangleWarp::WarpResult warped = TriangleWarp::warp(m_cageMesh.image(),m_cageMesh);
     // TriangleWarp::WarpResult warped = TriangleWarp::warp(m_originalImage,m_cageMesh); 
     if ( !warped.image.isNull() ) {
@@ -389,7 +390,9 @@ void LayerItem::initCage( const QVector<QPointF>& pts, const QRectF &rect, int n
 {
   qCDebug(logEditor) << "LayerItem::initCage(): cageOverlay =" << (m_cageOverlay!=nullptr?"ok":"null") << ", rect =" << rect << ", rows =" << nrows << ", ncolumns =" << ncolumns;
   {
+
     m_cageMesh.create(rect,nrows,ncolumns);  
+    m_cageMesh.setImage(m_image);  // ADDED by CLAUDE
     m_cageMesh.setPoints(pts);
     if ( m_cageOverlay == nullptr ) {
       m_cageOverlay = new CageOverlayItem(this);
@@ -673,19 +676,17 @@ void LayerItem::setOperationMode( OperationMode mode )
    }
 }
 
-void LayerItem::setRotationAngle( double value )
+void LayerItem::setRotationAngle( double angleDelta )
 {
-  qCDebug(logEditor) << "LayerItem::setRotationAngle(): rotationAngle =" << value;
+  qCDebug(logEditor) << "LayerItem::setRotationAngle(): rotationAngle =" << angleDelta;
   {
-    double deltaRotation = value-m_currentRotation;
-    m_currentRotation += deltaRotation;
     QString name = "Rotate Layer";
     TransformLayerCommand::LayerTransformType trafoType = TransformLayerCommand::LayerTransformType::Rotate;
     name += QString(" %1").arg(m_index);
     QPointF c = boundingRect().center();
-    QTransform t = transform();
+    QTransform t;
     t.translate(c.x(), c.y());
-    t.rotate(deltaRotation);
+    t.rotate(angleDelta);
     t.translate(-c.x(), -c.y());
     m_undoStack->push(
        new TransformLayerCommand(this, m_startPos, pos(), m_currentRotation, m_startTransform, t, name, trafoType)
@@ -759,14 +760,9 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
           m_startTransform = transform();
           QGraphicsPixmapItem::mousePressEvent(event);
        } else if ( m_operationMode == OperationMode::Rotate ) {
-          QPointF clickPos = event->scenePos();
-          QPointF center = mapToScene(boundingRect().center());
-          double angleRad = std::atan2(clickPos.y() - center.y(), clickPos.x() - center.x());
-          m_startMouseAngle = angleRad * 180.0 / M_PI;
           m_startLayerRotation = m_currentRotation;
           m_mouseOperationActive = true; 
           m_startPos = pos();
-         // m_startTransform = transform();
           QGraphicsPixmapItem::mousePressEvent(event);
        } else {
          // m_operationMode = OperationMode::None;
@@ -787,26 +783,11 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
     MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
     if ( m_operationMode == OperationMode::Rotate ) {
         QPointF delta = event->scenePos() - event->buttonDownScenePos(Qt::LeftButton);
-        QPointF c = boundingRect().center();
-        // QTransform t = m_startTransform;
-        // t.translate(c.x(), c.y());
-        if ( m_operationMode == OperationMode::Rotate ) {
-            QPointF center = mapToScene(boundingRect().center());
-            QPointF currentPos = event->scenePos();
-            double currentMouseAngleDeg = std::atan2(currentPos.y() - center.y(), 
-                                                 currentPos.x() - center.x()) * 180.0 / M_PI;
-            double angleDelta = currentMouseAngleDeg - m_startMouseAngle;
-            double newRotation = m_startLayerRotation + angleDelta;
-            setRotationAngle(newRotation);
-            parent->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,newRotation); 
-        } else {
-            QTransform t = m_startTransform;
-            t.translate(c.x(), c.y());
-            qreal s = qMax(0.1, 1.0 + delta.y() * 0.005);
-            t.scale(s, s);
-            t.translate(-c.x(), -c.y());
-            setTransform(t);
-        }
+        double angleDelta = m_startLayerRotation + delta.x()/20.0 - m_currentRotation;
+        m_currentRotation += angleDelta;
+        setRotationAngle(angleDelta);
+
+        parent->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,m_currentRotation); 
         event->accept();
     }
   }

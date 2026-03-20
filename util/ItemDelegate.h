@@ -16,9 +16,93 @@
 */
 
 #include <QStyledItemDelegate>
+#include <QApplication>
 #include <QPainter>
+#include <QComboBox>
 #include <QUndoStack>
 #include <QUndoView>
+#include <QStyle>
+
+// QComboBox ItemDelegate class
+class ComboItemDelegate123 : public QStyledItemDelegate
+{
+
+  public:
+    explicit ComboItemDelegate123(int disabledIndex, QObject *parent = nullptr)
+        : QStyledItemDelegate(parent), m_disabledIndex(disabledIndex)
+    {
+    }
+
+    void paint( QPainter *painter,
+               const QStyleOptionViewItem &option,
+               const QModelIndex &index)  const override
+    {
+        QStyleOptionViewItem opt( option );
+        initStyleOption( &opt, index );
+
+        const bool isBlockedItem = (index.row() == m_disabledIndex);
+        const bool isHovered = opt.state & QStyle::State_MouseOver;
+        const bool isSelected = opt.state & QStyle::State_Selected;
+
+        if ( isBlockedItem ) {
+            opt.palette.setColor(QPalette::Text, QColor("#707070"));
+            opt.palette.setColor(QPalette::HighlightedText, QColor("#707070"));
+
+            opt.state &= ~QStyle::State_MouseOver;
+            opt.state &= ~QStyle::State_Selected;
+        } else {
+            if ( isHovered || isSelected ) {
+                opt.backgroundBrush = QBrush(QColor("#505050"));
+                opt.palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
+            }
+        }
+
+        QStyledItemDelegate::paint(painter, opt, index);
+    }
+
+  private:
+    int m_disabledIndex = -1;
+
+};
+
+class ComboItemDelegate : public QStyledItemDelegate
+{
+public:
+    explicit ComboItemDelegate(int blockedIndex, QObject *parent = nullptr)
+        : QStyledItemDelegate(parent), m_blockedIndex(blockedIndex)
+    {
+    }
+
+    void paint(QPainter *painter,
+               const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override
+    {
+        QStyleOptionViewItem opt(option);
+        initStyleOption(&opt, index);
+
+        const bool isBlockedItem = (index.row() == m_blockedIndex);
+
+        if (isBlockedItem) {
+            opt.state &= ~QStyle::State_MouseOver;
+            opt.state &= ~QStyle::State_Selected;
+            opt.palette.setColor(QPalette::Text, QColor("#707070"));
+            opt.palette.setColor(QPalette::HighlightedText, QColor("#707070"));
+        }
+
+        const QWidget *widget = option.widget;
+        QStyle *style = widget ? widget->style() : QApplication::style();
+        style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem &option,
+                   const QModelIndex &index) const override
+    {
+        return QStyledItemDelegate::sizeHint(option, index);
+    }
+
+private:
+    int m_blockedIndex = -1;
+};
 
 // Voraussetzung: Deine AbstractCommand Klasse mit icon() Methode
 class DarkHistoryDelegate : public QStyledItemDelegate {

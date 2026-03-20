@@ -21,8 +21,6 @@
 #include "../layer/LayerItem.h"
 #include "../core/Config.h"
 
-#include <iostream>
-
 // ---------------------- Constructor ----------------------
 CageWarpCommand::CageWarpCommand( LayerItem* layer,
            const QVector<QPointF>& before, const QVector<QPointF>& after, const QRectF& rect,
@@ -53,9 +51,9 @@ void CageWarpCommand::printMessage( bool isUndo )
 {
   if ( auto *ms = IMainSystem::instance() ) {
     if ( isUndo ) {
-     IMainSystem::instance()->showMessage(QString("Undo cage warp of layer %1").arg(m_layerId));
+     ms->showMessage(QString("Undo cage warp of layer %1").arg(m_layerId));
     } else {
-     IMainSystem::instance()->showMessage(QString("Cage warp of layer %1").arg(m_layerId));
+     ms->showMessage(QString("Cage warp of layer %1").arg(m_layerId));
     }
   }
 }
@@ -101,77 +99,93 @@ void CageWarpCommand::redo()
 // ---------------------- JSON ----------------------
 QJsonObject CageWarpCommand::toJson() const
 {
-   QJsonObject obj = AbstractCommand::toJson();
-   obj["layerId"] = m_layerId;
-   obj["type"] = "CageWarp";
-   obj["rows"] = m_rows;
-   obj["columns"] = m_columns;
-   obj["interpolation"] = m_interpolation;
-   QJsonArray cageBeforeObj;
-    for ( const QPointF &p : m_before ) {
-     QJsonObject pointObj;
-     pointObj.insert("x", p.x());
-     pointObj.insert("y", p.y());
-     cageBeforeObj.append(pointObj);
+    QJsonObject obj = AbstractCommand::toJson();
+    obj["layerId"] = m_layerId;
+    obj["type"] = "CageWarp";
+    obj["rows"] = m_rows;
+    obj["columns"] = m_columns;
+    obj["interpolation"] = m_interpolation;
+
+    QJsonArray cageBeforeObj;
+    for (const QPointF& p : m_before) {
+        QJsonObject pointObj;
+        pointObj["x"] = p.x();
+        pointObj["y"] = p.y();
+        cageBeforeObj.append(pointObj);
     }
-   obj.insert("cagepoints_before", cageBeforeObj);
-   QJsonArray cageAfterObj;
-    for ( const QPointF &p : m_after ) {
-     QJsonObject pointObj;
-     pointObj.insert("x", p.x());
-     pointObj.insert("y", p.y());
-     cageAfterObj.append(pointObj);
+    obj["cagepoints_before"] = cageBeforeObj;
+
+    QJsonArray cageAfterObj;
+    for (const QPointF& p : m_after) {
+        QJsonObject pointObj;
+        pointObj["x"] = p.x();
+        pointObj["y"] = p.y();
+        cageAfterObj.append(pointObj);
     }
-   obj.insert("cagepoints_after", cageAfterObj);
-   QRectF bounds = m_layer->boundingRect();
-   QJsonObject rectObj;
-    rectObj.insert("x", bounds.x());
-    rectObj.insert("y", bounds.y());
-    rectObj.insert("width", bounds.width());
-    rectObj.insert("height", bounds.height());
-   obj["rect"] = rectObj;
-   return obj;
+    obj["cagepoints_after"] = cageAfterObj;
+
+    QJsonObject rectObj;
+    rectObj["x"] = m_rect.x();
+    rectObj["y"] = m_rect.y();
+    rectObj["width"] = m_rect.width();
+    rectObj["height"] = m_rect.height();
+    obj["rect"] = rectObj;
+
+    return obj;
 }
 
 CageWarpCommand* CageWarpCommand::fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent )
 {
   qCDebug(logEditor) << "CageWarpCommand::fromJson(): Processing...";
   {
-    // Layer
     const int layerId = obj["layerId"].toInt(-1);
     LayerItem* layer = nullptr;
-    for ( LayerItem* l : layers ) {
-        if ( l->id() == layerId ) {
+    for (LayerItem* l : layers) {
+        if (l->id() == layerId) {
             layer = l;
             break;
         }
     }
-    if ( !layer ) {
-      qWarning() << "CageWarpCommand::fromJson(): Layer " << layerId << " not found.";
-      return nullptr;
+
+    if (!layer) {
+        qWarning() << "CageWarpCommand::fromJson(): Layer" << layerId << "not found.";
+        return nullptr;
     }
-    int rows = obj["rows"].toInt(-1);
-    int columns = obj["columns"].toInt(-1);
-    // before
+
+    const int rows = obj["rows"].toInt(-1);
+    const int columns = obj["columns"].toInt(-1);
+    if (rows <= 0 || columns <= 0) {
+        qWarning() << "CageWarpCommand::fromJson(): Invalid rows/columns.";
+        return nullptr;
+    }
+
     QVector<QPointF> before;
-    QJsonArray before_pts = obj["cagepoints_before"].toArray();
-    before.reserve(before_pts.size());
-    for ( const QJsonValue& v : before_pts ) {
-        QJsonObject po = v.toObject();
+    const QJsonArray beforePts = obj["cagepoints_before"].toArray();
+    before.reserve(beforePts.size());
+    for (const QJsonValue& v : beforePts) {
+        const QJsonObject po = v.toObject();
         before.emplace_back(po["x"].toDouble(), po["y"].toDouble());
     }
-    // after
+
     QVector<QPointF> after;
-    QJsonArray after_pts = obj["cagepoints_after"].toArray();
-    after.reserve(after_pts.size());
-    for ( const QJsonValue& v : after_pts ) {
-        QJsonObject po = v.toObject();
+    const QJsonArray afterPts = obj["cagepoints_after"].toArray();
+    after.reserve(afterPts.size());
+    for (const QJsonValue& v : afterPts) {
+        const QJsonObject po = v.toObject();
         after.emplace_back(po["x"].toDouble(), po["y"].toDouble());
     }
-    // Rect
-    QJsonObject r = obj["rect"].toObject();
-    QRectF rect(r["x"].toDouble(),r["y"].toDouble(),r["width"].toInt(),r["height"].toInt());
-    // create
-    return new CageWarpCommand(layer,before,after,rect,rows,columns);
+
+    if (before.size() != after.size() || before.isEmpty()) {
+        qWarning() << "CageWarpCommand::fromJson(): Invalid point arrays.";
+        return nullptr;
+    }
+
+    const QJsonObject r = obj["rect"].toObject();
+    const QRectF rect(r["x"].toDouble(),
+                      r["y"].toDouble(),
+                      r["width"].toDouble(),
+                      r["height"].toDouble());
+
+    return new CageWarpCommand(layer, before, after, rect, rows, columns, parent);
   }
 }

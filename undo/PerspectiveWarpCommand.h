@@ -34,6 +34,7 @@ class PerspectiveWarpCommand : public AbstractCommand
 
     void setAfterQuad( const QVector<QPointF>& after ) { m_after = after; }
     QString type() const override { return "PerspectiveWarp"; }
+    bool mergeWith( const QUndoCommand* other ) override;
     LayerItem* layer() const override { return nullptr; }
     int id() const override { return 1031; }
     
@@ -55,6 +56,7 @@ class PerspectiveWarpCommand : public AbstractCommand
     
     QTransform m_baseTransform;
     
+    QVector<QPointF> m_startQuad;
     QVector<QPointF> m_before;
     QVector<QPointF> m_after;
     

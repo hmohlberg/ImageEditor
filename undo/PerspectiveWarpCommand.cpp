@@ -31,7 +31,9 @@ PerspectiveWarpCommand::PerspectiveWarpCommand(
 {
     m_layerId = layer->id();
     m_name = QString("Perspective Warp Layer %1").arg(m_layerId);
-    // m_baseTransform = layer->transform();
+    // m_baseTransform = m_layer->transform();
+    // const QRectF r = layer->boundingRect();
+    // m_startQuad = { r.topLeft(), r.topRight(), r.bottomRight(), r.bottomLeft() };
     setText(m_name);
     QByteArray perspectiveWarpSvg = "<svg viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'>"
       "<path d='M12 12h40v40H12z' fill='none' stroke='#ccc' stroke-dasharray='2,2' stroke-width='1'/>"
@@ -55,6 +57,34 @@ void PerspectiveWarpCommand::printMessage( bool isUndo )
     } else {
      IMainSystem::instance()->showMessage(QString("Perspective warp of layer %1").arg(m_layerId));
     }
+  }
+}
+
+bool PerspectiveWarpCommand::mergeWith( const QUndoCommand* other ) 
+{
+  qDebug() << "PerspectiveWarpCommand::mergeWith(): Processing...";
+  {
+    if ( other->id() != id() )
+        return false;
+qDebug() << "1";
+    auto* cmd = static_cast<const PerspectiveWarpCommand*>(other);
+    if ( cmd->m_layer != m_layer )
+        return false;
+qDebug() << "2";
+    if ( cmd->m_deleted != m_deleted )
+        return false;
+qDebug() << "3";
+    if ( cmd->m_startQuad.size() != 4 || m_startQuad.size() != 4 )
+        return false;
+qDebug() << "4";
+    if ( cmd->m_startQuad != m_startQuad )
+        return false;
+qDebug() << "5";
+    if ( cmd->m_baseTransform != m_baseTransform )
+        return false;
+qDebug() << "Got it";
+    m_after = cmd->m_after;
+    return true;
   }
 }
 
