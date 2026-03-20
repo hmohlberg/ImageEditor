@@ -1059,12 +1059,12 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
     if ( event->button() == Qt::LeftButton && m_selectedCageLayer ) {
         QVector<QPointF> cageAfter = m_selectedCageLayer->cageMesh().points();
         QVector<QPointF> cageBefore = m_selectedCageLayer->cageMesh().originalPoints();    
-        std::cout << "ImageView::mouseReleaseEvent(): layer=" << m_selectedCageLayer->name().toStdString() << ": cageAfter=" << cageAfter.size() << ", cageBefore=" << m_cageBefore.size() << std::endl;
+        qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): layer =" << m_selectedCageLayer->name() << ": cageAfter =" << cageAfter.size() << ", cageBefore =" << m_cageBefore.size();
         // PrŸfen, ob Cage verŠndert wurde
         if ( cageAfter != m_cageBefore ) {
-         std::cout << " Cage has been modified " << std::endl;
+         // std::cout << " Cage has been modified " << std::endl;
          if ( m_cageWarpCommand == nullptr ) {
-          std::cout << "Creating new layer undo/redo instance..." << std::endl;
+          // std::cout << "Creating new layer undo/redo instance..." << std::endl;
           int rows = m_selectedCageLayer->cageMesh().rows();
           int columns = m_selectedCageLayer->cageMesh().cols();
           m_cageWarpCommand = new CageWarpCommand(m_selectedLayer, cageBefore, cageAfter, m_selectedLayer->boundingRect(), rows, columns);

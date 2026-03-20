@@ -335,9 +335,11 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 // ------------------------ Cage ------------------------
 QImage LayerItem::applyTriangleWarp()
 {
-  qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): meshActive =" << m_cageMesh.isActive() << ",  m_cageEnabled =" << m_cageEnabled << ", m_cageEditing =" << m_cageEditing;
+  qDebug() << "LayerItem::applyTriangleWarp(): meshActive =" << m_cageMesh.isActive() << ",  m_cageEnabled =" << m_cageEnabled << ", m_cageEditing =" << m_cageEditing;
   {
-
+    if ( !m_cageEditing ) {
+      return m_cageMesh.image(); // muss das original image sein vor jedem warp !!!
+    }
     TriangleWarp::WarpResult warped = TriangleWarp::warp(m_cageMesh.image(),m_cageMesh);
     // TriangleWarp::WarpResult warped = TriangleWarp::warp(m_originalImage,m_cageMesh); 
     if ( !warped.image.isNull() ) {
@@ -359,10 +361,10 @@ void LayerItem::applyCageWarp()
 
 void LayerItem::enableCage( int cols, int rows )
 {
-  qCDebug(logEditor) << "LayerItem::enableCage(): cols =" << cols << ", rows =" << rows << ", enabled =" << m_cageEnabled;
+  qDebug() << "LayerItem::enableCage(): cols =" << cols << ", rows =" << rows << ", enabled =" << m_cageEnabled;
   {
     m_cageMesh.create(boundingRect(), cols, rows);
-    m_cageMesh.setImage(m_image);
+    if ( !m_cageMesh.isInitialized() )  m_cageMesh.setImage(m_image);
     m_cageMesh.setIsInitialized();
     m_cageEnabled = true;     
     if ( !scene() )
@@ -624,14 +626,17 @@ void LayerItem::commitCageTransform( const QVector<QPointF> &cage )
 
 void LayerItem::beginCageEdit()
 {
+  qDebug() << "LayerItem::beginCageEdit(): Processing...";
+  {
     m_cageEditing = true;
     m_startPos = pos();
     m_startTransform = transform();
+  }
 }
 
 void LayerItem::endCageEdit( int idx, const QPointF& startPos )
 {
-  qCDebug(logEditor) << "LayerItem::endCageEdit(): Processing...";
+  qDebug() << "LayerItem::endCageEdit(): Processing...";
   {
     QVector<QPointF> cage;
     for ( int i=0 ; i<m_cage.size() ; i++ ) {

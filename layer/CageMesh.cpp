@@ -38,8 +38,10 @@ void CageMesh::printself()
 // ------------------------------  ------------------------------
 void CageMesh::create( const QRectF& bounds, int cols, int rows )
 {
-  qDebug() << "CageMesh::create(): cols=" << cols << ", rows=" << rows;
+  qCDebug(logEditor)  << "CageMesh::create(): isInitialized =" << m_isInitialized << ", cols =" << cols << ", rows =" << rows;
   {
+    if ( m_isInitialized == true )
+      return;
     m_cols = cols;
     m_rows = rows;
     m_points.clear();
@@ -81,7 +83,7 @@ void CageMesh::update( const QRectF& bounds, int cols, int rows )
 
 void CageMesh::coarsen( const QRectF& bounds, int newCols, int newRows )
 {
-  qDebug() << "CageMesh::coarsen(): newCols=" << newCols << ", newRows=" << newRows;
+  qCDebug(logEditor)  << "CageMesh::coarsen(): newCols=" << newCols << ", newRows=" << newRows;
   {
     QVector<QPointF> nextPoints;
     QVector<QPointF> nextOriginalPoints;
@@ -106,7 +108,7 @@ void CageMesh::coarsen( const QRectF& bounds, int newCols, int newRows )
 
 void CageMesh::refine( const QRectF& bounds, int newCols, int newRows ) 
 {
-  qDebug() << "CageMesh::refine(): newCols=" << newCols << ", newRows=" << newRows;
+  qCDebug(logEditor)  << "CageMesh::refine(): newCols=" << newCols << ", newRows=" << newRows;
   {
     QVector<QPointF> nextPoints;
     QVector<QPointF> nextOriginalPoints;
@@ -307,4 +309,12 @@ QRectF CageMesh::boundingRect() const
     for ( const auto& p : m_points )
         r |= QRectF(p, QSizeF(1,1));
     return r;
+}
+
+void CageMesh::setImage( const QImage& image ) 
+{ 
+  qDebug() << "CageMesh::setImage(): intitialized =" << m_isInitialized;
+  {
+    m_image = image; 
+  }
 }

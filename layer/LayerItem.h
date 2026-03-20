@@ -87,6 +87,7 @@ class LayerItem : public QGraphicsPixmapItem
     
     QUndoStack* undoStack() const { return m_undoStack; }
     QWidget* parent() const { return m_parent; }
+    void setCageEditing( bool isEditing ) { m_cageEditing = isEditing; }
     void setParent( QWidget *parent ) { m_parent = parent; }
     void setUndoStack( QUndoStack* stack ) { m_undoStack = stack; }
     void setIndex( const int index ) { m_index = index; }

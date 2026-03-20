@@ -48,7 +48,7 @@ class CageMesh
     void update( const QRectF& bounds, int cols, int rows );
     
     QImage& image() { return m_image; }
-    void setImage( const QImage& image ) { m_image = image; }
+    void setImage( const QImage& image );
     
     void rebuildSprings();
     

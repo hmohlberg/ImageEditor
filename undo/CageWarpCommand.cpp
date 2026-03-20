@@ -60,7 +60,7 @@ void CageWarpCommand::printMessage( bool isUndo )
 
 void CageWarpCommand::pushNewWarpStep( const QVector<QPointF>& points )
 {
-  qCDebug(logEditor) << "CageWarpCommand::pushNewWarpStep(): Processing...";
+  qDebug() << "CageWarpCommand::pushNewWarpStep(): Processing...";
   {
     m_after = points;
     m_steps += 1;
@@ -70,7 +70,7 @@ void CageWarpCommand::pushNewWarpStep( const QVector<QPointF>& points )
 // ---------------------- Undo/Redo ----------------------
 void CageWarpCommand::undo()
 {
-  qCDebug(logEditor) << "CageWarpCommand::undo(): m_beforepoints =" << m_before.size();
+  qDebug() << "CageWarpCommand::undo(): m_beforepoints =" << m_before.size();
   {
     if ( !m_layer ) return;
     m_layer->setCagePoints(m_before);
@@ -83,7 +83,7 @@ void CageWarpCommand::undo()
 
 void CageWarpCommand::redo()
 {
-  qCDebug(logEditor) << "CageWarpCommand::redo(): rows =" << m_rows << ", columns =" << m_columns << ", points =" << m_after.size();
+  qDebug() << "CageWarpCommand::redo(): rows =" << m_rows << ", columns =" << m_columns << ", points =" << m_after.size();
   {
     if ( m_silent || !m_layer ) return;
     m_originalImage = m_layer->originalImage(); //m_layer->image(0);
