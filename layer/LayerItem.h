@@ -26,6 +26,7 @@
 
 #include "CageMesh.h"
 #include "PerspectiveTransform.h"
+#include "../undo/CageWarpCommand.h"
 
 // ---
 class Layer;
@@ -66,6 +67,11 @@ class LayerItem : public QGraphicsPixmapItem
     QString checksum() const { return m_checksum; }
     QString name() const;
     
+    QTransform totalTransform() const { return m_totalTransform; } 
+    void setTotalTransform( const QTransform &transform ) {
+      m_totalTransform = transform;
+    }
+    
     void setIsSelected( bool isSelected );
     void setMirror( int plane );
     void setRotationAngle( double value );
@@ -78,9 +84,11 @@ class LayerItem : public QGraphicsPixmapItem
     void beginCageEdit();
     void setCageVisible( bool isVisible = false );
     bool cageEnabled() const;
-    void setCageVisible( LayerItem::OperationMode mode, bool isVisible );
+    void setCageVisible( LayerItem::OperationMode mode, bool isVisible, bool pushBackImage = false );
     void setInActive( bool isInActive );
-    
+    CageWarpCommand * getCageWarpCommand() { return m_cageWarpCommand; }
+    void setCageWarpCommand( CageWarpCommand * cmd ) { m_cageWarpCommand = cmd; }
+
     int id() const { return m_index; }
     bool isEditing() const { return m_cageEditing; }
     bool isCageWarp() const { return m_operationMode == OperationMode::CageWarp ? true : false; }
@@ -169,6 +177,7 @@ class LayerItem : public QGraphicsPixmapItem
     CageMesh m_cageMesh;
     CageOverlayItem* m_cageOverlay = nullptr;
     PerspectiveTransform m_perspective;
+    CageWarpCommand * m_cageWarpCommand = nullptr;
 
 	Layer* m_layer = nullptr;
 	

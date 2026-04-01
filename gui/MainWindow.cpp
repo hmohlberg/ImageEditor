@@ -885,9 +885,9 @@ void MainWindow::layerItemClicked( QListWidgetItem* item )
 
 void MainWindow::onLayerItemClicked( QListWidgetItem* item )
 {
-  qCDebug(logEditor) << "MainWindow::onLayerItemClicked(): Processing...";
+  if ( !item ) return;
+  qCDebug(logEditor) << "MainWindow::onLayerItemClicked(): name =" << item->text();
   {
-    if ( !item ) return;
     void* ptr = item->data(Qt::UserRole).value<void*>();
     Layer* layer = static_cast<Layer*>(ptr);
     if ( layer ) {
@@ -896,9 +896,15 @@ void MainWindow::onLayerItemClicked( QListWidgetItem* item )
          LayerItem *layerItem = m_imageView->getLayerItem(l->name());
          if ( layerItem != nullptr ) {
            if ( l == layer ) {
-             l->m_item->setSelected(true);
-             l->m_item->setZValue(3);
+             l->m_item->setSelected(!l->m_item->isSelected());  // toggle
+             if( l->m_item->isSelected() ) {
+               setSelectedLayer(item->text());
+               l->m_item->setZValue(3);
+             } else {
+               l->m_item->setZValue(2);
+             }
              m_selectedLayerItemName = l->name();
+             item->setSelected(l->m_item->isSelected());
            } else {
              l->m_item->setSelected(false);
              l->m_item->setZValue(2);
@@ -1455,6 +1461,19 @@ void MainWindow::createToolbars()
     m_layerToolbar->addWidget(m_selectLayerItem);
     connect(m_selectLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
       m_selectedLayerItemName = text;
+      for ( Layer* l : m_imageView->layers() ) {
+       if ( l->m_item ) {
+        QString name = l->name().section(' ', -2, -1);
+        if ( name == text ) {
+          l->m_item->setSelected(true);
+          l->m_item->setZValue(3);
+        } else {
+          l->m_item->setSelected(false);
+          l->m_item->setZValue(2);
+        }
+       }
+      }
+     
     });
     // --- operation modus ---
     m_transformLayerItem = new QComboBox();

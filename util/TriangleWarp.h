@@ -54,9 +54,9 @@ namespace TriangleWarp
     // compute new target image (transparent background)
     int rows = cageMesh.rows();
     int cols = cageMesh.cols();
-    
+
     if ( EditorStyle::instance().useCageQuads() == true ) {
-    
+
       // --- QUAD WARP (default) ---
       for ( int y = 0; y + 1 < rows; ++y ) {
        for ( int x = 0; x + 1 < cols; ++x ) {
@@ -81,14 +81,14 @@ namespace TriangleWarp
             for ( int px = int(br.left()); px <= int(br.right()); ++px ) {
                 QPointF p(px, py);
                 if ( !GeometryUtils::pointInQuad(p, dstQuad) ) continue;
-                QPointF srcP = GeometryUtils::getBilinearCoords(p, dstQuad, srcQuad);
+                QPointF srcP = GeometryUtils::barycentric(p, dstQuad, srcQuad);
                 if ( !originalImage.rect().contains(srcP.toPoint()) ) continue;
                 QRgb c = originalImage.pixel(srcP.toPoint());
                 warped.setPixel(px, py, c);
             }
         }
        }
-     }
+      }
     
     } else {
     

@@ -68,7 +68,7 @@ void MirrorLayerCommand::printMessage( bool isUndo )
 // -------------- Undo/Redo  -------------- 
 void MirrorLayerCommand::undo()
 {
-  qCDebug(logEditor)  << "MirrorLayerCommand::undo(): Processing...";
+  qCDebug(logEditor) << "MirrorLayerCommand::undo(): Processing...";
   {
     if ( m_deleted || !(m_layer && m_isMirroring) ) return; 
     m_layer->setMirror(m_mirrorPlane);

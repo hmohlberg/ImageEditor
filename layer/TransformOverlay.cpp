@@ -183,12 +183,6 @@ void TransformOverlay::applyHandleDrag( HandleType type, const QPointF& delta )
   {
     if ( !m_layer ) return;
     
-    // check whether an isotropic scaling is requested
-    bool isotropicScaling = IMainSystem::instance()->getLayerOperationParameter(LayerItem::OperationMode::Scale) > 0 ? true : false;
-    if ( QApplication::keyboardModifiers() & Qt::AltModifier ) {
-      isotropicScaling = false;
-    }
-
     // >>>
     QRectF r = m_layer->boundingRect();
     const qreal minSize = 5.0;
@@ -198,6 +192,9 @@ void TransformOverlay::applyHandleDrag( HandleType type, const QPointF& delta )
     qreal sx = 1.0;
     qreal sy = 1.0;
     QPointF fixedPoint;
+
+    // Stretching a corner control point will cause isotropic stretching in x, y.
+    // Stretching a mid-edge control point will cause stretching in only one direction.
 
     // Unterscheidung zwischen Eck- und Seitenhandles
     bool isCorner = ( type == HandleType::Corner_TL || type == HandleType::Corner_TR || 
@@ -230,12 +227,11 @@ void TransformOverlay::applyHandleDrag( HandleType type, const QPointF& delta )
                 break;
             default: break;
         }
-        if ( isotropicScaling ) {
-          qreal s = std::max(sx, sy);
-          sx = sy = s;
-        }
+        // isotropic:
+        qreal s = std::max(sx, sy);
+        sx = sy = s;
+
     } else {
-        // --- Seitenhandles mit optionaler isotroper Skalierung ---
         switch( type ) {
             case HandleType::Side_Left:   fixedPoint = QPointF(r.right(), r.center().y()); break;
             case HandleType::Side_Right:  fixedPoint = QPointF(r.left(), r.center().y()); break;
@@ -248,15 +244,6 @@ void TransformOverlay::applyHandleDrag( HandleType type, const QPointF& delta )
         else if ( type == HandleType::Side_Right )  sx = ((r.right() + delta.x()) - r.left()) / r.width();
         else if ( type == HandleType::Side_Top )    sy = (r.bottom() - (r.top() + delta.y())) / r.height();
         else if ( type == HandleType::Side_Bottom ) sy = ((r.bottom() + delta.y()) - r.top()) / r.height();
-        // Isotrope Logik für Seitenhandles:
-        // Wir verwenden hier Qt::ControlModifier (Strg-Taste)
-        if ( isotropicScaling ) {
-            if ( type == HandleType::Side_Left || type == HandleType::Side_Right ) {
-                sy = sx; // Höhe folgt der Breite
-            } else {
-                sx = sy; // Breite folgt der Höhe
-            }
-        }
     }
 
     // Minimum-Größe absichern

@@ -75,7 +75,9 @@ class CageWarpCommand : public AbstractCommand
     QVector<QPointF> m_before;  // Startposition der Cage-Punkte
     QVector<QPointF> m_after;   // Endposition der Cage-Punkte
     
-    QImage m_originalImage;
-    QImage m_warpedImage;
+    QTransform m_transform;     // transform operations before cage warp
+    
+    QImage m_originalImage;     // copy of the original image
+    QImage m_warpedImage;       // warped image
     
 };

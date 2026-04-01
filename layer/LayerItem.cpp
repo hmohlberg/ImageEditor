@@ -20,6 +20,7 @@
 #include "TransformHandleItem.h"
 #include "CageControlPointItem.h"
 #include "CageOverlayItem.h"
+#include "CageMesh.h"
 
 #include "../core/IMainSystem.h"
 #include "../gui/MainWindow.h"
@@ -27,6 +28,7 @@
 #include "../undo/TransformLayerCommand.h"
 #include "../undo/MirrorLayerCommand.h"
 #include "../undo/MoveLayerCommand.h"
+#include "../undo/CageWarpCommand.h"
 #include "../util/Interpolation.h"
 #include "../util/GeometryUtils.h"
 #include "../util/TriangleWarp.h"
@@ -220,9 +222,7 @@ void LayerItem::updateOriginalImage() {
 }
 
 // ------------------------ Selected ------------------------
-void LayerItem::setIsSelected( bool isSelected )
-{
-  qCDebug(logEditor) << "LayerItem::setIsSelected(): name =" << name() << ", selected =" << isSelected;
+void LayerItem::setIsSelected( bool isSelected ) {
   QGraphicsItem::setSelected(isSelected);
 }
 
@@ -258,7 +258,7 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
       return;
     }
     // *** hard QImage transformation ***
-    qDebug() << "LayerItem::setImageTransform(): ALTERNATIVE PROCESS FOR CASE WHERE NO PIXMAP IS AVAILABLE";
+    qCDebug(logEditor) << "LayerItem::setImageTransform(): ALTERNATIVE PROCESS FOR CASE WHERE NO PIXMAP IS AVAILABLE";
     // transform image
     QPointF sceneCenter = mapToScene(QRectF(pixmap().rect()).center());
     QPointF imageCenter = QRectF(m_originalImage.rect()).center();
@@ -277,7 +277,9 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
 // ------------------------ Paint ------------------------
 void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget )
 {
+#if 0
   qCDebug(logEditor) << "LayerItem::paint(): Processing " << (m_layer?m_layer->name():"unknown") << ", selected = " << isSelected();
+#endif
   {
     QGraphicsPixmapItem::paint(painter,option,widget);
     if ( isSelected() ) {
@@ -333,13 +335,17 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 }
 
 // ------------------------ Cage ------------------------
+
 QImage LayerItem::applyTriangleWarp()
 {
-  qDebug() << "LayerItem::applyTriangleWarp(): meshActive =" << m_cageMesh.isActive() << ",  m_cageEnabled =" << m_cageEnabled << ", m_cageEditing =" << m_cageEditing;
+  qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): meshActive =" << m_cageMesh.isActive() << ",  m_cageEnabled =" << m_cageEnabled << ", m_cageEditing =" << m_cageEditing;
   {
+#if 0
+    // removed by CLAUDE
     if ( !m_cageEditing ) {
       return m_cageMesh.image(); // muss das original image sein vor jedem warp !!!
     }
+#endif
     TriangleWarp::WarpResult warped = TriangleWarp::warp(m_cageMesh.image(),m_cageMesh);
     // TriangleWarp::WarpResult warped = TriangleWarp::warp(m_originalImage,m_cageMesh); 
     if ( !warped.image.isNull() ) {
@@ -361,11 +367,10 @@ void LayerItem::applyCageWarp()
 
 void LayerItem::enableCage( int cols, int rows )
 {
-  qDebug() << "LayerItem::enableCage(): cols =" << cols << ", rows =" << rows << ", enabled =" << m_cageEnabled;
+  qCDebug(logEditor) << "LayerItem::enableCage(): cols =" << cols << ", rows =" << rows << ", enabled =" << m_cageEnabled;
   {
     m_cageMesh.create(boundingRect(), cols, rows);
     if ( !m_cageMesh.isInitialized() )  m_cageMesh.setImage(m_image);
-    m_cageMesh.setIsInitialized();
     m_cageEnabled = true;     
     if ( !scene() )
       return;
@@ -392,9 +397,11 @@ void LayerItem::initCage( const QVector<QPointF>& pts, const QRectF &rect, int n
 {
   qCDebug(logEditor) << "LayerItem::initCage(): cageOverlay =" << (m_cageOverlay!=nullptr?"ok":"null") << ", rect =" << rect << ", rows =" << nrows << ", ncolumns =" << ncolumns;
   {
-
+    m_cageMesh.setIsInitialized();
     m_cageMesh.create(rect,nrows,ncolumns);  
-    m_cageMesh.setImage(m_image);  // ADDED by CLAUDE
+    // m_cageMesh.setImage(m_image);  // ADDED by CLAUDE 
+    //   04.01.2026: REMOVED by Hartmut: 
+    //       Multiple undo/redo operations result in cumulative distortions
     m_cageMesh.setPoints(pts);
     if ( m_cageOverlay == nullptr ) {
       m_cageOverlay = new CageOverlayItem(this);
@@ -405,18 +412,28 @@ void LayerItem::initCage( const QVector<QPointF>& pts, const QRectF &rect, int n
 
 void LayerItem::setCageVisible( bool isVisible )
 {
-  qCDebug(logEditor) << "LayerItem::setCageVisible(): name = "  << name() << ", cageOverlay =" << (m_cageOverlay != nullptr?"ok":"none") << ", cageEditing=" << m_cageEditing << "|" << m_cageEnabled << " nControlPoints=" << m_cageMesh.pointCount();
+  qCDebug(logEditor) << "LayerItem::setCageVisible(" << isVisible << "): name = "  << name() << ", cageOverlay =" << (m_cageOverlay != nullptr?"ok":"none") << ", cageEditing=" << m_cageEditing << "|" << m_cageEnabled << " nControlPoints=" << m_cageMesh.pointCount();
   {
    if ( m_cageOverlay != nullptr ) {
      if ( isVisible  ) {
-      m_cageOverlay->setVisible(true);
+       m_cageMesh.setActive(true);
+       m_cageEnabled = true;
+       m_cageEditing = true;
+       m_cageOverlay->setVisible(true);
      } else {
+#if 0
+       // CLAUDE says: This is potentially wrong. This will reset
+       // m_selectedCageLayer to null in MainWindow, which is not
+       // necessarily what we want to do when making other inactive
+       // cages invisible. Let the parent MainWindow decide about this.
+
        if ( m_parent != nullptr ) { 
         MainWindow* parent = dynamic_cast<MainWindow*>(m_parent);
         if ( parent && parent->getViewer() != nullptr ) {
          parent->getViewer()->setActiveCageLayer(nullptr);
         }
        }    
+#endif
        m_cageMesh.setActive(false);
        m_cageEnabled = false;
        m_cageEditing = false;
@@ -430,13 +447,25 @@ void LayerItem::setCageVisible( bool isVisible )
   }
 }
 
-void LayerItem::setCageVisible( LayerItem::OperationMode mode, bool isVisible )
+void LayerItem::setCageVisible( LayerItem::OperationMode mode, bool isVisible, bool pushBackImage )
 {
-  qCDebug(logEditor) << "LayerItem::setCageVisible(): mode =" << mode << ", isVisible =" << isVisible;
+  qCDebug(logEditor) << "LayerItem::setCageVisible(): mode =" << mode << ", isVisible =" << isVisible << ", pushBackImage =" << pushBackImage;
   { 
     switch ( mode ) {
       case LayerItem::OperationMode::CageWarp:
         if ( m_cageOverlay != nullptr ) {
+          if( m_handles.size() == 0 ) {
+            // create handles if they have not been created (when read from .json)
+            // CLAUDE -- this should be moved to a more convenient place.
+            qDeleteAll(m_handles);
+            m_handles.clear();
+            for ( int i = 0; i < m_cageMesh.pointCount(); ++i ) {
+              auto* h = new CageControlPointItem(this, i);
+              h->setParentItem(this);
+              h->setPos(m_cageMesh.point(i));
+              m_handles << h;
+            }
+          }
           for ( int i = 0; i < m_handles.size(); ++i ) {
             m_handles[i]->setVisible(isVisible);
           }
@@ -457,7 +486,10 @@ void LayerItem::setCageVisible( LayerItem::OperationMode mode, bool isVisible )
       default:
         qDebug() << " + unprocessed mode " << mode;
     }
- }
+    if ( isVisible == false && pushBackImage == true ) {
+      setOriginalImage(m_cageMesh.image());
+    }
+  }
 }
 
 int LayerItem::changeNumberOfActiveCagePoints( int step ) 
@@ -626,7 +658,7 @@ void LayerItem::commitCageTransform( const QVector<QPointF> &cage )
 
 void LayerItem::beginCageEdit()
 {
-  qDebug() << "LayerItem::beginCageEdit(): Processing...";
+  qCDebug(logEditor) << "LayerItem::beginCageEdit(): Processing...";
   {
     m_cageEditing = true;
     m_startPos = pos();
@@ -636,7 +668,7 @@ void LayerItem::beginCageEdit()
 
 void LayerItem::endCageEdit( int idx, const QPointF& startPos )
 {
-  qDebug() << "LayerItem::endCageEdit(): Processing...";
+  qCDebug(logEditor) << "LayerItem::endCageEdit(): Processing...";
   {
     QVector<QPointF> cage;
     for ( int i=0 ; i<m_cage.size() ; i++ ) {
@@ -727,7 +759,7 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
              return;
             }
            }
-           enableCage(3,3);
+           // enableCage(3,3);  // CLAUDE -- why????
         } else {
            setCageVisible(false);
         }

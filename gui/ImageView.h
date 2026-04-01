@@ -203,7 +203,7 @@ class ImageView : public QGraphicsView
     TransformOverlay* m_transformOverlay = nullptr;
     PerspectiveOverlay* m_perspectiveOverlay = nullptr;
     
-    CageWarpCommand* m_cageWarpCommand = nullptr;
+    //CageWarpCommand* m_cageWarpCommand = nullptr;  // CLAUDE moved to LayerItem class
 
     QWidget* m_parent = nullptr;
     QUndoStack* m_undoStack = nullptr;

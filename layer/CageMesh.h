@@ -96,7 +96,7 @@ class CageMesh
     
   private:
   
-    bool m_active = true;
+    bool m_active = false;   // changed by CLAUDE
     bool m_needUpdate = false;
     bool m_isInitialized = false;
     

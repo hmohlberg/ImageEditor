@@ -1,5 +1,5 @@
 /* 
-* Copyright 2026 Forschungszentrum JŸlich
+* Copyright 2026 Forschungszentrum J?lich
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -85,6 +85,11 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
 {   
   qCDebug(logEditor) << "ImageView::ImageView(): Processing...";
   {
+
+    m_activeLayer = nullptr;       // this variable is obsolete
+    m_selectedLayer = nullptr;
+    m_selectedCageLayer = nullptr;
+
     m_scene = new QGraphicsScene(this);
     m_scene->setItemIndexMethod(QGraphicsScene::NoIndex); // Hack to prevent crash
     // setup 
@@ -122,8 +127,24 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
                     // cleanupCommand(previousActiveCommand);
                   }
                 } else if ( previousActiveCommand->text().startsWith("Cage Warp") ) {
-                   LayerItem *layer = getSelectedItem(true);
-                   if ( layer != nullptr ) layer->setCageVisible(false);
+
+                   // CLAUDE says: This is very tricky here. This attempts, here, 
+                   // to end the Cage Warp on the previous command on the Stack to 
+                   // hide the cage. However, there is confusion on how to select 
+                   // this previous layer if the new command is itself a Cage.
+
+                   for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
+                     auto* layer = dynamic_cast<LayerItem*>(item);
+                     if( layer ) {
+                       // make invisible if there is a cage but no warp (not active)
+                       if( !layer->isCageWarp() && layer->hasActiveCage() ) {
+                         layer->setCageVisible(false);
+                       }
+                     }
+                   }
+                   // LayerItem *layer = getSelectedItem(true);
+                   // if ( layer != nullptr ) layer->setCageVisible(false);
+
                 } else if ( previousActiveCommand->text().startsWith("Perspective Warp") ) {
                    qDebug() << " *** cleaning perspective warp mesh here ***";
                 } else if ( previousActiveCommand->text().startsWith("Editable Polygon") ) {
@@ -770,26 +791,44 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         }
         clickedItem->setOperationMode(m_layerOperationMode);
         mainWindow->setSelectedLayer(QString("Layer %1").arg(clickedItem->id()));
+
         if ( clickedItem->isSelected() == true ) {
-          clickedItem->setIsSelected(false);  // NO effect. Why?
+          // toggle active surface off if it's clicked again -- too confusing, remove this action
+          if( !( m_selectedLayer && m_selectedLayer == clickedItem ) ) {
+            m_selectedLayer = clickedItem;
+          }
         } else {
+          // make this new layer the active one
           for ( auto* item : m_scene->items() ) {
             auto* layer = dynamic_cast<LayerItem*>(item);
             if ( layer && layer != clickedItem )
                 layer->setIsSelected(false);
           }
           clickedItem->setIsSelected(true);
+          m_selectedLayer = clickedItem;
         }
-        // set pointer
-        if ( clickedItem->isCageWarp() && clickedItem->cageMesh().isActive() ) {
-           m_activeLayer = clickedItem;
-           m_selectedLayer = clickedItem;
-           m_cageBefore = m_activeLayer->cageMesh().points();
-        } else if ( m_layerOperationMode == LayerItem::OperationMode::Scale ||
-                     m_layerOperationMode == LayerItem::OperationMode::Perspective ||
-                     m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
-           m_activeLayer = clickedItem;
-           m_selectedLayer = clickedItem;
+        m_activeLayer = clickedItem;  // this variable is obsolete
+
+        // Is there a cage to switch off on old layer?
+
+        if( m_selectedCageLayer && m_selectedCageLayer != clickedItem ) {
+          m_selectedCageLayer->setCageVisible( false );
+        }
+
+        // Is there a cage on this newly selected layer?
+
+        if( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
+          if ( clickedItem->hasActiveCage() ) {
+            m_selectedCageLayer = clickedItem;
+            m_selectedCageLayer->setCageEditing( true );
+            m_selectedCageLayer->setCageVisible( true );
+            // this one actually makes the control points visible.
+            m_selectedCageLayer->setCageVisible( LayerItem::OperationMode::CageWarp, true );
+            m_cageBefore = clickedItem->cageMesh().points();
+          } else {
+            m_selectedCageLayer = nullptr;
+            m_cageBefore.clear();
+          }
         }
       }
     }
@@ -915,6 +954,9 @@ void ImageView::mouseDoubleClickEvent( QMouseEvent* event )
       } else if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::ImageLayer &&
                     m_layerOperationMode == LayerItem::OperationMode::Perspective ) {
           setEnablePerspectiveWarp(m_selectedLayer);
+      } else if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::ImageLayer &&
+                    m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
+          m_selectedCageLayer = nullptr;
       }
     }
     QGraphicsView::mouseDoubleClickEvent(event);
@@ -923,7 +965,10 @@ void ImageView::mouseDoubleClickEvent( QMouseEvent* event )
 
 void ImageView::mouseMoveEvent( QMouseEvent* event )
 {
+#if 0
+  // this statement prints too often during debugging and hides other statements.
   qCDebug(logEditor) << "ImageView::mouseMoveEvent(): m_painting =" << m_maskPainting << ", m_paintToolEnabled =" << m_paintToolEnabled;
+#endif
   {
     if ( !scene() )
         return;
@@ -951,7 +996,7 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
     if ( !colorFound )
         emit cursorColorChanged(Qt::transparent);
 
-    // --- Shift-Pan: nur wenn Shift gedrŸckt & linke Maustaste ---
+    // --- Shift-Pan: nur wenn Shift gedr?ckt & linke Maustaste ---
     // std::cout << "shift-pan: processing: shift=" << (event->modifiers() & Qt::ShiftModifier) << "..." << std::endl;
     if ( (event->modifiers() & Qt::ShiftModifier) && (event->buttons() & Qt::LeftButton) ) {
         QPoint delta = event->pos() - m_lastMousePos;
@@ -1051,7 +1096,7 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
 
 void ImageView::mouseReleaseEvent( QMouseEvent* event )
 {
-  qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): Processing...";
+  qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): selectedCageLayer =" << m_selectedCageLayer;
   {
     if ( !scene() )
         return;
@@ -1060,21 +1105,29 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
         QVector<QPointF> cageAfter = m_selectedCageLayer->cageMesh().points();
         QVector<QPointF> cageBefore = m_selectedCageLayer->cageMesh().originalPoints();    
         qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): layer =" << m_selectedCageLayer->name() << ": cageAfter =" << cageAfter.size() << ", cageBefore =" << m_cageBefore.size();
-        // PrŸfen, ob Cage verŠndert wurde
+        // Pr?fen, ob Cage ver?ndert wurde
         if ( cageAfter != m_cageBefore ) {
          // std::cout << " Cage has been modified " << std::endl;
-         if ( m_cageWarpCommand == nullptr ) {
-          // std::cout << "Creating new layer undo/redo instance..." << std::endl;
-          int rows = m_selectedCageLayer->cageMesh().rows();
-          int columns = m_selectedCageLayer->cageMesh().cols();
-          m_cageWarpCommand = new CageWarpCommand(m_selectedLayer, cageBefore, cageAfter, m_selectedLayer->boundingRect(), rows, columns);
-          m_undoStack->push(m_cageWarpCommand);
+
+         if ( m_selectedCageLayer->getCageWarpCommand() == nullptr ) {
+           // std::cout << "Creating new layer undo/redo instance..." << std::endl;
+           int rows = m_selectedCageLayer->cageMesh().rows();
+           int columns = m_selectedCageLayer->cageMesh().cols();
+           m_undoStack->push( new CageWarpCommand(m_selectedCageLayer, cageBefore, cageAfter, 
+                                                  m_selectedCageLayer->boundingRect(),
+                                                  rows, columns ) );
          } else {
-          m_cageWarpCommand->pushNewWarpStep(cageAfter);
-         } 
-         m_selectedCageLayer->applyTriangleWarp();
+           m_selectedCageLayer->getCageWarpCommand()->pushNewWarpStep( cageAfter );
+         }
+
+         if( m_selectedCageLayer ) {
+           m_selectedCageLayer->applyTriangleWarp();
+         } else {
+           std::cout << "Cage layer has not been initialized correctly." 
+                     << std::endl;
+         }
         }
-        m_activeLayer = nullptr;
+        m_activeLayer = nullptr;   // why??? CLAUDE -- never mind, this variable is obsolete
         m_cageBefore.clear();
     }
     // --- Lasso beenden ---
@@ -1308,24 +1361,27 @@ LayerItem* ImageView::getLayerItem( const QString& name )
 
 LayerItem* ImageView::getSelectedItem( bool isActiveCageItem )
 {
-   if ( isActiveCageItem ) {
-     for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
-       auto* layer = dynamic_cast<LayerItem*>(item);
-       if ( layer && layer->getType() != LayerItem::MainImage ) {
-         if ( layer->hasActiveCage() ) {
-           return layer;
-         }
-       }
-     }
-     return nullptr;
-   }
+
+   // Priority: Choose selected if there is a selected one.
+
    for ( auto* item : m_scene->items() ) {
         auto* layer = dynamic_cast<LayerItem*>(item);
         if ( layer && layer->isSelected() ) {
           return layer;
         }
-    }
-    return nullptr;
+   }
+
+   if ( isActiveCageItem ) {
+     for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
+       auto* layer = dynamic_cast<LayerItem*>(item);
+       if ( layer && layer->getType() != LayerItem::MainImage ) {
+         if ( layer->hasActiveCage() && layer->isCageWarp() ) {
+           return layer;
+         }
+       }
+     }
+   }
+   return nullptr;
 }
 
 void ImageView::setPolygonOperationMode( LayerItem::OperationMode mode )
@@ -1343,7 +1399,7 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
     if ( m_layerOperationMode == LayerItem::OperationMode::Scale ) {
       disableTransformMode();
     } else if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
-      qDebug() << " + clean-up cage-warp mode...";
+      m_selectedCageLayer = nullptr;
     }
     m_layerOperationMode = mode; 
     if ( m_polygonEnabled ) {
@@ -1537,9 +1593,9 @@ void ImageView::setCageWarpReset()
 
 void ImageView::setIncreaseNumberOfCageControlPoints() 
 {
-   if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() && m_cageWarpCommand != nullptr ) return;
+   if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() && m_selectedLayer->getCageWarpCommand() != nullptr ) return;
    int n = m_selectedLayer->changeNumberOfActiveCagePoints(+1);
-   m_cageWarpCommand->setNumberOfRowsAndColumns(n);
+   m_selectedLayer->getCageWarpCommand()->setNumberOfRowsAndColumns(n);
 }
 
 void ImageView::setDecreaseNumberOfCageControlPoints() 

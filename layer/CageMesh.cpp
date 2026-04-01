@@ -40,8 +40,11 @@ void CageMesh::create( const QRectF& bounds, int cols, int rows )
 {
   qCDebug(logEditor)  << "CageMesh::create(): isInitialized =" << m_isInitialized << ", cols =" << cols << ", rows =" << rows;
   {
+#if 0
     if ( m_isInitialized == true )
       return;
+    m_isInitialized = true;
+#endif
     m_cols = cols;
     m_rows = rows;
     m_points.clear();
@@ -313,8 +316,9 @@ QRectF CageMesh::boundingRect() const
 
 void CageMesh::setImage( const QImage& image ) 
 { 
-  qDebug() << "CageMesh::setImage(): intitialized =" << m_isInitialized;
+  qCDebug(logEditor) << "CageMesh::setImage(): intitialized =" << m_isInitialized;
   {
     m_image = image; 
+    m_isInitialized = true;
   }
 }

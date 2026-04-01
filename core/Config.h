@@ -69,7 +69,7 @@
       }
       m_hasPerspective = settings.value("Main/perspective", false).toBool();
       // Cage quads
-      m_useCageQuads = settings.value("Cage/quads", false).toBool();
+      m_useCageQuads = settings.value("Cage/quads", true).toBool();
       // Cage color
       QString cageWarpColor = settings.value("Cage/color", "green").toString();
        if ( QColor::isValidColorName(cageWarpColor) ) {
@@ -114,7 +114,7 @@
           m_lassoWidth(3), 
           m_rotationSingleStep(0.5),
           m_loggingIsEnabled(false), 
-          m_useCageQuads(false), 
+          m_useCageQuads(true), 
           m_hasPerspective(false),
           m_windowSize("default"),
           m_cageWarpColor(Qt::green), 
