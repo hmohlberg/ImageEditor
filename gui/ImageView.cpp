@@ -1105,21 +1105,18 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
         QVector<QPointF> cageAfter = m_selectedCageLayer->cageMesh().points();
         QVector<QPointF> cageBefore = m_selectedCageLayer->cageMesh().originalPoints();    
         qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): layer =" << m_selectedCageLayer->name() << ": cageAfter =" << cageAfter.size() << ", cageBefore =" << m_cageBefore.size();
-        // Pr?fen, ob Cage ver?ndert wurde
+        // Check whether cage has been modified
         if ( cageAfter != m_cageBefore ) {
-         // std::cout << " Cage has been modified " << std::endl;
-
          if ( m_selectedCageLayer->getCageWarpCommand() == nullptr ) {
-           // std::cout << "Creating new layer undo/redo instance..." << std::endl;
+           qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): Creating new cage layer undo/redo instance...";
            int rows = m_selectedCageLayer->cageMesh().rows();
            int columns = m_selectedCageLayer->cageMesh().cols();
            m_undoStack->push( new CageWarpCommand(m_selectedCageLayer, cageBefore, cageAfter, 
-                                                  m_selectedCageLayer->boundingRect(),
-                                                  rows, columns ) );
+                                                        m_selectedCageLayer->sceneBoundingRect(), m_selectedCageLayer->pos(),
+                                                        rows, columns ) );
          } else {
-           m_selectedCageLayer->getCageWarpCommand()->pushNewWarpStep( cageAfter );
+           m_selectedCageLayer->getCageWarpCommand()->pushNewWarpStep( m_selectedCageLayer->pos(), cageAfter );
          }
-
          if( m_selectedCageLayer ) {
            m_selectedCageLayer->applyTriangleWarp();
          } else {

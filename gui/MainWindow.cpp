@@ -525,7 +525,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
         QJsonObject cmdObj = v.toObject();
         QString type = cmdObj["type"].toString();
         QString text = cmdObj["text"].toString();
-        qDebug() << "MainWindow::loadProject(): Found undo call: type=" << type << ", text=" << text;
+        qCDebug(logEditor) << "MainWindow::loadProject(): Found undo call: type=" << type << ", text=" << text;
         AbstractCommand* cmd = nullptr;
         if ( type == "PaintStroke" || type == "PaintStrokeCommand" ) {
            cmd = PaintStrokeCommand::fromJson(cmdObj, layers);
@@ -619,7 +619,7 @@ void MainWindow::loadHistory( const QString& file )
 
 void MainWindow::openHistory()
 {
-  qDebug() << "MainWindow::openHistory(): Open history...";
+  qCDebug(logEditor) << "MainWindow::openHistory(): Open history...";
   {
     QString fileName = QFileDialog::getOpenFileName(this,
                         tr("Open JSON history file"), QString(),

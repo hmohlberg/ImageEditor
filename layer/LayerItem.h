@@ -75,8 +75,8 @@ class LayerItem : public QGraphicsPixmapItem
     void setIsSelected( bool isSelected );
     void setMirror( int plane );
     void setRotationAngle( double value );
+    void setImageRect( const QRectF& rect );
     void setImageTransform( const QTransform& transform, bool combine = false );
-    // void setCagePoint( int idx, const QPointF& pos );
     void endCageEdit( int idx, const QPointF& pos );
     void setType( LayerType layerType );
     void updateCagePoint( TransformHandleItem*, const QPointF& localPos );

@@ -73,7 +73,7 @@ class CageMesh
     QRectF boundingRect() const;
     
     void addOffset( qreal x, qreal y ) { m_offset += QPointF(x,y); }
-    QPointF getOffset() const { return m_offset; }
+    QPointF getOffset( bool isd=false ) const { return isd == false ? QPointF(0.0,0.0) : m_offset; }
     void setOffset( qreal x = -0.5, qreal y = -0.5 ) { m_offset = QPointF(x,y);  }
     
     void setStiffness( double value ) { m_stiffness = value; }
@@ -83,7 +83,9 @@ class CageMesh
     void needUpdate() { m_needUpdate = true; }
     
     void setIsInitialized() { m_isInitialized = true; }
-    bool isInitialized() const { return m_isInitialized; }
+    bool isInitialized( bool forced = false ) const { 
+      return forced ? ( !m_image.isNull() && m_isInitialized ) : m_isInitialized; 
+    }
     
     void printself();
     
@@ -96,7 +98,7 @@ class CageMesh
     
   private:
   
-    bool m_active = false;   // changed by CLAUDE
+    bool m_active = false;
     bool m_needUpdate = false;
     bool m_isInitialized = false;
     

@@ -77,11 +77,15 @@ void LayerItem::applyPerspective()
    setPixmap(QPixmap::fromImage(warped));
 }
 
+// returns unified rect of the pixmap AND the m_cageMesh
 QRectF LayerItem::boundingRect() const
 {
     QRectF pixmapRect(offset(), pixmap().size());
-    QRectF cageRect = QPolygonF(m_cageMesh.points()).boundingRect();
-    return pixmapRect.united(cageRect);
+    if ( m_cageMesh.isActive() ) {
+      QRectF cageRect = QPolygonF(m_cageMesh.points()).boundingRect();
+      return pixmapRect.united(cageRect);
+    }
+    return pixmapRect;
 }
 
 // per default moveable layer item
@@ -174,6 +178,10 @@ void LayerItem::setFileInfo( const QString &filePath )
   }
 }
 
+void LayerItem::setImageRect( const QRectF& rect ) {
+  prepareGeometryChange();
+}
+
 void LayerItem::setOriginalImage( const QImage& originalImage ) {
   m_originalImage = originalImage;
 }
@@ -260,6 +268,7 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
     // *** hard QImage transformation ***
     qCDebug(logEditor) << "LayerItem::setImageTransform(): ALTERNATIVE PROCESS FOR CASE WHERE NO PIXMAP IS AVAILABLE";
     // transform image
+    prepareGeometryChange();
     QPointF sceneCenter = mapToScene(QRectF(pixmap().rect()).center());
     QPointF imageCenter = QRectF(m_originalImage.rect()).center();
     m_totalTransform.translate(imageCenter.x(), imageCenter.y());
@@ -338,7 +347,7 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 
 QImage LayerItem::applyTriangleWarp()
 {
-  qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): meshActive =" << m_cageMesh.isActive() << ",  m_cageEnabled =" << m_cageEnabled << ", m_cageEditing =" << m_cageEditing;
+  qCDebug(logEditor) << "LayerItem::applyTriangleWarp(): meshActive =" << m_cageMesh.isActive() << ", cageEnabled =" << m_cageEnabled << ", cageEditing =" << m_cageEditing << ", intialized =" << m_cageMesh.isInitialized();
   {
 #if 0
     // removed by CLAUDE
@@ -346,6 +355,7 @@ QImage LayerItem::applyTriangleWarp()
       return m_cageMesh.image(); // muss das original image sein vor jedem warp !!!
     }
 #endif
+    if ( !m_cageMesh.isInitialized(true) ) m_cageMesh.setImage(m_image);
     TriangleWarp::WarpResult warped = TriangleWarp::warp(m_cageMesh.image(),m_cageMesh);
     // TriangleWarp::WarpResult warped = TriangleWarp::warp(m_originalImage,m_cageMesh); 
     if ( !warped.image.isNull() ) {
@@ -370,7 +380,7 @@ void LayerItem::enableCage( int cols, int rows )
   qCDebug(logEditor) << "LayerItem::enableCage(): cols =" << cols << ", rows =" << rows << ", enabled =" << m_cageEnabled;
   {
     m_cageMesh.create(boundingRect(), cols, rows);
-    if ( !m_cageMesh.isInitialized() )  m_cageMesh.setImage(m_image);
+    if ( !m_cageMesh.isInitialized() ) m_cageMesh.setImage(m_image);
     m_cageEnabled = true;     
     if ( !scene() )
       return;
@@ -602,7 +612,11 @@ void LayerItem::setCagePoint( int idx, const QPointF& pos )
         qreal dy = newBounds.y();
         prepareGeometryChange();
         setPos(mapToScene(QPointF(dx, dy)));
+        
+        m_cageMesh.addOffset(dx,dy);
+        
         // setOffset(offset() - QPointF(dx, dy));
+        
         QList<QPointF> pts = m_cageMesh.points();
         for ( int i = 0; i < pts.size(); ++i ) {
             pts[i] -= QPointF(dx, dy);

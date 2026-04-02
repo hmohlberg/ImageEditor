@@ -32,10 +32,11 @@ class CageWarpCommand : public AbstractCommand
   public:
 
     CageWarpCommand( LayerItem* layer, const QVector<QPointF>& before,
-                    const QVector<QPointF>& after, const QRectF& rect, int rows, int columns, QUndoCommand* parent = nullptr );
+                       const QVector<QPointF>& after, const QRectF& rect, const QPointF& newPos,
+                       int rows, int columns, QUndoCommand* parent = nullptr );
 
     QString type() const override { return "LassoCut"; }
-    AbstractCommand* clone() const override { return new CageWarpCommand(m_layer, m_before, m_after, m_rect, m_rows, m_columns); }
+    AbstractCommand* clone() const override { return new CageWarpCommand(m_layer, m_before, m_after, m_rect, m_newPos, m_rows, m_columns); }
     
     void undo() override;
     void redo() override;
@@ -43,12 +44,10 @@ class CageWarpCommand : public AbstractCommand
     LayerItem* layer() const override { return m_layer; }
     int id() const override { return 1002; }
     
-    void printMessage( bool isUndo=false );
-    
     QJsonObject toJson() const override;
     static CageWarpCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent = nullptr );
     
-    void pushNewWarpStep( const QVector<QPointF>& points );
+    void pushNewWarpStep( const QPointF& pos, const QVector<QPointF>& points );
     void setNumberOfRowsAndColumns( int n ) {
       m_rows = n;
       m_columns = n;
@@ -58,6 +57,12 @@ class CageWarpCommand : public AbstractCommand
     void save_image() {
       m_warpedImage.save("/tmp/imageeditor_backuppic.png");
     }
+    
+  private:
+  
+    void printMessage( bool isUndo = false );
+    void captureInitialState();
+    void restoreOldSceneRect();
 
   private:
 
@@ -68,7 +73,14 @@ class CageWarpCommand : public AbstractCommand
     int m_columns = 0;
     
     QString m_interpolation = "trlinear";
+    
     QRectF m_rect;
+    QRectF m_oldSceneRect;
+    QRectF m_newSceneRect;
+    bool m_initializedState = false;
+    
+    QPointF m_oldPos;           // old topLeft position
+    QPointF m_newPos;           // new topLeft position
     
     LayerItem* m_layer;
     

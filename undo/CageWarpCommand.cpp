@@ -25,17 +25,21 @@
 
 // ---------------------- Constructor ----------------------
 CageWarpCommand::CageWarpCommand( LayerItem* layer,
-           const QVector<QPointF>& before, const QVector<QPointF>& after, const QRectF& rect,
+           const QVector<QPointF>& before, const QVector<QPointF>& after, const QRectF& rect, const QPointF& newPos,
            int rows, int columns, QUndoCommand* parent )
     : AbstractCommand(parent),
       m_layer(layer),
       m_before(before),
       m_after(after),
       m_rect(rect),
+      m_newPos(newPos),
       m_rows(rows),
       m_columns(columns)
 {
-    m_layerId = layer->id();
+  qCDebug(logEditor) << "CageWarpCommand::CageWarpCommand(): Processing...";
+  {
+    m_layerId = m_layer->id();
+    captureInitialState();
     layer->setCageWarpCommand(this);
     setText(QString("Cage Warp %1").arg(m_layerId));
     QByteArray warpLayerSvg = 
@@ -45,11 +49,31 @@ CageWarpCommand::CageWarpCommand( LayerItem* layer,
       "fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round'/>"
       "<circle cx='32' cy='32' r='3' fill='#007acc'/>"
       "</svg>";
-   setIcon(AbstractCommand::getIconFromSvg(warpLayerSvg));
-   printMessage();
+    setIcon(AbstractCommand::getIconFromSvg(warpLayerSvg));
+    printMessage();
+  }
 }
 
-// ---------------------- Methods ----------------------
+// ---------------------- Private methods ----------------------
+void CageWarpCommand::captureInitialState()
+{
+    if ( !m_layer || m_initializedState ) return;
+    m_oldPos = m_layer->pos();
+    m_oldSceneRect = m_layer->sceneBoundingRect();
+    m_transform = m_layer->totalTransform();
+    m_originalImage = m_layer->originalImage();
+    m_initializedState = true;
+}
+
+void CageWarpCommand::restoreOldSceneRect()
+{
+    if ( !m_layer ) return;
+    const QRectF currentSceneRect = m_layer->sceneBoundingRect();
+    const QPointF delta = m_oldSceneRect.topLeft() - currentSceneRect.topLeft();
+    const QPointF pos = m_layer->pos() + delta;
+    m_layer->setPos(pos);
+}
+
 void CageWarpCommand::printMessage( bool isUndo )
 {
   if ( auto *ms = IMainSystem::instance() ) {
@@ -61,10 +85,12 @@ void CageWarpCommand::printMessage( bool isUndo )
   }
 }
 
-void CageWarpCommand::pushNewWarpStep( const QVector<QPointF>& points )
+// ---------------------- Methods ----------------------
+void CageWarpCommand::pushNewWarpStep( const QPointF& pos, const QVector<QPointF>& points )
 {
-  qCDebug(logEditor) << "CageWarpCommand::pushNewWarpStep(): Processing...";
+  qCDebug(logEditor) << "CageWarpCommand::pushNewWarpStep(): pos =" << pos;
   {
+    m_newPos = pos;
     m_after = points;
     m_steps += 1;
   }
@@ -76,28 +102,41 @@ void CageWarpCommand::undo()
   qCDebug(logEditor) << "CageWarpCommand::undo(): m_beforepoints =" << m_before.size();
   {
     if ( !m_layer ) return;
+    
     m_layer->setCagePoints(m_before);
     m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,false,true);
     m_layer->setTotalTransform(m_transform);
     m_layer->setOriginalImage(m_originalImage);
     m_layer->setImageTransform(QTransform());
+    
+    m_layer->setPos(m_oldPos);
+    restoreOldSceneRect();
+    
     printMessage(true);
   }
 }
 
 void CageWarpCommand::redo()
 {
-  qCDebug(logEditor) << "CageWarpCommand::redo(): rows =" << m_rows << ", columns =" << m_columns << ", points =" << m_after.size();
+  qCDebug(logEditor) << "CageWarpCommand::redo(): rows =" << m_rows << ", columns =" << m_columns << ", points =" << m_after.size() << ", rect =" << m_rect;
   {
     if ( m_silent || !m_layer ) return;
+    
+    captureInitialState();
+    
     m_transform = m_layer->totalTransform();
-    m_originalImage = m_layer->originalImage(); // m_layer->image(0);
+    m_originalImage = m_layer->originalImage(); // m_layer->image(0);    
     m_layer->initCage(m_after,m_rect,m_rows,m_columns);
     m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,false);
-    m_warpedImage = m_layer->applyTriangleWarp(); 
+    m_warpedImage = m_layer->applyTriangleWarp();
     m_layer->setOriginalImage(m_warpedImage);
     m_layer->setTotalTransform(QTransform());
     m_layer->resetPixmap();
+    
+    m_layer->setPos(m_newPos);
+    
+    m_newSceneRect = m_layer->sceneBoundingRect();
+    
     printMessage();
   }
 }
@@ -136,6 +175,11 @@ QJsonObject CageWarpCommand::toJson() const
     rectObj["width"] = m_rect.width();
     rectObj["height"] = m_rect.height();
     obj["rect"] = rectObj;
+
+    QJsonObject topLeftObj;
+    topLeftObj["x"] = m_newPos.x();
+    topLeftObj["y"] = m_newPos.y();
+    obj["topLeft_after"] = topLeftObj;
 
     return obj;
 }
@@ -186,6 +230,9 @@ CageWarpCommand* CageWarpCommand::fromJson( const QJsonObject& obj, const QList<
                       r["y"].toDouble(),
                       r["width"].toDouble(),
                       r["height"].toDouble());
+                      
+    const QJsonObject topLeftAfter = obj["topLeft_after"].toObject();
+    const QPointF newPos = QPointF(topLeftAfter["x"].toDouble(),topLeftAfter["y"].toDouble());
 
     if ( before.size() != after.size() || before.isEmpty() ) {
         qWarning() << "CageWarpCommand::fromJson(): Invalid point arrays. Adjusting points to match After Cage.";
@@ -198,9 +245,9 @@ CageWarpCommand* CageWarpCommand::fromJson( const QJsonObject& obj, const QList<
             newBefore.emplace_back( rect.left() + x * dx, rect.top()  + y * dy );
           }
         }
-        return new CageWarpCommand(layer, newBefore, after, rect, rows, columns, parent);
+        return new CageWarpCommand(layer, newBefore, after, rect, newPos, rows, columns, parent);
     } else {
-        return new CageWarpCommand(layer, before, after, rect, rows, columns, parent);
+        return new CageWarpCommand(layer, before, after, rect, newPos, rows, columns, parent);
     }
   }
 }

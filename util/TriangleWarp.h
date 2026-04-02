@@ -36,7 +36,7 @@ namespace TriangleWarp
 
   WarpResult warp( const QImage& originalImage, const CageMesh& cageMesh )
   {
-   // qDebug() << "WarpResult:warp(): Processing...";
+   // qDebug() << "WarpResult:warp(): image isNull =" << originalImage.isNull();
    {
     if ( cageMesh.pointCount() < 4 ) {
       return { QImage(), QPointF(0,0) }; 
