@@ -191,7 +191,7 @@ CageWarpCommand* CageWarpCommand::fromJson( const QJsonObject& obj, const QList<
     const int layerId = obj["layerId"].toInt(-1);
     LayerItem* layer = nullptr;
     for ( LayerItem* l : layers ) {
-        if (l->id() == layerId) {
+        if ( l->id() == layerId ) {
             layer = l;
             break;
         }
@@ -205,8 +205,8 @@ CageWarpCommand* CageWarpCommand::fromJson( const QJsonObject& obj, const QList<
     const int rows = obj["rows"].toInt(-1);
     const int columns = obj["columns"].toInt(-1);
     if ( rows <= 0 || columns <= 0 ) {
-        qWarning() << "CageWarpCommand::fromJson(): Invalid rows/columns.";
-        return nullptr;
+      qWarning() << "CageWarpCommand::fromJson(): Invalid rows/columns.";
+      return nullptr;
     }
 
     QVector<QPointF> before;
@@ -230,10 +230,13 @@ CageWarpCommand* CageWarpCommand::fromJson( const QJsonObject& obj, const QList<
                       r["y"].toDouble(),
                       r["width"].toDouble(),
                       r["height"].toDouble());
-                      
-    const QJsonObject topLeftAfter = obj["topLeft_after"].toObject();
-    const QPointF newPos = QPointF(topLeftAfter["x"].toDouble(),topLeftAfter["y"].toDouble());
-
+    
+    QPointF newPos = rect.topLeft();
+    if ( obj.contains("topLeft_after") ) {                  
+     const QJsonObject topLeftAfter = obj["topLeft_after"].toObject();
+     newPos = QPointF(topLeftAfter["x"].toDouble(),topLeftAfter["y"].toDouble());
+    }
+    
     if ( before.size() != after.size() || before.isEmpty() ) {
         qWarning() << "CageWarpCommand::fromJson(): Invalid point arrays. Adjusting points to match After Cage.";
         QVector<QPointF> newBefore;

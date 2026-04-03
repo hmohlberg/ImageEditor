@@ -1460,7 +1460,19 @@ void MainWindow::createToolbars()
     m_selectLayerItem->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_layerToolbar->addWidget(m_selectLayerItem);
     connect(m_selectLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
+      // select active layer
       m_selectedLayerItemName = text;
+      // update layer list
+      QList<QListWidgetItem*> items = m_layerList->findItems(text, Qt::MatchExactly);
+      if ( !items.isEmpty() ) {
+        QListWidgetItem* item = items.first();
+        {
+          const QSignalBlocker blocker(m_layerList);
+          m_layerList->setCurrentItem(item);
+          item->setSelected(true);
+        }
+      }
+      // update active layer
       for ( Layer* l : m_imageView->layers() ) {
        if ( l->m_item ) {
         QString name = l->name().section(' ', -2, -1);
@@ -1473,7 +1485,6 @@ void MainWindow::createToolbars()
         }
        }
       }
-     
     });
     // --- operation modus ---
     m_transformLayerItem = new QComboBox();
