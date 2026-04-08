@@ -38,6 +38,16 @@ void CageControlPointItem::mousePressEvent( QGraphicsSceneMouseEvent *e )
   qCDebug(logEditor) << "CageControlPointItem::mousePressEvent((): Processing...";
   {
     if ( m_layer == nullptr ) return;
+    // The purpose of this offset is to account for the small
+    // distance between the mouse click position and the center of
+    // the control point. This gives a smooth motion of the cage.
+    if( m_index >=0 && m_index < m_layer->cageMesh().points().size() ) {
+      QPointF local = m_layer->mapFromScene(e->scenePos());
+      QList<QPointF> pts = m_layer->cageMesh().points();
+      m_clickOffset = local - pts[m_index];
+    } else {
+      std::cout << "CLAUDE: m_index not defined when moving cage control point." << std::endl;
+    }
     m_lastPos = e->scenePos();
     m_layer->setCageEditing(true);
   }
@@ -48,7 +58,7 @@ void CageControlPointItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
   qCDebug(logEditor) << "CageControlPointItem::mouseMoveEvent((): Processing...";
   {
     if ( m_layer == nullptr ) return;
-    m_layer->setCagePoint(m_index, e->scenePos());
+    m_layer->setCagePoint(m_index, e->scenePos() - m_clickOffset);
     e->accept();
   }
 }

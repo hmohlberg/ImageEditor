@@ -39,6 +39,7 @@ class CageControlPointItem : public QGraphicsRectItem
     LayerItem* m_layer;
     QPointF m_startPoint;
     QPointF m_lastPos;
+    QPointF m_clickOffset;
     int m_index;
 
 };

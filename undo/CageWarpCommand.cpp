@@ -125,7 +125,7 @@ void CageWarpCommand::redo()
     captureInitialState();
     
     m_transform = m_layer->totalTransform();
-    m_originalImage = m_layer->originalImage(); // m_layer->image(0);    
+    m_originalImage = m_layer->originalImage();
     m_layer->initCage(m_after,m_rect,m_rows,m_columns);
     m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,false);
     m_warpedImage = m_layer->applyTriangleWarp();
@@ -134,7 +134,6 @@ void CageWarpCommand::redo()
     m_layer->resetPixmap();
     
     m_layer->setPos(m_newPos);
-    
     m_newSceneRect = m_layer->sceneBoundingRect();
     
     printMessage();

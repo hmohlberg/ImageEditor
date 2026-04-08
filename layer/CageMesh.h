@@ -54,6 +54,8 @@ class CageMesh
     
     int cols() const { return m_cols; }
     int rows() const { return m_rows; }
+    int getRadius() const { return m_controlPointRadius; }
+    void setRadius( int rad ) { m_controlPointRadius = rad; }
     
     const QVector<QPointF>& points() const { return m_points; }
     const QVector<QPointF>& originalPoints() const { return m_originalPoints; }
@@ -108,6 +110,8 @@ class CageMesh
     
     int m_cols = 3;
     int m_rows = 3;
+    
+    int m_controlPointRadius = 4;  // should allow to change this via config file or main menu option
     
     QImage m_image;
     

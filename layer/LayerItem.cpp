@@ -400,6 +400,11 @@ void LayerItem::enableCage( int cols, int rows )
       auto* h = new CageControlPointItem(this, i);
       h->setParentItem(this);
       h->setPos(m_cageMesh.point(i));
+      int col = i % m_cageMesh.cols();
+      int row = i / m_cageMesh.cols();
+      int dx = ( col == 0 ) ? 0 : ( ( col == m_cageMesh.cols()-1 ) ? -2*m_cageMesh.getRadius() : -m_cageMesh.getRadius() );
+      int dy = ( row == 0 ) ? 0 : ( ( row == m_cageMesh.rows()-1 ) ? -2*m_cageMesh.getRadius() : -m_cageMesh.getRadius() );
+      h->setRect(dx, dy, 2*m_cageMesh.getRadius(), 2*m_cageMesh.getRadius() );
       m_handles << h;
     }
   }
@@ -477,6 +482,11 @@ void LayerItem::setCageVisible( LayerItem::OperationMode mode, bool isVisible, b
               auto* h = new CageControlPointItem(this, i);
               h->setParentItem(this);
               h->setPos(m_cageMesh.point(i));
+              int col = i % m_cageMesh.cols();
+              int row = i / m_cageMesh.cols();
+              int dx = ( col == 0 ) ? 0 : ( ( col == m_cageMesh.cols()-1 ) ? -2*m_cageMesh.getRadius() : -m_cageMesh.getRadius() );
+              int dy = ( row == 0 ) ? 0 : ( ( row == m_cageMesh.rows()-1 ) ? -2*m_cageMesh.getRadius() : -m_cageMesh.getRadius() );
+              h->setRect(dx, dy, 2*m_cageMesh.getRadius(), 2*m_cageMesh.getRadius() );
               m_handles << h;
             }
           }
@@ -528,6 +538,11 @@ int LayerItem::changeNumberOfActiveCagePoints( int step )
        auto* h = new CageControlPointItem(this, i);
        h->setParentItem(this);
        h->setPos(m_cageMesh.point(i));
+       int col = i % m_cageMesh.cols();
+       int row = i / m_cageMesh.cols();
+       int dx = ( col == 0 ) ? 0 : ( ( col == m_cageMesh.cols()-1 ) ? -2*m_cageMesh.getRadius() : -m_cageMesh.getRadius() );
+       int dy = ( row == 0 ) ? 0 : ( ( row == m_cageMesh.rows()-1 ) ? -2*m_cageMesh.getRadius() : -m_cageMesh.getRadius() );
+       h->setRect(dx, dy, 2*m_cageMesh.getRadius(), 2*m_cageMesh.getRadius() );
        m_handles << h;
       }
       return rows;
@@ -569,7 +584,7 @@ void LayerItem::updateCagePoint( TransformHandleItem* handle, const QPointF& loc
     int idx = m_handles.indexOf(handle);
     if ( idx < 0 ) return;
     m_cage[idx] = localPos;
-    update(); // neu zeichnen
+    update();
   }
 }
 
@@ -616,11 +631,8 @@ void LayerItem::setCagePoint( int idx, const QPointF& pos )
         qreal dy = newBounds.y();
         prepareGeometryChange();
         setPos(mapToScene(QPointF(dx, dy)));
-        
         m_cageMesh.addOffset(dx,dy);
-        
         // setOffset(offset() - QPointF(dx, dy));
-        
         QList<QPointF> pts = m_cageMesh.points();
         for ( int i = 0; i < pts.size(); ++i ) {
             pts[i] -= QPointF(dx, dy);
@@ -636,26 +648,6 @@ void LayerItem::setCagePoint( int idx, const QPointF& pos )
 }
 
 /** */
-
-/* OLD - VERSION
-void LayerItem::setCagePoint( int idx, const QPointF& pos )
-{
-  qDebug() << "LayerItem::setCagePoint(): index =" << idx << ", pos =(" << pos.x() << ":" << pos.y() << ")...";
-  {
-    QRectF bounds_before = QPolygonF(m_cageMesh.points()).boundingRect();
-    QPointF local = mapFromScene(pos);
-    m_cageMesh.setPoint(idx, local);
-    QRectF bounds_after = QPolygonF(m_cageMesh.points()).boundingRect();
-    qreal dx = bounds_after.x() - bounds_before.x();
-    qreal dy = bounds_after.y() - bounds_before.y();
-    m_cageMesh.addOffset(dx,dy);
-    for ( int i = 0; i < m_handles.size(); ++i )
-        m_handles[i]->setPos(m_cageMesh.point(i));
-    m_cageMesh.relax();
-    update(); 
-  } 
-}
-*/
 
 void LayerItem::commitCageTransform( const QVector<QPointF> &cage )
 {
