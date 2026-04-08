@@ -69,6 +69,7 @@ class MainWindow : public QMainWindow, public IMainSystem
  protected:
 
     void closeEvent( QCloseEvent *event ) override;
+    // bool focusNextPrevChild( bool next ) override;
 
  private slots:
 

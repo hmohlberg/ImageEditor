@@ -231,6 +231,10 @@ void LayerItem::updateOriginalImage() {
 
 // ------------------------ Selected ------------------------
 void LayerItem::setIsSelected( bool isSelected ) {
+  MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
+  if ( parent != nullptr ) {
+    parent->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,m_currentRotation);
+  }
   QGraphicsItem::setSelected(isSelected);
 }
 
@@ -729,7 +733,7 @@ void LayerItem::setOperationMode( OperationMode mode )
 
 void LayerItem::setRotationAngle( double angleDelta )
 {
-  qCDebug(logEditor) << "LayerItem::setRotationAngle(): rotationAngle =" << angleDelta;
+  qCDebug(logEditor) << "LayerItem::setRotationAngle(): deltaRotationAngle =" << angleDelta << ", currentRotation =" << m_currentRotation;
   {
     QString name = "Rotate Layer";
     TransformLayerCommand::LayerTransformType trafoType = TransformLayerCommand::LayerTransformType::Rotate;
@@ -739,6 +743,7 @@ void LayerItem::setRotationAngle( double angleDelta )
     t.translate(c.x(), c.y());
     t.rotate(angleDelta);
     t.translate(-c.x(), -c.y());
+    m_currentRotation += angleDelta;
     m_undoStack->push(
        new TransformLayerCommand(this, m_startPos, pos(), m_currentRotation, m_startTransform, t, name, trafoType)
     );
@@ -833,13 +838,11 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
     }
     MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
     if ( m_operationMode == OperationMode::Rotate ) {
-        QPointF delta = event->scenePos() - event->buttonDownScenePos(Qt::LeftButton);
-        double angleDelta = m_startLayerRotation + delta.x()/20.0 - m_currentRotation;
-        m_currentRotation += angleDelta;
-        setRotationAngle(angleDelta);
-
-        parent->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,m_currentRotation); 
-        event->accept();
+      QPointF delta = event->scenePos() - event->buttonDownScenePos(Qt::LeftButton);
+      double angleDelta = m_startLayerRotation + delta.x()/20.0 - m_currentRotation;
+      setRotationAngle(angleDelta);
+      parent->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,m_currentRotation); 
+      event->accept();
     }
   }
 }

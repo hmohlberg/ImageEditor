@@ -214,6 +214,16 @@ void MainWindow::closeEvent( QCloseEvent *event )
     event->ignore();
 }
 
+/**
+bool MainWindow::focusNextPrevChild( bool next ) 
+{
+    if ( this->focusWidget() == m_layerList ) {
+        return false; 
+    }
+    return QMainWindow::focusNextPrevChild(next);
+}
+*/
+
 // ---------------------- Load and Save ----------------------
 // -> m_imageView->getScene()->addItem(m_layerItem);
 bool MainWindow::loadImage( const QString& filePath, bool askForNewLoad )
@@ -648,6 +658,7 @@ void MainWindow::createDockWidgets()
    m_layerDock = new QDockWidget("Layers", this);
    m_layerDock->setAllowedAreas(Qt::RightDockWidgetArea);
    m_layerList = new QListWidget(m_layerDock);
+   m_layerList->setFocusPolicy(Qt::NoFocus);
    m_layerList->setSelectionMode(QAbstractItemView::SingleSelection);
    m_layerList->setDragDropMode(QAbstractItemView::InternalMove);
    m_layerList->setDefaultDropAction(Qt::MoveAction);
@@ -683,6 +694,7 @@ void MainWindow::createDockWidgets()
 
    // history dock
    m_undoView = new QUndoView(m_imageView->undoStack());
+   m_undoView->setFocusPolicy(Qt::NoFocus);
    m_undoView->setContextMenuPolicy(Qt::CustomContextMenu);
    m_undoView->setItemDelegate(new DarkHistoryDelegate(m_undoView));
    m_undoView->setWindowTitle("History");
@@ -723,6 +735,7 @@ void MainWindow::createDockWidgets()
  
    // m_undoView->setAlternatingRowColors(true);
    m_historyDock = new QDockWidget("Undo History", this);
+   m_historyDock->setFocusPolicy(Qt::NoFocus);
    m_historyDock->setWidget(m_undoView);
    m_historyDock->setAllowedAreas(Qt::RightDockWidgetArea);
    m_historyDock->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
@@ -1431,6 +1444,7 @@ void MainWindow::createToolbars()
     QLabel* brushLabel = new QLabel(" Brush size:");
     m_editToolbar->addWidget(brushLabel);
     QSpinBox* brushSpin = new QSpinBox();
+    brushSpin->setFocusPolicy(Qt::ClickFocus);
     brushSpin->setRange(1,50);
     brushSpin->setValue(5);
     m_editToolbar->addWidget(brushSpin);
@@ -1491,7 +1505,7 @@ void MainWindow::createToolbars()
     auto *view = new QListView(m_transformLayerItem);
     view->setMouseTracking(true);
     m_transformLayerItem->setView(view);
-    m_transformLayerItem->addItems({"Translate","Rotate","Scale","Mirror","Perspective","Cage transform"});
+    m_transformLayerItem->addItems({"Translate","Rotate","Scale","Mirror","Perspective","Cage warp"});
     if ( !EditorStyle::instance().hasPerspective() ) {
       // disable entries (4=Perpective)
       const int perspectiveIndex = m_transformLayerItem->findText("Perspective");
@@ -1514,7 +1528,7 @@ void MainWindow::createToolbars()
       else if ( text.startsWith("Scale") ) transformMode = LayerItem::OperationMode::Scale;
       else if ( text.startsWith("Mirror") ) transformMode = LayerItem::OperationMode::Flip;
       else if ( text.startsWith("Perspective") ) transformMode = LayerItem::OperationMode::Perspective;
-      else if ( text.startsWith("Cage transform") ) transformMode = LayerItem::OperationMode::CageWarp;
+      else if ( text.startsWith("Cage warp") ) transformMode = LayerItem::OperationMode::CageWarp;
       
       // --- update visibility of layer sub toolbar ---
       bool rotateLayerIsVisible = transformMode == LayerItem::OperationMode::Rotate ? true : false;
@@ -1540,6 +1554,7 @@ void MainWindow::createToolbars()
     // --- sub toolbar layer scale ---
     m_scaleLayerToolbar = addToolBar(tr("ScaleLayer"));
     m_isotropScaleCheck = new QCheckBox("Isotrop scaling", this);
+    m_isotropScaleCheck->setFocusPolicy(Qt::ClickFocus);
     m_isotropScaleCheck->setToolTip("Enable isotropic scaling.");
     m_isotropScaleCheck->setChecked(true);
     m_scaleLayerToolbar->addWidget(m_isotropScaleCheck);
@@ -1557,17 +1572,20 @@ void MainWindow::createToolbars()
     
     // --- sub toolbar layer rotate ---
     m_rotateLayerToolbar = addToolBar(tr("RotateLayer"));
-    QLabel* rotationLayerAngleLabel = new QLabel(" Rotation Angle:");
+    QLabel* rotationLayerAngleLabel = new QLabel(" Angle:");
     m_rotateLayerToolbar->addWidget(rotationLayerAngleLabel);
     m_rotationLayerAngleSpin = new QDoubleSpinBox();
+    m_rotationLayerAngleSpin->setFocusPolicy(Qt::ClickFocus);
     m_rotationLayerAngleSpin->setRange(-180.0,180.0);
     m_rotationLayerAngleSpin->setSingleStep(EditorStyle::instance().rotationSingleStep());
     m_rotationLayerAngleSpin->setValue(0.0);
     m_rotationLayerAngleSpin->setWrapping(true);
     connect(m_rotationLayerAngleSpin, &QDoubleSpinBox::valueChanged, m_imageView, [this](double value){
       LayerItem *layer = m_imageView->getSelectedItem();
-      if ( layer ) layer->setRotationAngle(value);
-      else showMessage("Rotation failed. No image layer selected.",1);
+      if ( layer ) {
+        double currentAngle = layer->getRotationAngle();
+        layer->setRotationAngle(value-currentAngle);
+      } else showMessage("Rotation failed. No image layer selected.",1);
     });
     m_rotateLayerToolbar->addWidget(m_rotationLayerAngleSpin);
     m_rotateLayerToolbar->setVisible(false);
@@ -1587,7 +1605,9 @@ void MainWindow::createToolbars()
     QLabel* cageControlPointsLabel = new QLabel(" Cage control points:");
     m_canvasWarpLayerToolbar->addWidget(cageControlPointsLabel);
     QPushButton* btnPlus = new QPushButton("+", this);
+    btnPlus->setFocusPolicy(Qt::ClickFocus);
     QPushButton* btnMinus = new QPushButton("-", this);
+    btnMinus->setFocusPolicy(Qt::ClickFocus);
     btnPlus->setStyleSheet("font-size: 20px; font-weight: bold;");
     btnMinus->setStyleSheet("font-size: 20px; font-weight: bold;");
     btnPlus->setFixedSize(18, 18);
@@ -1598,6 +1618,7 @@ void MainWindow::createToolbars()
     connect(btnMinus, &QPushButton::clicked, m_imageView, &ImageView::setDecreaseNumberOfCageControlPoints);
     // --- fix boundary ---
     QCheckBox* fixBoundaryCheck = new QCheckBox("Fix boundary", this);
+    fixBoundaryCheck->setFocusPolicy(Qt::ClickFocus);
     fixBoundaryCheck->setToolTip("Fixed outer mesh warp cage boundaries.");
     fixBoundaryCheck->setChecked(true);
     m_canvasWarpLayerToolbar->addWidget(fixBoundaryCheck);
@@ -1606,6 +1627,7 @@ void MainWindow::createToolbars()
     QLabel* cageRelaxationLabel = new QLabel(" Relaxation:");
     m_canvasWarpLayerToolbar->addWidget(cageRelaxationLabel);
     QSpinBox* relaxationSpin = new QSpinBox();
+    relaxationSpin->setFocusPolicy(Qt::ClickFocus);
     relaxationSpin->setRange(0,100);
     relaxationSpin->setValue(0);
     m_canvasWarpLayerToolbar->addWidget(relaxationSpin);
@@ -1614,6 +1636,7 @@ void MainWindow::createToolbars()
     QLabel* cageStiffnessLabel = new QLabel(" Stifness:");
     m_canvasWarpLayerToolbar->addWidget(cageStiffnessLabel);
     QDoubleSpinBox* stiffnessSpin = new QDoubleSpinBox();
+    stiffnessSpin->setFocusPolicy(Qt::ClickFocus);
     stiffnessSpin->setRange(0.0,3.0);
     stiffnessSpin->setSingleStep(0.05);
     stiffnessSpin->setValue(0.0);
@@ -1621,6 +1644,7 @@ void MainWindow::createToolbars()
     connect(stiffnessSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), m_imageView, &ImageView::setCageWarpStiffness);
     // --- Reset cage ---
     QPushButton *resetCageAction = new QPushButton("Reset");
+    resetCageAction->setFocusPolicy(Qt::ClickFocus);
     connect(resetCageAction, &QPushButton::clicked, m_imageView, &ImageView::setCageWarpReset);
     m_canvasWarpLayerToolbar->addWidget(resetCageAction);
     // --- Update for Debugging ---
@@ -1678,6 +1702,7 @@ void MainWindow::createToolbars()
     QLabel* maskBrushLabel = new QLabel(" Brush size:");
     m_maskToolbar->addWidget(maskBrushLabel);
     QSpinBox* maskBrushSpin = new QSpinBox();
+    maskBrushSpin->setFocusPolicy(Qt::ClickFocus);
     maskBrushSpin->setRange(1,50);
     maskBrushSpin->setValue(5);
     m_maskToolbar->addWidget(maskBrushSpin);
@@ -1703,6 +1728,7 @@ void MainWindow::createToolbars()
     QLabel* layerMaskThresholdLabel = new QLabel(" Image threshold:");
     m_lassoToolbar->addWidget(layerMaskThresholdLabel);
     QSpinBox* layerMaskThresholdSpin = new QSpinBox();
+    layerMaskThresholdSpin->setFocusPolicy(Qt::ClickFocus);
     layerMaskThresholdSpin->setRange(0,255);
     layerMaskThresholdSpin->setValue(0);
     m_lassoToolbar->addWidget(layerMaskThresholdSpin);

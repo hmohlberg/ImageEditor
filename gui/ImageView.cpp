@@ -645,7 +645,7 @@ void ImageView::enablePipette( bool enabled ) {
 }
 
 // ------------------------ ------------------------ ------------------------
-// ------------------------       Event tools        ------------------------
+// ------------------------     Key Event tools      ------------------------
 // ------------------------ ------------------------ ------------------------
 
 void ImageView::keyPressEvent( QKeyEvent* event )
@@ -655,6 +655,39 @@ void ImageView::keyPressEvent( QKeyEvent* event )
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow != nullptr ) {
       MainWindow::MainOperationMode opMode = mainWindow->getOperationMode();
+      // general
+      if ( event->key() == Qt::Key_Tab ) {
+         qCDebug(logEditor) << "ImageView::keyPressEvent(): Processing tab event...";
+         int isSelected = -1;
+         int i = 0;
+         QVector<LayerItem*> layers;
+         for ( auto* item : m_scene->items() ) {
+           auto* layer = dynamic_cast<LayerItem*>(item);
+           if ( layer ) {
+            if ( !layer->name().startsWith("Main") ) {
+              layers.push_back(layer);
+              if ( layer->isSelected() ) {
+               isSelected = i;
+              }
+              i += 1;
+            }
+           }
+         }
+         if ( layers.length() > 1 ) {
+           int index = isSelected == -1 ? 0 : (isSelected+1)%layers.length();
+           QRegularExpression re("\\d+$"); 
+           LayerItem *selectedLayer = layers[index];
+           selectedLayer->setIsSelected(true);
+           QRegularExpressionMatch match = re.match(selectedLayer->name());
+           if ( match.hasMatch() ) {
+             QString numberStr = match.captured(0);
+             mainWindow->setSelectedLayer(QString("Layer %1").arg(numberStr.toInt()));
+             QString geometryString = GeometryUtils::getGeometryString(selectedLayer);
+             IMainSystem::instance()->showMessage(QString("Selected layer %1 with geometry %2").arg(selectedLayer->name()).arg(geometryString));
+           }
+         } 
+      }
+      // operation specific
       if ( opMode == MainWindow::MainOperationMode::Polygon ) {
         if ( m_polygonEnabled && ( event->key() == Qt::Key_Return || event->key() == Qt::Key_Escape ) ) {
          setPolygonEnabled(false);
@@ -726,6 +759,10 @@ void ImageView::keyPressEvent( QKeyEvent* event )
   }
 }
 
+// ------------------------ ------------------------ ------------------------
+// ------------------------     Mouse Event tools    ------------------------
+// ------------------------ ------------------------ ------------------------
+
 void ImageView::mousePressEvent( QMouseEvent* event )
 {
   MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
@@ -765,7 +802,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
             return;
         }
     }
-    
+
     // --- Image Layer ---
     if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::ImageLayer ) {
       // --- Check whether a layer has been clicked ---
@@ -777,7 +814,6 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         if ( layer ) {
             QRectF rect = layer->sceneBoundingRect();
             double areaInScene = rect.width() * rect.height();
-            qCDebug(logEditor) << layer->name() << ": " << layer->zValue() << ", area = " << areaInScene;
             if ( areaInScene < minarea ) {
               minarea = areaInScene;
               clickedItem = layer;
@@ -791,7 +827,6 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         }
         clickedItem->setOperationMode(m_layerOperationMode);
         mainWindow->setSelectedLayer(QString("Layer %1").arg(clickedItem->id()));
-
         if ( clickedItem->isSelected() == true ) {
           // toggle active surface off if it's clicked again -- too confusing, remove this action
           if( !( m_selectedLayer && m_selectedLayer == clickedItem ) ) {
