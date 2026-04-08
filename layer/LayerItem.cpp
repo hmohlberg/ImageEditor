@@ -261,7 +261,7 @@ void LayerItem::resetTotalTransform()
 }
 
 void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
-  qCDebug(logEditor) << "LayerItem::setImageTransform(): combine =" << combine;
+  qDebug() << "LayerItem::setImageTransform(): position =" << pos() << ", combine =" << combine;
   {
     // *** DO NOT USE INTERNAL TRANSFORMATIONS ***
     if ( 1 == 2 && qobject_cast<QApplication*>(qApp) ) {
@@ -270,10 +270,11 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
       return;
     }
     // *** hard QImage transformation ***
-    qCDebug(logEditor) << "LayerItem::setImageTransform(): ALTERNATIVE PROCESS FOR CASE WHERE NO PIXMAP IS AVAILABLE";
+    qDebug() << "LayerItem::setImageTransform(): ALTERNATIVE PROCESS FOR CASE WHERE NO PIXMAP IS AVAILABLE";
     // transform image
     prepareGeometryChange();
-    QPointF sceneCenter = mapToScene(QRectF(pixmap().rect()).center());
+    QPointF sceneCenter = qobject_cast<QApplication*>(qApp) ? mapToScene(QRectF(pixmap().rect()).center()) : mapToScene(QRectF(m_originalImage.rect()).center());
+    // QPointF sceneCenter = mapToScene(QRectF(pixmap().rect()).center());
     QPointF imageCenter = QRectF(m_originalImage.rect()).center();
     m_totalTransform.translate(imageCenter.x(), imageCenter.y());
     m_totalTransform *= transform; // This is my actual rotation
@@ -283,6 +284,7 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
     setPos(sceneCenter - newImageCenter);
     // reset transform
     setTransform(QTransform());
+    // >>>
     updatePixmap();
   }
 }

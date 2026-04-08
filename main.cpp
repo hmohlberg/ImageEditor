@@ -18,6 +18,7 @@
 #include <QApplication>
 #include <QImageReader>
 #include <QColorSpace>
+#include <QLoggingCategory>
 #include <QCommandLineParser>
 #include <QStandardPaths>
 #include <QJsonDocument>
@@ -159,9 +160,9 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(classFileOption);
   QCommandLineOption outFileOption(QStringList() << "o" << "output", "Path to output image file.", "file");
   parser.addOption(outFileOption);
-  QCommandLineOption batchOption("batch", "Run application in batch mode without running graphical user interface.");
+  QCommandLineOption batchOption("batch", "Run the application in batch mode without launching the graphical user interface (this is automatically enabled when an output file is specified).");
   parser.addOption(batchOption);
-  QCommandLineOption guiOption("gui", "Run application in gui mode even if no input was given.");
+  QCommandLineOption guiOption("gui", "Run the application in GUI mode, even if no input has been provided.");
   parser.addOption(guiOption);
   QCommandLineOption configFileOption(QStringList() << "config", "Path to config file.", "file");
   parser.addOption(configFileOption);
@@ -175,6 +176,8 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(historyOption);
   QCommandLineOption forceOption("force", "Overwrite an existing output file.");
   parser.addOption(forceOption);
+  QCommandLineOption debugOption("debug", "Enable debug output to stdout.");
+  parser.addOption(debugOption);
   QCommandLineOption verboseOption("verbose", "Enable verbose output to stdout.");
   parser.addOption(verboseOption);
   parser.process(*app);
@@ -222,6 +225,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   obj["concatenate"] = parser.isSet(concatOption);
   obj["vulkan"] = parser.isSet(vulkanOption);
   obj["force"] = parser.isSet(forceOption);
+  obj["debug"] = parser.isSet(debugOption);
   obj["verbose"] = parser.isSet(verboseOption);
   
   return obj;
@@ -240,7 +244,10 @@ int main( int argc, char *argv[] )
     bool batchProcessing = false;
     bool guiProcessing = false;
     for ( int i=0 ; i<argc ; ++i ) {
-     if ( QString(argv[i]) == "--batch" ) batchProcessing = true;
+     if ( QString(argv[i]) == "--debug" ) {
+       qputenv("QT_LOGGING_RULES", "editor.graphics.debug=true");
+     }
+     if ( QString(argv[i]) == "--batch" || QString(argv[i]) == "--output" ) batchProcessing = true;
      if ( QString(argv[i]) == "--gui" ) guiProcessing = true;
     }
     
@@ -296,7 +303,7 @@ int main( int argc, char *argv[] )
       }
       image.setColorSpace(QColorSpace(QColorSpace::SRgb)); // no change
       if ( loader.saveAs(image,outputPath) ) {
-       qInfo() << "Saved image file '" << outputPath << "'.";
+       qInfo() << "Saved image file " << outputPath << ".";
        return 1;
       }
       return 1;
@@ -314,7 +321,6 @@ int main( int argc, char *argv[] )
     QString configPath = parsedOptions.value("configPath").toString("");
     if ( !configPath.isEmpty() ) {
       EditorStyle::instance().load(configPath);
-      qCDebug(logEditor) << "hi";
     }
     int result = 0;
     {

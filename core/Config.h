@@ -59,7 +59,7 @@
     
     void load( const QString &path ) {
       QSettings settings(path, QSettings::IniFormat);
-      // qDebug() << "Available keys:" << settings.allKeys();
+      m_version = settings.value("Main/version","public").toString();
       m_windowSize = settings.value("Main/windowSize","default").toString();
       m_loggingIsEnabled = settings.value("Main/enableLogging", false).toBool();
       if ( m_loggingIsEnabled ) {
@@ -70,6 +70,8 @@
       m_hasPerspective = settings.value("Main/perspective", false).toBool();
       // Cage quads
       m_useCageQuads = settings.value("Cage/quads", true).toBool();
+      // cage control point radius
+      m_controlPointRadius = settings.value("Cage/controlPointRadius", 4).toInt();
       // Cage color
       QString cageWarpColor = settings.value("Cage/color", "green").toString();
        if ( QColor::isValidColorName(cageWarpColor) ) {
@@ -100,7 +102,9 @@
     QColor lassoColor() const { return m_lassoColor; }
     QColor cageWarpColor() const { return m_cageWarpColor; }
     QString windowSize() const { return m_windowSize; }
+    QString version() const { return m_version; }
     int lassoWidth() const { return m_lassoWidth; }
+    int controlPointRadius() const { return m_controlPointRadius; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
     bool hasPerspective() const { return m_hasPerspective; }
@@ -112,11 +116,13 @@
     EditorStyle()
         : m_lassoColor(Qt::red), 
           m_lassoWidth(3), 
+          m_controlPointRadius(4),
           m_rotationSingleStep(0.5),
           m_loggingIsEnabled(false), 
           m_useCageQuads(true), 
           m_hasPerspective(false),
           m_windowSize("default"),
+          m_version("public"),
           m_cageWarpColor(Qt::green), 
           m_transformationMode(Qt::FastTransformation) 
     { 
@@ -130,10 +136,12 @@
     QColor m_lassoColor;
     QColor m_cageWarpColor;
     QString m_windowSize;
+    QString m_version;
     
     Qt::TransformationMode m_transformationMode;
     
     int m_lassoWidth;
+    int m_controlPointRadius;
     bool m_loggingIsEnabled;
     bool m_useCageQuads;
     bool m_hasPerspective;

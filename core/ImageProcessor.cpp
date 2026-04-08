@@ -203,6 +203,7 @@ bool ImageProcessor::process( const QString& filePath )
     
     // ---  combine layer images ---
     if ( setOutputImage(0) ) {
+      qInfo() << "Creating output image...";
       for ( auto* item : m_layers ) {
        auto* layer = dynamic_cast<LayerItem*>(item);
        if ( layer && layer->id() != 0 ) {
@@ -210,7 +211,7 @@ bool ImageProcessor::process( const QString& filePath )
          if ( !overlayImage.isNull() ) {
           int x = layer->pos().x();
           int y = layer->pos().y();
-          qInfo() << " layer=" << layer->name() << ", id=" << layer->id( )<< ", pos=" << layer->pos();
+          qInfo() << " layer =" << layer->name() << ", id=" << layer->id( )<< ", pos=" << layer->pos();
           QPainter painter(&m_outImage);
            painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
            painter.drawImage(x,y,overlayImage);
