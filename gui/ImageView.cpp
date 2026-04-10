@@ -647,7 +647,7 @@ void ImageView::setSelectedLayer( const QString &name )
 
 void ImageView::setActiveLayer( const QString &name, bool initialize )
 {
-  qDebug() << "ImageView::setActiveLayer(): name =" << name << ", initialize =" << initialize;
+  qCDebug(logEditor) << "ImageView::setActiveLayer(): name =" << name << ", initialize =" << initialize;
   {
     for ( auto* item : m_scene->items() ) {
       auto* layer = dynamic_cast<LayerItem*>(item);
@@ -1435,7 +1435,7 @@ void ImageView::initCageWarpForLayer( LayerItem *layerItem )
     }
     // --- create undo stack entry ---
     if ( m_selectedCageLayer != nullptr ) {
-     qDebug() << "ImageView::initCageWarpForLayer(): Processing CageWarpCommand...";
+     qCDebug(logEditor) << "ImageView::initCageWarpForLayer(): Processing CageWarpCommand...";
      QVector<QPointF> cageAfter = m_selectedCageLayer->cageMesh().points();
      QVector<QPointF> cageBefore = m_selectedCageLayer->cageMesh().originalPoints();       
      if ( m_selectedCageLayer->getCageWarpCommand() == nullptr ) {
@@ -1691,8 +1691,12 @@ void ImageView::setIncreaseNumberOfCageControlPoints()
 void ImageView::setDecreaseNumberOfCageControlPoints() 
 {
    if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() ) return;
-   int n = m_selectedLayer->changeNumberOfActiveCagePoints(-1);
-   if ( n != 0 ) m_selectedLayer->applyCageWarp("ImageView::3");
+   auto* command = m_selectedLayer->getCageWarpCommand();
+   if ( command ) {
+    int n = m_selectedLayer->changeNumberOfActiveCagePoints(-1);
+    m_selectedLayer->getCageWarpCommand()->setNumberOfRowsAndColumns(n);
+    if ( n != 0 ) m_selectedLayer->applyCageWarp("ImageView::3");
+   }
 }
 
 void ImageView::setNumberOfCageControlPoints( int nControlPoints ) 
