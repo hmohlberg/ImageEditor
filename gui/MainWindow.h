@@ -91,7 +91,6 @@ class MainWindow : public QMainWindow, public IMainSystem
     void saveAsImage();
     void openHistory();
     void saveHistory();
-    void cutSelection();
     void toggleDocks();
     void createMaskImage();
     void forcedUpdate();

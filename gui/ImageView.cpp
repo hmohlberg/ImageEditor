@@ -86,7 +86,6 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
   qCDebug(logEditor) << "ImageView::ImageView(): Processing...";
   {
 
-    m_activeLayer = nullptr;       // this variable is obsolete
     m_selectedLayer = nullptr;
     m_selectedCageLayer = nullptr;
 
@@ -162,11 +161,12 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
           }
           // >>>
           MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+          int layerId = -1;
           QRegularExpression re("(\\d+)");
           QRegularExpressionMatch match = re.match(justFinishedCommand->text());
           if ( match.hasMatch() && mainWindow != nullptr ) {
-            int layerId = match.captured(1).toInt();
-            mainWindow->setSelectedLayer(QString("Layer %1").arg(layerId));
+            layerId = match.captured(1).toInt(); 
+            setSelectedLayer(QString("Layer %1").arg(layerId));
           }
           if ( justFinishedCommand->text().startsWith("Scale Transform") ) {
             // qDebug() << " *** handle scale transform operation ***";
@@ -207,10 +207,10 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
             mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::Perspective);
           } else if ( justFinishedCommand->text().startsWith("Cage") ) {
+            // qDebug() << "Just finished Cage command: " << justFinishedCommand->text();
             mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::CageWarp);
-            LayerItem *layer = getSelectedItem(true);
-            if ( layer != nullptr ) layer->setCageVisible(true);
+            setOnlyCageVisible(layerId);
           } 
           // Going-back in undo stack actions
           const QUndoCommand* previousCommand = m_undoStack->command(m_lastIndex-1);
@@ -631,6 +631,44 @@ void ImageView::deleteLayer( Layer* layer )
    m_undoStack->push(new DeleteLayerCommand(imageLayer,imageLayer->pos(),layer->id()));
 }
 
+void ImageView::setSelectedLayer( const QString &name )
+{
+  MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+  if ( mainWindow == nullptr ) return;
+  mainWindow->setSelectedLayer(name);
+  for ( auto* item : m_scene->items() ) {
+    auto* layer = dynamic_cast<LayerItem*>(item);
+    if ( layer && !layer->name().startsWith("Main") ) {
+      bool isSelected = layer->name().endsWith(name) ? true : false;
+      layer->setIsSelected(isSelected);
+    }
+  }
+}
+
+void ImageView::setActiveLayer( const QString &name, bool initialize )
+{
+  qDebug() << "ImageView::setActiveLayer(): name =" << name << ", initialize =" << initialize;
+  {
+    for ( auto* item : m_scene->items() ) {
+      auto* layer = dynamic_cast<LayerItem*>(item);
+      if ( layer && !layer->name().startsWith("Main") ) {
+        bool isSelected = name == layer->name() ? true : false;
+        layer->setIsSelected(isSelected);
+        if ( isSelected ) {
+          MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+          if ( mainWindow != nullptr ) {
+            mainWindow->setSelectedLayer(QString("Layer %1").arg(layer->id()));
+            mainWindow->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,layer->getRotationAngle());
+            if ( initialize ) {
+              mainWindow->setLayerOperationMode(LayerItem::OperationMode::Translate);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 // ------------------------ Colortable tools -------------------------------------
 void ImageView::setColorTable( const QVector<QRgb> &lut )
 {
@@ -676,8 +714,11 @@ void ImageView::keyPressEvent( QKeyEvent* event )
          if ( layers.length() > 1 ) {
            int index = isSelected == -1 ? 0 : (isSelected+1)%layers.length();
            QRegularExpression re("\\d+$"); 
+           
            LayerItem *selectedLayer = layers[index];
            selectedLayer->setIsSelected(true);
+           setOnlyCageVisible(index);
+           
            QRegularExpressionMatch match = re.match(selectedLayer->name());
            if ( match.hasMatch() ) {
              QString numberStr = match.captured(0);
@@ -803,9 +844,9 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         }
     }
 
-    // --- Image Layer ---
+#ifdef AAA
+    // --- Picking Image Layer ---
     if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::ImageLayer ) {
-      // --- Check whether a layer has been clicked ---
       LayerItem* clickedItem = nullptr;
       auto itemsUnderCursor = m_scene->items(scenePos);
       qreal minarea = std::numeric_limits<qreal>::max();
@@ -842,16 +883,9 @@ void ImageView::mousePressEvent( QMouseEvent* event )
           clickedItem->setIsSelected(true);
           m_selectedLayer = clickedItem;
         }
-        m_activeLayer = clickedItem;  // this variable is obsolete
-
-        // Is there a cage to switch off on old layer?
-
         if( m_selectedCageLayer && m_selectedCageLayer != clickedItem ) {
           m_selectedCageLayer->setCageVisible( false );
         }
-
-        // Is there a cage on this newly selected layer?
-
         if( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
           if ( clickedItem->hasActiveCage() ) {
             m_selectedCageLayer = clickedItem;
@@ -867,6 +901,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         }
       }
     }
+#endif
 
     // --- Painting ---
     if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::Paint ) {
@@ -1131,7 +1166,7 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
 
 void ImageView::mouseReleaseEvent( QMouseEvent* event )
 {
-  qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): selectedCageLayer =" << m_selectedCageLayer;
+  qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): selectedCageLayer =" << ( m_selectedCageLayer == nullptr ? "null" : "ok" );
   {
     if ( !scene() )
         return;
@@ -1139,8 +1174,8 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
     if ( event->button() == Qt::LeftButton && m_selectedCageLayer ) {
         QVector<QPointF> cageAfter = m_selectedCageLayer->cageMesh().points();
         QVector<QPointF> cageBefore = m_selectedCageLayer->cageMesh().originalPoints();    
-        qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): layer =" << m_selectedCageLayer->name() << ": cageAfter =" << cageAfter.size() << ", cageBefore =" << m_cageBefore.size();
-        // Check whether cage has been modified
+        qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): layer =" << m_selectedCageLayer->name() 
+                               << ": cageAfter =" << cageAfter.size() << ", cageBefore =" << m_cageBefore.size();
         if ( cageAfter != m_cageBefore ) {
          if ( m_selectedCageLayer->getCageWarpCommand() == nullptr ) {
            qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): Creating new cage layer undo/redo instance...";
@@ -1153,13 +1188,9 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
            m_selectedCageLayer->getCageWarpCommand()->pushNewWarpStep( m_selectedCageLayer->pos(), cageAfter );
          }
          if( m_selectedCageLayer ) {
-           m_selectedCageLayer->applyTriangleWarp();
-         } else {
-           std::cout << "Cage layer has not been initialized correctly." 
-                     << std::endl;
+           m_selectedCageLayer->applyCageWarp("ImageView::1");
          }
         }
-        m_activeLayer = nullptr;   // why??? CLAUDE -- never mind, this variable is obsolete
         m_cageBefore.clear();
     }
     // --- Lasso beenden ---
@@ -1326,58 +1357,6 @@ void ImageView::clearSelection()
     viewport()->update();
 }
 
-void ImageView::cutSelection()
-{
-    if ( m_selectionPath.isEmpty() )
-        return;
-
-    auto* layer = dynamic_cast<LayerItem*>(m_scene->focusItem());
-    if ( !layer ) return;
-
-    QImage& srcImage = layer->image();
-    if ( srcImage.isNull() ) return;
-
-    QRectF sceneRect = m_selectionPath.boundingRect();
-    QRect imageRect = layer->mapFromScene(sceneRect).boundingRect().toRect()
-                          .intersected(srcImage.rect());
-    if ( imageRect.isEmpty() ) return;
-
-    QImage cutImage(imageRect.size(), QImage::Format_ARGB32_Premultiplied);
-    cutImage.fill(Qt::transparent);
-
-    {
-        QPainter p(&cutImage);
-        p.setRenderHint(QPainter::Antialiasing);
-        QPainterPath localPath = layer->mapFromScene(m_selectionPath);
-        p.translate(-imageRect.topLeft());
-        p.setClipPath(localPath);
-        p.drawImage(0, 0, srcImage,
-                    imageRect.x(), imageRect.y(),
-                    imageRect.width(), imageRect.height());
-    }
-
-    {
-        QPainter p(&srcImage);
-        p.setCompositionMode(QPainter::CompositionMode_Clear);
-        QPainterPath localPath = layer->mapFromScene(m_selectionPath);
-        p.drawPath(localPath);
-    }
-
-    layer->updatePixmap();
-
-    auto* newLayer = new LayerItem(QPixmap::fromImage(cutImage));
-    newLayer->setPos(layer->mapToScene(imageRect.topLeft()));
-    newLayer->setFlags(QGraphicsItem::ItemIsMovable |
-                       QGraphicsItem::ItemIsSelectable |
-                       QGraphicsItem::ItemIsFocusable);
-
-    m_scene->addItem(newLayer);
-    newLayer->setIsSelected(true);
-    newLayer->setFocus();
-
-    clearSelection();
-}
-
 // ---------------------------- Layer methods -----------------------------
 LayerItem* ImageView::getLayerItem( const QString& name )
 {
@@ -1385,10 +1364,19 @@ LayerItem* ImageView::getLayerItem( const QString& name )
   {
     for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
       auto* layer = dynamic_cast<LayerItem*>(item);
-      if ( layer ) return layer;
+      if ( layer && layer->name().endsWith(name,Qt::CaseInsensitive) ) return layer;
     }
     return nullptr;
   }
+}
+
+LayerItem* ImageView::getLayerItem( int id )
+{
+  for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
+     auto* layer = dynamic_cast<LayerItem*>(item);
+     if ( layer && layer->id() == id ) return layer;
+  }
+  return nullptr;
 }
 
 LayerItem* ImageView::getSelectedItem( bool isActiveCageItem )
@@ -1424,21 +1412,70 @@ void ImageView::setPolygonOperationMode( LayerItem::OperationMode mode )
   }
 }
 
+void ImageView::initCageWarpForLayer( LayerItem *layerItem )
+{
+  qCDebug(logEditor) << "ImageView::initCageWarpForLayer(): layerItem =" << (layerItem?"ok":"null");
+  {
+    if ( !layerItem || layerItem->cageMesh().needUpdate() == false ) return;
+    if ( layerItem->cageMesh().isInitialized() ) return;
+    // --- initialize ---
+    m_selectedLayer = layerItem;
+    layerItem->enableCage();
+    // --- setup ---
+    if ( layerItem->hasActiveCage() ) {
+      m_selectedCageLayer = layerItem;
+      m_selectedCageLayer->setCageEditing( true );
+      m_selectedCageLayer->setCageVisible( true );
+      // this one actually makes the control points visible.
+      m_selectedCageLayer->setCageVisible( LayerItem::OperationMode::CageWarp, true );
+      m_cageBefore = layerItem->cageMesh().points();
+    } else {
+      m_selectedCageLayer = nullptr;
+      m_cageBefore.clear();
+    }
+    // --- create undo stack entry ---
+    if ( m_selectedCageLayer != nullptr ) {
+     qDebug() << "ImageView::initCageWarpForLayer(): Processing CageWarpCommand...";
+     QVector<QPointF> cageAfter = m_selectedCageLayer->cageMesh().points();
+     QVector<QPointF> cageBefore = m_selectedCageLayer->cageMesh().originalPoints();       
+     if ( m_selectedCageLayer->getCageWarpCommand() == nullptr ) {
+       int rows = m_selectedCageLayer->cageMesh().rows();
+       int columns = m_selectedCageLayer->cageMesh().cols();
+       m_undoStack->push( new CageWarpCommand(m_selectedCageLayer, 
+              cageBefore, cageAfter,m_selectedCageLayer->sceneBoundingRect(), m_selectedCageLayer->pos(), rows, columns ) );
+     } else {
+       m_selectedCageLayer->getCageWarpCommand()->pushNewWarpStep( m_selectedCageLayer->pos(), cageAfter );
+     }
+     if ( m_selectedCageLayer ) {
+        m_selectedCageLayer->applyCageWarp("ImageView::2");
+     }
+     m_cageBefore.clear();
+    } else {
+     qCritical() << "ImageView::initCageWarpForLayer(): No selectedCageLayer";
+    }
+  }
+}
+
 void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
 {
   qCDebug(logEditor) << "ImageView::setLayerOperationMode(): mode =" << mode << ", m_polygonEnabled =" << m_polygonEnabled;
   {
+    // --- handle old mode ---
     if ( m_layerOperationMode == LayerItem::OperationMode::Scale ) {
       disableTransformMode();
     } else if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
       m_selectedCageLayer = nullptr;
     }
+    // --- handle new mode ---
     m_layerOperationMode = mode; 
     if ( m_polygonEnabled ) {
       setPolygonEnabled(false);
     }
     LayerItem *layer = getSelectedItem();
     if ( layer != nullptr ) {
+      if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
+        initCageWarpForLayer(layer);
+      }
       layer->setOperationMode(mode);
     } else {
      layer = baseLayer();
@@ -1580,7 +1617,6 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
         }
       }
      }
-     
     }
     // --- Neues LayerItem ---
     int nidx = m_layers.size()+1;
@@ -1596,12 +1632,14 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     m_undoStack->push(cmd);
     newLayer->setPos(base->mapToScene(bounds.topLeft()));
     newLayer->setZValue(base->zValue()+1);
-    newLayer->setIsSelected(true);
     // newLayer->setShowGreenBorder(true); // falls vorhanden
     // ITEM ALREADY IN SCENE: m_scene->addItem(newLayer);
     base->updatePixmap();
     layer->m_item = newLayer;
     m_layers.push_back(layer);
+    // --- Set new active layer ---
+    setActiveLayer(layer->m_name);
+    // --- Ready ---
     return cmd;
   }
 }
@@ -1614,9 +1652,15 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
 //   + reset not yet implemented
 // ---------------------------- --------------- -----------------------------
 
+void ImageView::enableCageLayer( LayerItem *layer, bool isEnabled )
+{
+  if ( !layer ) return;
+  m_selectedCageLayer = isEnabled ? layer : nullptr;
+}
+
 void ImageView::setCageWarpReset()
 {
-  qDebug() << "ImageView::setCageWarpReset(): Processing...";
+  qCDebug(logEditor) << "ImageView::setCageWarpReset(): Processing...";
   {
     if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() ) return;
     m_selectedLayer->resetCageToPixmap();
@@ -1625,16 +1669,30 @@ void ImageView::setCageWarpReset()
 
 void ImageView::setIncreaseNumberOfCageControlPoints() 
 {
-   if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() && m_selectedLayer->getCageWarpCommand() != nullptr ) return;
-   int n = m_selectedLayer->changeNumberOfActiveCagePoints(+1);
-   m_selectedLayer->getCageWarpCommand()->setNumberOfRowsAndColumns(n);
+  qCDebug(logEditor) << "ImageView::setIncreaseNumberOfCageControlPoints(): layer =" << (m_selectedLayer ? true : false);
+  {
+   if ( !m_selectedLayer ) return;
+   {
+     if ( !m_selectedLayer->hasActiveCage() ) {
+       qWarning() << "ImageView::setIncreaseNumberOfCageControlPoints(): No active Cage available.";
+       return;
+     }
+     auto* command = m_selectedLayer->getCageWarpCommand();
+     if ( command ) {
+       int n = m_selectedLayer->changeNumberOfActiveCagePoints(+1);
+       m_selectedLayer->getCageWarpCommand()->setNumberOfRowsAndColumns(n);
+     } else {
+      qCritical() << "ImageView::setIncreaseNumberOfCageControlPoints(): No CageWarpCommand available!";
+     }
+   }
+  }
 }
 
 void ImageView::setDecreaseNumberOfCageControlPoints() 
 {
    if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() ) return;
    int n = m_selectedLayer->changeNumberOfActiveCagePoints(-1);
-   if ( n != 0 ) m_selectedLayer->applyTriangleWarp();
+   if ( n != 0 ) m_selectedLayer->applyCageWarp("ImageView::3");
 }
 
 void ImageView::setNumberOfCageControlPoints( int nControlPoints ) 
@@ -1872,12 +1930,24 @@ void ImageView::setCageVisible( LayerItem* layer, LayerItem::OperationMode mode,
   }
 }
 
+void ImageView::setOnlyCageVisible( int ident )
+{
+  qCDebug(logEditor) << "ImageView::setOnlyCageVisible(): ident =" << ident;
+  {
+   for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
+    auto* layer = dynamic_cast<LayerItem*>(item);
+    if ( layer ) {
+      layer->setCageVisible( layer->id() == ident ? true : false );
+    }
+   }
+  }
+}
+
 // ---------------------------- --------------- -----------------------------
 // ---------------------------- Perspective free scale ----------------------
 // ---------------------------- --------------- -----------------------------
 void ImageView::setEnableTransformMode( LayerItem* layer )
 {
-  // qCDebug(logEditor) 
   qCDebug(logEditor) << "ImageView::setEnableTransformMode(): layer =" << (layer != nullptr ? layer->name() : "NULL");
   {
     if ( !scene() || !layer )

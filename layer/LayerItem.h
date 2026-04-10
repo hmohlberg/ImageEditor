@@ -36,6 +36,7 @@ class TransformHandleItem;
 class TransformOverlay;
 class PerspectiveOverlay;
 class TransformLayerCommand;
+class ImageViewer;
 
 // ---
 class LayerItem : public QGraphicsPixmapItem
@@ -74,6 +75,7 @@ class LayerItem : public QGraphicsPixmapItem
     
     void setIsSelected( bool isSelected );
     void setMirror( int plane );
+    void mirror( int plane );
     void setRotationAngle( double value );
     double getRotationAngle() const { return m_currentRotation; }
     void setImageRect( const QRectF& rect );
@@ -87,7 +89,7 @@ class LayerItem : public QGraphicsPixmapItem
     bool cageEnabled() const;
     void setCageVisible( LayerItem::OperationMode mode, bool isVisible, bool pushBackImage = false );
     void setInActive( bool isInActive );
-    CageWarpCommand * getCageWarpCommand() { return m_cageWarpCommand; }
+    CageWarpCommand* getCageWarpCommand() { return m_cageWarpCommand; }
     void setCageWarpCommand( CageWarpCommand * cmd ) { m_cageWarpCommand = cmd; }
 
     int id() const { return m_index; }
@@ -96,9 +98,10 @@ class LayerItem : public QGraphicsPixmapItem
     
     QUndoStack* undoStack() const { return m_undoStack; }
     QWidget* parent() const { return m_parent; }
+    ImageView* getParentImageView();
     void setCageEditing( bool isEditing ) { m_cageEditing = isEditing; }
     void setParent( QWidget *parent ) { m_parent = parent; }
-    void setUndoStack( QUndoStack* stack ) { m_undoStack = stack; }
+    void setUndoStack( QUndoStack* stack );
     void setIndex( const int index ) { m_index = index; }
     void setName( const QString& name ) { m_name = name; }
     LayerType getType() const { return m_type; }
@@ -124,9 +127,8 @@ class LayerItem : public QGraphicsPixmapItem
     void initCage( const QVector<QPointF>& pts, const QRectF& rect, int rows, int columns );
     void resetCageToPixmap();
     QVector<QPointF> cagePoints() const;
-    QImage applyTriangleWarp();
-    void applyCageWarp();
-    void enableCage( int, int );
+    QImage applyCageWarp( const QString& caller = "unknown" );
+    void enableCage( int cols = -1, int nrows = -1 );
     
     void applyPerspective();
     

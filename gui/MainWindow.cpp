@@ -546,7 +546,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
              cutCommand->setController(editablePolyCommand);
            }
            boundingBoxLayerMap.insert(cutCommand->layerId(),cutCommand->rect());
-        } else if ( type == "MoveLayer" || type == "MoveLayerCaommnd" ) {
+        } else if ( type == "MoveLayer" || type == "MoveLayerCommand" ) {
            cmd = MoveLayerCommand::fromJson(cmdObj, layers);
         } else if ( type == "MirrorLayer" || type == "MirrorLayerCommand" ) {
            cmd = MirrorLayerCommand::fromJson(cmdObj, layers);
@@ -846,23 +846,27 @@ void MainWindow::rebuildLayerList()
         m_layerList->addItem(item);
     }
     m_updatingLayerList = false;
-    // updating layer list in m_selectLayerItem
-    int nItems = 0;
-    int currentId = m_selectLayerItem->currentData().toInt();
-    m_selectLayerItem->clear();
-    for ( int i = layers.size()-1; i >= 0; --i ) {
+    // updating layer list in m_selectLayerItem WITHOUT sending a signal 
+    {
+     const QSignalBlocker blocker(m_selectLayerItem);
+     int nItems = 0;
+     int currentId = m_selectLayerItem->currentData().toInt();
+     m_selectLayerItem->clear();
+     for ( int i = layers.size()-1; i >= 0; --i ) {
       Layer* layer = layers[i];
       if ( !layer || !layer->m_item || !layer->m_active ) continue;
       m_selectLayerItem->addItem(QString("Layer %1").arg(layer->id()), layer->id());
       nItems += 1;
-    }
-    if ( nItems == 0 ) {
+     }
+     // next
+     if ( nItems == 0 ) {
        m_selectLayerItem->addItems({"None yet defined"});
-    } else {
+     } else {
        int index = m_selectLayerItem->findData(currentId);
        if ( index != -1 ) {
         m_selectLayerItem->setCurrentIndex(index);
        }
+     }
     }
   }
 }
@@ -871,6 +875,7 @@ void MainWindow::setSelectedLayer( const QString &name )
 {
   qCDebug(logEditor) << "MainWindow::setSelectedLayer(): name =" << name;
   {
+    // set layer index
     int index = m_selectLayerItem->findText(name);
     if ( index != -1 ) {
       m_selectLayerItem->setCurrentIndex(index);
@@ -1474,30 +1479,44 @@ void MainWindow::createToolbars()
     m_selectLayerItem->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_layerToolbar->addWidget(m_selectLayerItem);
     connect(m_selectLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
-      // select active layer
-      m_selectedLayerItemName = text;
-      // update layer list
-      QList<QListWidgetItem*> items = m_layerList->findItems(text, Qt::MatchExactly);
-      if ( !items.isEmpty() ) {
-        QListWidgetItem* item = items.first();
-        {
-          const QSignalBlocker blocker(m_layerList);
-          m_layerList->setCurrentItem(item);
-          item->setSelected(true);
+      if ( !text.isEmpty() ) {
+        qCDebug(logEditor) << "MainWindow::createToolbars(): Callback call for " << text;
+        // select active layer
+        m_selectedLayerItemName = text;
+        // update layer list
+        QList<QListWidgetItem*> items = m_layerList->findItems(text, Qt::MatchExactly);
+        if ( !items.isEmpty() ) {
+          QListWidgetItem* item = items.first();
+          {
+            const QSignalBlocker blocker(m_layerList);
+            m_layerList->setCurrentItem(item);
+            item->setSelected(true);
+          }
         }
-      }
-      // update active layer
-      for ( Layer* l : m_imageView->layers() ) {
-       if ( l->m_item ) {
-        QString name = l->name().section(' ', -2, -1);
-        if ( name == text ) {
-          l->m_item->setSelected(true);
-          l->m_item->setZValue(3);
-        } else {
-          l->m_item->setSelected(false);
-          l->m_item->setZValue(2);
+        // update active layer
+        for ( Layer* l : m_imageView->layers() ) {
+         if ( l->m_item ) {
+          LayerItem *layerItem = dynamic_cast<LayerItem*>(l->m_item);
+          if ( layerItem != nullptr ) {
+            QString name = l->name().section(' ', -2, -1);
+            if ( name == text ) {
+              layerItem->setIsSelected(true);
+              layerItem->setZValue(3);
+            } else {
+              layerItem->setIsSelected(false);
+              layerItem->setZValue(2);
+            }
+          }
+         }
         }
-       }
+        // info
+        #ifdef AAA
+         for ( Layer* l : m_imageView->layers() ) {
+          if ( l->m_item ) {
+            qDebug() << " name =" << l->name() << ": selected =" << l->m_item->isSelected();
+          }
+         }
+        #endif
       }
     });
     // --- operation modus ---
@@ -1562,12 +1581,19 @@ void MainWindow::createToolbars()
     
     // --- sub toolbar layer mirror ---
     m_mirrorLayerToolbar = addToolBar(tr("MirrorLayer"));
-    QLabel* mirrorDirectionLabel = new QLabel(" Mirror Direction:");
+    QLabel* mirrorDirectionLabel = new QLabel(" Direction:");
     m_mirrorLayerToolbar->addWidget(mirrorDirectionLabel);
     m_mirrorDirectionCombo = new QComboBox();
     m_mirrorDirectionCombo->addItems({"Horizontal","Vertical"});
     m_mirrorDirectionCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_mirrorLayerToolbar->addWidget(m_mirrorDirectionCombo);
+    QPushButton *doMirrorAction = new QPushButton("Apply");
+    doMirrorAction->setFocusPolicy(Qt::ClickFocus);
+    connect(doMirrorAction, &QPushButton::clicked, this, [this]() {
+      LayerItem *layerItem = m_imageView->getLayerItem(m_selectLayerItem->currentText());
+      if ( layerItem != nullptr ) layerItem->mirror(m_mirrorDirectionCombo->currentText() == "Vertical" ? 1 : 2);
+    });
+    m_mirrorLayerToolbar->addWidget(doMirrorAction);
     m_mirrorLayerToolbar->setVisible(false);
     
     // --- sub toolbar layer rotate ---
@@ -1970,7 +1996,6 @@ void MainWindow::newLassoLayerCreated()
 
 /* =================== View Helpers =================== */
 
-void MainWindow::cutSelection() { m_imageView->cutSelection(); }
 void MainWindow::zoom1to1() { m_imageView->resetTransform(); }
 void MainWindow::forcedUpdate() { m_imageView->forcedUpdate(); }
 

@@ -58,7 +58,6 @@ set(SOURCES
     layer/TransformOverlay.cpp
     layer/CenterHandleItem.cpp
     undo/AbstractCommand.cpp
-    undo/CageMoveCommand.cpp
     undo/CageWarpCommand.cpp
     undo/DeleteLayerCommand.cpp
     undo/DeleteUndoEntryCommand.cpp
@@ -104,7 +103,6 @@ set(HEADERS
     layer/TransformOverlay.h
     layer/CenterHandleItem.h
     undo/AbstractCommand.h
-    undo/CageMoveCommand.h
     undo/CageWarpCommand.h
     undo/DeleteLayerCommand.h
     undo/DeleteUndoEntryCommand.h

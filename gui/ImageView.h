@@ -63,7 +63,6 @@ class ImageView : public QGraphicsView
     
     explicit ImageView( QWidget* parent = nullptr );
 
-    void cutSelection();
     void clearSelection();
     void clearLayers(); 
     void createLassoLayer();
@@ -71,6 +70,7 @@ class ImageView : public QGraphicsView
     void centerOnLayer( Layer* layer );
     void deleteLayer( Layer* layer );
     void enablePipette( bool enabled );
+    void enableCageLayer( LayerItem* layer, bool enabled );
     void setCrosshairVisible( bool visible ) { 
       m_crosshairVisible = visible; 
       viewport()->update(); 
@@ -98,6 +98,7 @@ class ImageView : public QGraphicsView
     LayerItem::OperationMode getPolygonOperationMode() const { return m_polygonOperationMode; }
     LayerItem::OperationMode getLayerOperationMode() const { return m_layerOperationMode; }
     
+    LayerItem* getLayerItem( int id );
     LayerItem* getLayerItem( const QString& name );
     LayerItem* getSelectedItem( bool isActiveCageItem = false );
     LayerItem* currentLayer() const;
@@ -125,6 +126,8 @@ class ImageView : public QGraphicsView
     void setMaskLabel( quint8 index ) { m_currentMaskLabel = index; }
     void setPolygonIndex( quint8 index ) { m_polygonIndex = index; }
     void setActiveCageLayer( LayerItem *item ) { m_selectedCageLayer = item; }
+    void setActiveLayer( const QString& name, bool initialize = true );
+    void setSelectedLayer( const QString& name );
     void setLayerOperationMode( LayerItem::OperationMode mode );
     void setOnlySelectedPolygon( const QString& name );
     void setPolygonOperationMode( LayerItem::OperationMode mode );
@@ -137,6 +140,7 @@ class ImageView : public QGraphicsView
     void setCageWarpReset();
     void setOverlayVisibility( int overlayType, bool isVisible );
     void setCageVisible( LayerItem* layer, LayerItem::OperationMode mode, bool isVisible );
+    void setOnlyCageVisible( int ident );
     void setMaskTool( MaskTool t );
     void setMaskCutTool( const QString&, MaskCutTool t );
     void createMaskLayer( const QSize& size );
@@ -173,6 +177,7 @@ class ImageView : public QGraphicsView
 
  private:
 
+    void initCageWarpForLayer( LayerItem* layerItem );
     LassoCutCommand* createNewLayer( const QPolygonF& polygon, const QString& name );
     void setEnableTransformMode( LayerItem* layer );
     void disableTransformMode();
@@ -183,7 +188,6 @@ class ImageView : public QGraphicsView
     QList<EditablePolygon*> m_editablePolygons;
     QVector<MaskPaintCommand::PixelChange> m_currentMaskStroke;
     
-    LayerItem* m_activeLayer = nullptr;
     LayerItem* m_selectedLayer = nullptr;
     LayerItem* m_selectedCageLayer = nullptr;
     LayerItem* m_paintLayer = nullptr;

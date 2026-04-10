@@ -82,8 +82,8 @@ class CageMesh
     void setNumberOfRelaxationsSteps( int nsteps ) { m_relaxationSteps = nsteps; }
     void setFixedBoundaries( bool isFixed ) { m_fixedBoundaries = isFixed; }
     
-    void needUpdate() { m_needUpdate = true; }
-    
+    void setNeedUpdate( bool needUpdate = true ) { m_needUpdate = needUpdate; }
+    bool needUpdate() const { return m_needUpdate; }
     void setIsInitialized() { m_isInitialized = true; }
     bool isInitialized( bool forced = false ) const { 
       return forced ? ( !m_image.isNull() && m_isInitialized ) : m_isInitialized; 
@@ -101,7 +101,7 @@ class CageMesh
   private:
   
     bool m_active = false;
-    bool m_needUpdate = false;
+    bool m_needUpdate = true;
     bool m_isInitialized = false;
     
     bool m_fixedBoundaries = true;

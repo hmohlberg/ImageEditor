@@ -127,8 +127,8 @@ void CageWarpCommand::redo()
     m_transform = m_layer->totalTransform();
     m_originalImage = m_layer->originalImage();
     m_layer->initCage(m_after,m_rect,m_rows,m_columns);
-    m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,false);
-    m_warpedImage = m_layer->applyTriangleWarp();
+    m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,true);
+    m_warpedImage = m_layer->applyCageWarp("CageWarpCommand");
     m_layer->setOriginalImage(m_warpedImage);
     m_layer->setTotalTransform(QTransform());
     m_layer->resetPixmap();
