@@ -68,15 +68,24 @@
         QLoggingCategory::setFilterRules("editor.graphics.debug=false");
       }
       m_hasPerspective = settings.value("Main/perspective", false).toBool();
+      
       // Cage quads
       m_useCageQuads = settings.value("Cage/quads", true).toBool();
-      // cage control point radius
+      // Cage control point radius
       m_controlPointRadius = settings.value("Cage/controlPointRadius", 4).toInt();
       // Cage color
       QString cageWarpColor = settings.value("Cage/color", "green").toString();
-       if ( QColor::isValidColorName(cageWarpColor) ) {
+      if ( QColor::isValidColorName(cageWarpColor) ) {
         m_cageWarpColor = QColor::fromString(cageWarpColor);
       }
+      
+      // Scale 
+      QString handleColor = settings.value("Scale/handleColor", "cyan").toString();
+      if ( QColor::isValidColorName(handleColor) ) {
+        m_handleColor = QColor::fromString(handleColor);
+      }
+      m_handleSize = settings.value("Scale/handleSize", 10).toInt();
+      
       // Lasso color
       QString rawColor = settings.value("Lasso/color", "yellow").toString();
       if ( QColor::isValidColorName(rawColor) ) {
@@ -87,6 +96,7 @@
       if ( rawWidth >= 0 && rawWidth < 20 ) {
         m_lassoWidth = rawWidth;
       }
+      
       // ImageLayer rotation angle
       m_rotationSingleStep = settings.value("ImageLayer/rotationSingleStep", 1.0).toDouble();
       // ImageLayer transformationMode
@@ -99,6 +109,8 @@
       
     }
     
+    QColor getHandleColor() const { return m_handleColor; }
+    int getHandleSize() const { return m_handleSize; }
     QColor lassoColor() const { return m_lassoColor; }
     QColor cageWarpColor() const { return m_cageWarpColor; }
     QString windowSize() const { return m_windowSize; }
@@ -115,6 +127,8 @@
    
     EditorStyle()
         : m_lassoColor(Qt::red), 
+          m_handleColor(Qt::cyan),
+          m_handleSize(10),
           m_lassoWidth(3), 
           m_controlPointRadius(4),
           m_rotationSingleStep(0.5),
@@ -132,7 +146,8 @@
         QLoggingCategory::setFilterRules("editor.graphics.debug=false");
       }
     }
-    
+   
+    QColor m_handleColor; 
     QColor m_lassoColor;
     QColor m_cageWarpColor;
     QString m_windowSize;
@@ -142,6 +157,7 @@
     
     int m_lassoWidth;
     int m_controlPointRadius;
+    int m_handleSize;
     bool m_loggingIsEnabled;
     bool m_useCageQuads;
     bool m_hasPerspective;

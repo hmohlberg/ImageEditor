@@ -1178,6 +1178,19 @@ void MainWindow::createActions()
   }
 }
 
+void MainWindow::hideAllLayerToolbars()
+{
+  qCDebug(logEditor) << "MainWindow::hideAllLayerToolbars(): Processing...";
+  {
+    m_translateLayerToolbar->setVisible(false);
+    m_canvasWarpLayerToolbar->setVisible(false);
+    m_mirrorLayerToolbar->setVisible(false);
+    m_rotateLayerToolbar->setVisible(false);
+    m_scaleLayerToolbar->setVisible(false);
+    m_perspectiveLayerToolbar->setVisible(false);
+  }
+}
+
 void MainWindow::updateControlButtonState() 
 {
   qCDebug(logEditor) << "MainWindow::updateControlButtonState(): Processing...";
@@ -1248,11 +1261,7 @@ void MainWindow::updateControlButtonState()
     }
     // --- ---
     if ( !isE ) {
-      m_canvasWarpLayerToolbar->setVisible(false);
-      m_mirrorLayerToolbar->setVisible(false);
-      m_rotateLayerToolbar->setVisible(false);
-      m_scaleLayerToolbar->setVisible(false);
-      m_perspectiveLayerToolbar->setVisible(false);
+      hideAllLayerToolbars();
     }
     // --- ---
     if ( m_paintControlAction->isChecked() ) {
@@ -1540,6 +1549,7 @@ void MainWindow::createToolbars()
     // >>>
     m_layerToolbar->addWidget(m_transformLayerItem);
     connect(m_transformLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
+    
       // --- get transform mode ---
       LayerItem::OperationMode transformMode = LayerItem::OperationMode::None;
       if ( text.startsWith("Translate") ) transformMode = LayerItem::OperationMode::Translate;
@@ -1550,6 +1560,8 @@ void MainWindow::createToolbars()
       else if ( text.startsWith("Cage warp") ) transformMode = LayerItem::OperationMode::CageWarp;
       
       // --- update visibility of layer sub toolbar ---
+      bool translateLayerIsVisible = transformMode == LayerItem::OperationMode::Translate ? true : false;
+      m_translateLayerToolbar->setVisible(translateLayerIsVisible);
       bool rotateLayerIsVisible = transformMode == LayerItem::OperationMode::Rotate ? true : false;
       m_rotateLayerToolbar->setVisible(rotateLayerIsVisible);
       bool scaleLayerIsVisible = transformMode == LayerItem::OperationMode::Scale ? true : false;
@@ -1570,13 +1582,51 @@ void MainWindow::createToolbars()
        
     });
     
+    // --- sub toolbar layer translate ---
+    m_translateLayerToolbar = addToolBar(tr("TranslateLayer"));
+    QLabel* translateXLayerLabel = new QLabel(" XTranslate:");
+    m_translateLayerToolbar->addWidget(translateXLayerLabel);
+    m_translateXLayerSpin = new QDoubleSpinBox();
+    m_translateXLayerSpin->setReadOnly(true);
+    m_translateXLayerSpin->setFocusPolicy(Qt::ClickFocus);
+    m_translateXLayerSpin->setRange(-100000.0,100000.0);
+    m_translateXLayerSpin->setValue(0.0);
+    m_translateLayerToolbar->addWidget(m_translateXLayerSpin);
+    QLabel* translateYLayerLabel = new QLabel(" YTranslate:");
+    m_translateLayerToolbar->addWidget(translateYLayerLabel);
+    m_translateYLayerSpin = new QDoubleSpinBox();
+    m_translateYLayerSpin->setReadOnly(true);
+    m_translateYLayerSpin->setFocusPolicy(Qt::ClickFocus);
+    m_translateYLayerSpin->setRange(-100000.0,100000.0);
+    m_translateYLayerSpin->setValue(0.0);
+    m_translateLayerToolbar->addWidget(m_translateYLayerSpin);
+    m_translateLayerToolbar->setVisible(true);
+    
     // --- sub toolbar layer scale ---
     m_scaleLayerToolbar = addToolBar(tr("ScaleLayer"));
-    m_isotropScaleCheck = new QCheckBox("Isotrop scaling", this);
-    m_isotropScaleCheck->setFocusPolicy(Qt::ClickFocus);
-    m_isotropScaleCheck->setToolTip("Enable isotropic scaling.");
-    m_isotropScaleCheck->setChecked(true);
-    m_scaleLayerToolbar->addWidget(m_isotropScaleCheck);
+    QLabel* scaleXLayerLabel = new QLabel(" XScale:");
+    m_scaleLayerToolbar->addWidget(scaleXLayerLabel);
+    m_scaleXLayerSpin = new QDoubleSpinBox();
+    m_scaleXLayerSpin->setReadOnly(true);
+    m_scaleXLayerSpin->setFocusPolicy(Qt::ClickFocus);
+    m_scaleXLayerSpin->setRange(-100.0,100.0);
+    m_scaleXLayerSpin->setValue(1.0);
+    m_scaleLayerToolbar->addWidget(m_scaleXLayerSpin);
+    QLabel* scaleYLayerLabel = new QLabel(" YScale:");
+    m_scaleLayerToolbar->addWidget(scaleYLayerLabel);
+    m_scaleYLayerSpin = new QDoubleSpinBox();
+    m_scaleYLayerSpin->setReadOnly(true);
+    m_scaleYLayerSpin->setFocusPolicy(Qt::ClickFocus);
+    m_scaleYLayerSpin->setRange(-100.0,100.0);
+    m_scaleYLayerSpin->setValue(1.0);
+    m_scaleLayerToolbar->addWidget(m_scaleYLayerSpin);
+    QPushButton *resetScaleAction = new QPushButton("Reset");
+    resetScaleAction->setFocusPolicy(Qt::ClickFocus);
+    connect(resetScaleAction, &QPushButton::clicked, this, [this]() {
+      LayerItem *layerItem = m_imageView->getLayerItem(m_selectLayerItem->currentText());
+      if ( layerItem != nullptr ) layerItem->scale(1.0,1.0);
+    });
+    m_scaleLayerToolbar->addWidget(resetScaleAction);
     m_scaleLayerToolbar->setVisible(false);
     
     // --- sub toolbar layer mirror ---
@@ -1619,6 +1669,7 @@ void MainWindow::createToolbars()
     // --- sub toolbar layer perspective ---
     m_perspectiveLayerToolbar = addToolBar(tr("PerspectiveLayer"));
     QPushButton *resetPerspectiveAction = new QPushButton("Reset");
+    resetPerspectiveAction->setFocusPolicy(Qt::ClickFocus);
     connect(resetPerspectiveAction, &QPushButton::clicked, this, [this]() {
       qDebug() << " pressed reset qpushbutton ";
     });
@@ -1889,14 +1940,28 @@ void MainWindow::createStatusbar()
 
 /* =================== Misc =================== */
 
-void MainWindow::updateLayerOperationParameter( int mode, double value )
+void MainWindow::updateLayerOperationParameter( int mode, double value1, double value2 )
 {
-  qCDebug(logEditor) << "MainWindow::updateLayerOperationParameter(): mode =" << mode << ", value =" << value;
+  qCDebug(logEditor) << "MainWindow::updateLayerOperationParameter(): mode =" << mode << ", value =" << value1;
   {
     if ( mode == LayerItem::OperationMode::Rotate ) {
       m_rotationLayerAngleSpin->blockSignals(true);
-      m_rotationLayerAngleSpin->setValue(value);
+      m_rotationLayerAngleSpin->setValue(value1);
       m_rotationLayerAngleSpin->blockSignals(false);
+    } else if ( mode == LayerItem::OperationMode::Translate ) {
+      m_translateXLayerSpin->blockSignals(true);
+      m_translateXLayerSpin->setValue(value1);
+      m_translateXLayerSpin->blockSignals(false);
+      m_translateYLayerSpin->blockSignals(true);
+      m_translateYLayerSpin->setValue(value2);
+      m_translateYLayerSpin->blockSignals(false);
+    } else if ( mode == LayerItem::OperationMode::Scale ) {
+      m_scaleXLayerSpin->blockSignals(true);
+      m_scaleXLayerSpin->setValue(value1);
+      m_scaleXLayerSpin->blockSignals(false);
+      m_scaleYLayerSpin->blockSignals(true);
+      m_scaleYLayerSpin->setValue(value2);
+      m_scaleYLayerSpin->blockSignals(false);
     }
   }
 }
@@ -1905,8 +1970,6 @@ double MainWindow::getLayerOperationParameter( int mode )
 {
   if ( mode == LayerItem::OperationMode::Rotate ) {
     return  m_rotationLayerAngleSpin->value();
-  } else if ( mode == LayerItem::OperationMode::Scale ) {
-    return m_isotropScaleCheck->isChecked() ? +1 : -1;
   } else if ( mode == LayerItem::OperationMode::Flip ) {
     return m_mirrorDirectionCombo->currentIndex() == 1 ? +1 : -1;
   }
@@ -1927,22 +1990,43 @@ void MainWindow::info()
   }
 }
 
-void MainWindow::setLayerOperationMode( int mode ) 
+void MainWindow::setLayerOperationMode( int mode, bool updateMode ) 
 {
-  qCDebug(logEditor) << "MainWindow::setLayerOperationMode(): mode =" << mode;
+  qCDebug(logEditor) << "MainWindow::setLayerOperationMode(): mode =" << mode << ", update =" << updateMode;
   {
-    // OLDOLDOLD: m_transformLayerItem->setCurrentIndex(mode-3);
+    if ( updateMode == false ) { 
+      m_transformLayerItem->blockSignals(true);
+      hideAllLayerToolbars();
+    }
     switch ( mode ) {
-      case LayerItem::OperationMode::Translate:   m_transformLayerItem->setCurrentIndex(0);  break;
-      case LayerItem::OperationMode::Rotate:      m_transformLayerItem->setCurrentIndex(1);  break;
-      case LayerItem::OperationMode::Scale:       m_transformLayerItem->setCurrentIndex(2);  break;
-      case LayerItem::OperationMode::Flip:
-      case LayerItem::OperationMode::Flop: 
-         // m_mirrorDirectionCombo->setCurrentIndex(mode-6);         
-         m_transformLayerItem->setCurrentIndex(3);  
+      case LayerItem::OperationMode::Translate:   
+         m_transformLayerItem->setCurrentIndex(0); 
+         m_translateLayerToolbar->setVisible(true);
          break;
-      case LayerItem::OperationMode::Perspective: m_transformLayerItem->setCurrentIndex(4);  break;
-      case LayerItem::OperationMode::CageWarp:    m_transformLayerItem->setCurrentIndex(5);  break;
+      case LayerItem::OperationMode::Rotate:      
+         m_transformLayerItem->setCurrentIndex(1);  
+         m_rotateLayerToolbar->setVisible(true);
+         break;
+      case LayerItem::OperationMode::Scale:       
+         m_transformLayerItem->setCurrentIndex(2); 
+         m_scaleLayerToolbar->setVisible(true); 
+         break;
+      case LayerItem::OperationMode::Flip:
+      case LayerItem::OperationMode::Flop:       
+         m_transformLayerItem->setCurrentIndex(3); 
+         m_mirrorLayerToolbar->setVisible(true);
+         break;
+      case LayerItem::OperationMode::Perspective: 
+         m_transformLayerItem->setCurrentIndex(4);  
+         m_perspectiveLayerToolbar->setVisible(true);
+         break;
+      case LayerItem::OperationMode::CageWarp:    
+         m_transformLayerItem->setCurrentIndex(5);  
+         m_canvasWarpLayerToolbar->setVisible(true);
+         break;
+    }
+    if ( updateMode == false ) { 
+      m_transformLayerItem->blockSignals(false);
     }
   }
 }

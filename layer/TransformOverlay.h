@@ -83,4 +83,6 @@ class TransformOverlay : public QObject, public QGraphicsItem
     QTransform m_startTransform;
     QTransform m_initialTransform;
     
+    QPointF m_startPoint;
+    
 };

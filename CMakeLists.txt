@@ -44,7 +44,6 @@ set(SOURCES
     gui/MainWindow.cpp
     gui/ImageView.cpp
     layer/LayerItem.cpp
-    layer/CageLayerItem.cpp
     layer/CageMesh.cpp
     layer/CageControlPointItem.cpp
     layer/CageOverlayItem.cpp
@@ -88,7 +87,6 @@ set(HEADERS
     gui/MainWindow.h
     gui/ImageView.h
     layer/LayerItem.h
-    layer/CageLayerItem.h
     layer/CageMesh.h
     layer/CageControlPointItem.h
     layer/CageOverlayItem.h

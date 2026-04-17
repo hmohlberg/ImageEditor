@@ -27,9 +27,13 @@ class BatchMain : public IMainSystem {
     BatchMain() { 
         IMainSystem::setInstance(this); 
     }
-    void showMessage( const QString &text, int msgType=0 ) override {
+    
+    void showMessage( const QString &text, int msgType = 0 ) override {
         // printf("%s\n", text.toLocal8Bit().constData()); // Ausgabe in Konsole
         qDebug() << "BATCHMAIN: " << text;
+    }
+    void updateLayerOperationParameter( int mode, double value1, double value2 = 0.0 ) override {
+       // nothing to do
     }
     double getLayerOperationParameter( int mode ) override {
         return 0.0;

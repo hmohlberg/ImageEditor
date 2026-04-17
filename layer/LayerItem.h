@@ -44,6 +44,7 @@ class LayerItem : public QGraphicsPixmapItem
 
   public:
 
+    enum ImageType { Unknown, Original, Warped };
     enum LayerType { MainImage, LassoLayer };
     enum OperationMode { None, Info, CageEdit, Translate, Rotate, Scale, Flip, Flop, Perspective, CageWarp, 
                           Select, MovePoint, AddPoint, DeletePoint, TranslatePolygon, SmoothPolygon, ReducePolygon, DeletePolygon };
@@ -56,7 +57,7 @@ class LayerItem : public QGraphicsPixmapItem
     void paintStrokeSegment( const QPoint& p0, const QPoint &p1, const QColor &color, int radius, float hardness );
 
     QImage& image( int id=0 );
-    void setOriginalImage( const QImage& originalImage );
+    void setOriginalImage( const QImage& originalImage, ImageType imageType = ImageType::Original );
     const QImage& originalImage();
     void updatePixmap();
     void resetPixmap();
@@ -76,10 +77,13 @@ class LayerItem : public QGraphicsPixmapItem
     void setIsSelected( bool isSelected );
     void setMirror( int plane );
     void mirror( int plane );
+    void shift( const QPointF& aShift );
+    void shiftTo( const QPointF& aPosition );
+    void scale( double xscale, double yscale );
     void setRotationAngle( double value );
     double getRotationAngle() const { return m_currentRotation; }
     void setImageRect( const QRectF& rect );
-    void setImageTransform( const QTransform& transform, bool combine = false );
+    void setImageTransform( const QTransform& transform, bool combine = true );
     void endCageEdit( int idx, const QPointF& pos );
     void setType( LayerType layerType );
     void updateCagePoint( TransformHandleItem*, const QPointF& localPos );
@@ -152,6 +156,7 @@ class LayerItem : public QGraphicsPixmapItem
     
     QImage m_image;
     QImage m_originalImage;
+    ImageType m_originalImageType = ImageType::Unknown;
     
     QPointF m_startPos;
     
@@ -190,6 +195,7 @@ class LayerItem : public QGraphicsPixmapItem
 	bool m_dragging = false;
 	bool m_cageEnabled = false;
 	bool m_cageEditing = false;
+	bool m_cageApplied = false;
 	bool m_mouseOperationActive = false;
 	
 	QPen m_lassoPen;

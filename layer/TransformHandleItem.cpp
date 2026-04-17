@@ -26,13 +26,11 @@
 #include <iostream>
 
 TransformHandleItem::TransformHandleItem( LayerItem* layer, Role role )
-    : QGraphicsEllipseItem(-10, -10, 20, 20),
-      m_layer(layer),
-      m_role(role)
+    : QGraphicsEllipseItem(), m_layer(layer), m_role(role)
 {
   qCDebug(logEditor) << "TransformHandleItem::TransformHandleItem(): Processing...";
   {
-    setBrush(role == Rotate ? Qt::yellow : Qt::white);
+    init();
     setPen(QPen(Qt::black, 0));
     setFlag(ItemIgnoresTransformations, false);
     setCursor(Qt::SizeAllCursor);
@@ -40,12 +38,13 @@ TransformHandleItem::TransformHandleItem( LayerItem* layer, Role role )
   }
 }
 
+// size and color of the handles
 TransformHandleItem::TransformHandleItem( HandleType type, TransformOverlay* overlay )
-    : QGraphicsEllipseItem(-12, -12, 24, 24)
-    , m_type(type)
-    , m_overlay(overlay)
+    : QGraphicsEllipseItem(), m_type(type), m_overlay(overlay)
 {
-     setBrush(Qt::red);
+  qCDebug(logEditor) << "TransformHandleItem::TransformHandleItem(): Processing...";
+  {
+     init();
      QPen pen(Qt::black);
      pen.setWidth(1);
      setPen(pen);
@@ -70,14 +69,15 @@ TransformHandleItem::TransformHandleItem( HandleType type, TransformOverlay* ove
             setCursor(Qt::SizeFDiagCursor);
             break;
     }
+  }
 }
 
 TransformHandleItem::TransformHandleItem( HandleType type, PerspectiveOverlay* overlay )
-    : QGraphicsEllipseItem(-12, -12, 24, 24)
-    , m_type(type)
-    , m_perspectiveOverlay(overlay)
+    : QGraphicsEllipseItem(), m_type(type), m_perspectiveOverlay(overlay)
 {
-    setBrush(Qt::cyan);
+  qCDebug(logEditor) << "TransformHandleItem::TransformHandleItem(): Processing...";
+  {
+    init();
     setPen(QPen(Qt::black, 1));
     setZValue(9999999);
     setFlag(ItemIgnoresTransformations, false);
@@ -92,6 +92,16 @@ TransformHandleItem::TransformHandleItem( HandleType type, PerspectiveOverlay* o
            setCursor(Qt::SizeFDiagCursor);
            break;
     }
+  }
+}
+
+// --------------------- Misc ---------------------
+void TransformHandleItem::init()
+{
+     const int size = EditorStyle::instance().getHandleSize();
+     const qreal half = size / 2.0;
+     setRect(-half, -half, size, size);
+     setBrush(EditorStyle::instance().getHandleColor());
 }
 
 // --------------------- Mouse events ---------------------

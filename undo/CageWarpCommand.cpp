@@ -102,40 +102,33 @@ void CageWarpCommand::undo()
   qCDebug(logEditor) << "CageWarpCommand::undo(): m_beforepoints =" << m_before.size();
   {
     if ( !m_layer ) return;
-    
     m_layer->setCagePoints(m_before);
     m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,false,true);
     m_layer->setTotalTransform(m_transform);
-    m_layer->setOriginalImage(m_originalImage);
+    m_layer->setOriginalImage(m_originalImage,LayerItem::ImageType::Original);
     m_layer->setImageTransform(QTransform());
-    
     m_layer->setPos(m_oldPos);
     restoreOldSceneRect();
-    
     printMessage(true);
   }
 }
 
 void CageWarpCommand::redo()
 {
-  qCDebug(logEditor) << "CageWarpCommand::redo(): rows =" << m_rows << ", columns =" << m_columns << ", points =" << m_after.size() << ", rect =" << m_rect;
+  qCDebug(logEditor) << "CageWarpCommand::redo(): step =" << m_steps << ", rows =" << m_rows << ", columns =" << m_columns << ", points =" << m_after.size() << ", rect =" << m_rect;
   {
     if ( m_silent || !m_layer ) return;
-    
     captureInitialState();
-    
     m_transform = m_layer->totalTransform();
     m_originalImage = m_layer->originalImage();
     m_layer->initCage(m_after,m_rect,m_rows,m_columns);
     m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,true);
     m_warpedImage = m_layer->applyCageWarp("CageWarpCommand");
-    m_layer->setOriginalImage(m_warpedImage);
+    m_layer->setOriginalImage(m_warpedImage,m_steps == 0 ? LayerItem::ImageType::Original : LayerItem::ImageType::Warped);
     m_layer->setTotalTransform(QTransform());
     m_layer->resetPixmap();
-    
     m_layer->setPos(m_newPos);
     m_newSceneRect = m_layer->sceneBoundingRect();
-    
     printMessage();
   }
 }

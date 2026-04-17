@@ -61,7 +61,7 @@ void TransformOverlay::paint( QPainter* p, const QStyleOptionGraphicsItem*, QWid
     if ( !m_layer )
         return;
     p->setRenderHint(QPainter::Antialiasing);
-    QPen pen(Qt::yellow);
+    QPen pen(Qt::green);
     pen.setWidth(1);
     pen.setStyle(Qt::DashLine);
     p->setPen(pen);
@@ -135,34 +135,38 @@ void TransformOverlay::updateHandlePositions()
 
 void TransformOverlay::translateLayer( const QPointF& delta )
 {
-    if ( !m_layer ) return;
+  qCDebug(logEditor) << "TransformOverlay::translateLayer(): delta =" << delta;
+  {
+    if ( !m_layer ) return;    
     QTransform t;
     t.translate(delta.x(), delta.y());
     m_layer->setTransform(t * m_layer->transform());
     updateOverlay();
+  }
 }
 
 void TransformOverlay::beginTransform()
 {
-    if ( !m_layer )
-        return;
+  qCDebug(logEditor) << "TransformOverlay::beginTransform(): Processing...";
+  {
+    if ( !m_layer ) return;
     m_startTransform = m_layer->transform();
+    m_startPoint = m_layer->pos();
+  }
 }
 
 void TransformOverlay::endTransform()
 {
- qCDebug(logEditor) << "TransformOverlay::endTransform(): Processing...";
- {
-    if ( !m_layer )
-        return;
+  qCDebug(logEditor) << "TransformOverlay::endTransform(): Processing...";
+  {
+    if ( !m_layer ) return;
     QTransform end = m_layer->transform();
-    if ( end == m_startTransform )
-        return;
+    if ( end == m_startTransform ) return;
     m_initialTransform = m_startTransform;
     m_transformCommand = new TransformLayerCommand(m_layer,m_startTransform,end);
     m_undoStack->push(m_transformCommand);
     updateOverlay();
- }
+  }
 }
 
 void TransformOverlay::reset()

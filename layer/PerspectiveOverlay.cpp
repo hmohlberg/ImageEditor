@@ -28,8 +28,7 @@
 #include "../undo/PerspectiveWarpCommand.h"
 
 PerspectiveOverlay::PerspectiveOverlay( LayerItem* layer, QUndoStack* undoStack )
-    : m_layer(layer)
-    , m_undoStack(undoStack)
+    : m_layer(layer), m_undoStack(undoStack)
 {
     setZValue(999999);
     QRectF r = m_layer->boundingRect();

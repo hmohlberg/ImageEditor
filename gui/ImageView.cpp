@@ -112,7 +112,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
       } else if ( currentIndex > 0 ) {
         const QUndoCommand* justFinishedCommand = m_undoStack->command(currentIndex - 1);
         if ( justFinishedCommand != nullptr ) {
-          // qDebug() << "Just finished command :" << justFinishedCommand->text();
+          qCDebug(logEditor) << "Just finished command :" << justFinishedCommand->text() << ", currentIndex =" << currentIndex;
           if ( currentIndex > 1 ) {
             // qDebug() << " + lastIndex =" << m_lastIndex << " -> " << (currentIndex-1);
             int ks = m_lastIndex == 0 ? m_lastIndex : m_lastIndex-1;
@@ -120,18 +120,17 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
             for ( int k = ks ; k <= ke ; k++ ) {
               const QUndoCommand* previousActiveCommand = m_undoStack->command(k);
               if ( previousActiveCommand != nullptr ) {
-                if ( previousActiveCommand->text().startsWith("Scale Transform") ) {
+                if ( previousActiveCommand->text().startsWith("Scale") ) {
+                  // qDebug() << " *** cleaning scale operation here ***";
                   if ( m_transformOverlay != nullptr ) {
                     m_transformOverlay->setVisible(false);
                     // cleanupCommand(previousActiveCommand);
                   }
                 } else if ( previousActiveCommand->text().startsWith("Cage Warp") ) {
-
                    // CLAUDE says: This is very tricky here. This attempts, here, 
                    // to end the Cage Warp on the previous command on the Stack to 
                    // hide the cage. However, there is confusion on how to select 
                    // this previous layer if the new command is itself a Cage.
-
                    for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
                      auto* layer = dynamic_cast<LayerItem*>(item);
                      if( layer ) {
@@ -143,7 +142,6 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
                    }
                    // LayerItem *layer = getSelectedItem(true);
                    // if ( layer != nullptr ) layer->setCageVisible(false);
-
                 } else if ( previousActiveCommand->text().startsWith("Perspective Warp") ) {
                    qDebug() << " *** cleaning perspective warp mesh here ***";
                 } else if ( previousActiveCommand->text().startsWith("Editable Polygon") ) {
@@ -168,7 +166,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
             layerId = match.captured(1).toInt(); 
             setSelectedLayer(QString("Layer %1").arg(layerId));
           }
-          if ( justFinishedCommand->text().startsWith("Scale Transform") ) {
+          if ( justFinishedCommand->text().startsWith("Scale") ) {
             // qDebug() << " *** handle scale transform operation ***";
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::Scale);
             if ( m_transformOverlay != nullptr ) {
@@ -631,6 +629,11 @@ void ImageView::deleteLayer( Layer* layer )
    m_undoStack->push(new DeleteLayerCommand(imageLayer,imageLayer->pos(),layer->id()));
 }
 
+void ImageView::setSelectedLayer( LayerItem* layer  )
+{
+  m_selectedLayer = layer;
+}
+
 void ImageView::setSelectedLayer( const QString &name )
 {
   MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
@@ -695,7 +698,6 @@ void ImageView::keyPressEvent( QKeyEvent* event )
       MainWindow::MainOperationMode opMode = mainWindow->getOperationMode();
       // general
       if ( event->key() == Qt::Key_Tab ) {
-         qCDebug(logEditor) << "ImageView::keyPressEvent(): Processing tab event...";
          int isSelected = -1;
          int i = 0;
          QVector<LayerItem*> layers;
@@ -711,23 +713,24 @@ void ImageView::keyPressEvent( QKeyEvent* event )
             }
            }
          }
-         if ( layers.length() > 1 ) {
-           int index = isSelected == -1 ? 0 : (isSelected+1)%layers.length();
-           QRegularExpression re("\\d+$"); 
-           
-           LayerItem *selectedLayer = layers[index];
-           selectedLayer->setIsSelected(true);
-           setOnlyCageVisible(index);
-           
-           QRegularExpressionMatch match = re.match(selectedLayer->name());
-           if ( match.hasMatch() ) {
-             QString numberStr = match.captured(0);
-             mainWindow->setSelectedLayer(QString("Layer %1").arg(numberStr.toInt()));
-             QString geometryString = GeometryUtils::getGeometryString(selectedLayer);
-             IMainSystem::instance()->showMessage(QString("Selected layer %1 with geometry %2").arg(selectedLayer->name()).arg(geometryString));
-           }
-         } 
-      }
+         if ( layers.length() != 0 ) {
+          int index = 0;
+          if ( layers.length() > 1 ) {
+           index = isSelected == -1 ? 0 : (isSelected+1)%layers.length();
+          }
+          QRegularExpression re("\\d+$"); 
+          LayerItem *selectedLayer = layers[index];
+          selectedLayer->setIsSelected(true);
+          setOnlyCageVisible(selectedLayer->id());
+          QRegularExpressionMatch match = re.match(selectedLayer->name());
+          if ( match.hasMatch() ) {
+            QString numberStr = match.captured(0);
+            mainWindow->setSelectedLayer(QString("Layer %1").arg(numberStr.toInt()));
+            QString geometryString = GeometryUtils::getGeometryString(selectedLayer);
+            IMainSystem::instance()->showMessage(QString("Selected layer %1 with geometry %2").arg(selectedLayer->name()).arg(geometryString));
+          }
+         }
+      } 
       // operation specific
       if ( opMode == MainWindow::MainOperationMode::Polygon ) {
         if ( m_polygonEnabled && ( event->key() == Qt::Key_Return || event->key() == Qt::Key_Escape ) ) {
@@ -1474,8 +1477,12 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
     LayerItem *layer = getSelectedItem();
     if ( layer != nullptr ) {
       if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
-        initCageWarpForLayer(layer);
-      }
+         initCageWarpForLayer(layer);
+      } else if ( m_layerOperationMode == LayerItem::OperationMode::Scale ) {
+         setEnableTransformMode(layer);
+      } else if ( m_layerOperationMode == LayerItem::OperationMode::Perspective ) {
+         setEnablePerspectiveWarp(layer);
+      } 
       layer->setOperationMode(mode);
     } else {
      layer = baseLayer();
@@ -1921,9 +1928,9 @@ void ImageView::setCageVisible( LayerItem* layer, LayerItem::OperationMode mode,
       if ( m_transformOverlay == nullptr && isVisible == true ) {
         m_transformOverlay = new TransformOverlay(layer,m_undoStack);
         scene()->addItem(m_transformOverlay);
-        m_transformOverlay->updateOverlay();
       }
       if ( m_transformOverlay != nullptr ) {
+        m_transformOverlay->updateOverlay();
         m_transformOverlay->setVisible(isVisible);
       }
     } else if ( mode == LayerItem::OperationMode::Perspective ) {
@@ -1955,11 +1962,11 @@ void ImageView::setEnableTransformMode( LayerItem* layer )
   qCDebug(logEditor) << "ImageView::setEnableTransformMode(): layer =" << (layer != nullptr ? layer->name() : "NULL");
   {
     if ( !scene() || !layer )
-        return;
+      return;
     if ( m_transformOverlay ) {
-        scene()->removeItem(m_transformOverlay);
-        delete m_transformOverlay;
-        m_transformOverlay = nullptr;
+      scene()->removeItem(m_transformOverlay);
+      delete m_transformOverlay;
+      m_transformOverlay = nullptr;
     }
     m_transformOverlay = new TransformOverlay(layer,m_undoStack);
     scene()->addItem(m_transformOverlay);
@@ -1972,7 +1979,7 @@ void ImageView::disableTransformMode()
   qCDebug(logEditor) << "ImageView::disableTransformMode(): Processing...";
   {
     if ( !m_transformOverlay )
-        return;
+      return;
     scene()->removeItem(m_transformOverlay);
     delete m_transformOverlay;
     m_transformOverlay = nullptr;
@@ -1985,7 +1992,7 @@ void ImageView::disableTransformMode()
 
 void ImageView::setEnablePerspectiveWarp( LayerItem* layer )
 {
-  qCDebug(logEditor) << "ImageView::setEnablePerspectiveWarp(): layer =" << (layer != nullptr ? layer->name() : "NULL");
+  qDebug() << "ImageView::setEnablePerspectiveWarp(): layer =" << (layer != nullptr ? layer->name() : "NULL");
   {
     if ( !scene() || !layer )
         return;

@@ -50,10 +50,12 @@ class TransformLayerCommand : public AbstractCommand
     void printMessage( bool isUndo=false );
     void setRotationAngle( double rotation );
     double rotationAngle() const { return m_rotationAngle; }
+    void restoreSceneTopLeft( LayerItem* layer, const QRectF& oldSceneRect );
     void setTransform( const QTransform& transform );
     QString type() const override { return "TransformLayer"; }
     LayerItem* layer() const override { return m_layer; }
     LayerTransformType trafoType() const { return m_trafoType; } 
+    QTransform transform() const { return m_newTransform; }
     int id() const override { return 1234; }
 
     void undo() override;
@@ -67,12 +69,16 @@ class TransformLayerCommand : public AbstractCommand
  private:
 
     int m_layerId = -1;
-    double m_rotationAngle = 0.0;
-    LayerItem* m_layer = nullptr;
     
+    double m_rotationAngle = 0.0;
+    double m_scaleX = 1.0;
+    double m_scaleY = 1.0;
+    
+    LayerItem* m_layer = nullptr;
     LayerTransformType m_trafoType = None;
     
     QString m_name;
+
     QPointF m_oldPos;
     QPointF m_newPos;
     

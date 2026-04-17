@@ -44,6 +44,8 @@ class TransformHandleItem : public QGraphicsEllipseItem
     void mouseReleaseEvent( QGraphicsSceneMouseEvent* ) override;
 
  private:
+ 
+    void init();
 
     LayerItem* m_layer = nullptr;
     

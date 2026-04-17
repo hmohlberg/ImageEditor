@@ -26,12 +26,10 @@ class CenterHandleItem : public QGraphicsItem
 {
    public:
    
-    CenterHandleItem(TransformOverlay* overlay);
+    CenterHandleItem( TransformOverlay* overlay );
 
     QRectF boundingRect() const override;
-    void paint( QPainter* painter,
-               const QStyleOptionGraphicsItem*,
-               QWidget*) override ;
+    void paint( QPainter* painter, const QStyleOptionGraphicsItem*, QWidget*) override ;
 
   protected:
   

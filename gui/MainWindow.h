@@ -56,12 +56,12 @@ class MainWindow : public QMainWindow, public IMainSystem
     void setMainOperationMode( MainOperationMode = ImageLayer );
     MainOperationMode getOperationMode() const { return m_operationMode; }
     int setActivePolygon( const QString& polygonName );
-    void setLayerOperationMode( int mode );
+    void setLayerOperationMode( int mode, bool updateMode = true );
     void setPolygonOperationMode( int mode );
     void setSelectedLayer( const QString &name );
-    void updateLayerOperationParameter( int mode, double value );
     
     // --- override methods ---
+    void updateLayerOperationParameter( int mode, double value1, double value2 = 0.0 ) override;
     void showMessage( const QString& message, int msgType=0 ) override;
     double getLayerOperationParameter( int mode ) override;
     QString getSelectedLayerItemName() override;
@@ -112,6 +112,8 @@ class MainWindow : public QMainWindow, public IMainSystem
     void createToolbars();
     void createStatusbar();
     
+    void hideAllLayerToolbars();
+    
     QComboBox* buildDefaultColorComboBox( const QString& name = "Label" );
     
     ImageView* m_imageView = nullptr;
@@ -133,6 +135,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     QToolBar* m_scaleLayerToolbar = nullptr;
     QToolBar* m_mirrorLayerToolbar = nullptr;
     QToolBar* m_perspectiveLayerToolbar = nullptr;
+    QToolBar* m_translateLayerToolbar = nullptr;
     
     MainOperationMode m_operationMode = Paint;
     
@@ -173,9 +176,11 @@ class MainWindow : public QMainWindow, public IMainSystem
     QComboBox* m_selectLayerItem = nullptr;
     QComboBox* m_mirrorDirectionCombo = nullptr;
     
-    QCheckBox* m_isotropScaleCheck = nullptr;
-    
     QDoubleSpinBox* m_rotationLayerAngleSpin = nullptr;
+    QDoubleSpinBox* m_scaleXLayerSpin = nullptr;
+    QDoubleSpinBox* m_scaleYLayerSpin = nullptr;
+    QDoubleSpinBox* m_translateXLayerSpin = nullptr;
+    QDoubleSpinBox* m_translateYLayerSpin = nullptr;
     
     QString m_selectedLayerItemName;
     QString m_mainImageName;

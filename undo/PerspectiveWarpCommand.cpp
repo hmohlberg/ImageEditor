@@ -29,11 +29,13 @@ PerspectiveWarpCommand::PerspectiveWarpCommand(
     , m_before(before)
     , m_after(after)
 {
+    // initialize
+    m_baseTransform = m_layer->transform();
+    const QRectF r = layer->boundingRect();
+    m_startQuad = { r.topLeft(), r.topRight(), r.bottomRight(), r.bottomLeft() };
+    // >>>
     m_layerId = layer->id();
     m_name = QString("Perspective Warp Layer %1").arg(m_layerId);
-    // m_baseTransform = m_layer->transform();
-    // const QRectF r = layer->boundingRect();
-    // m_startQuad = { r.topLeft(), r.topRight(), r.bottomRight(), r.bottomLeft() };
     setText(m_name);
     QByteArray perspectiveWarpSvg = "<svg viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'>"
       "<path d='M12 12h40v40H12z' fill='none' stroke='#ccc' stroke-dasharray='2,2' stroke-width='1'/>"
@@ -93,12 +95,19 @@ void PerspectiveWarpCommand::apply( const QVector<QPointF>& quad )
   qCDebug(logEditor) << "PerspectiveWarpCommand::apply(): Processing...";
   {
     if ( !m_layer || quad.size() != 4 ) return;
-    QRectF r = m_layer->boundingRect();
-    QVector<QPointF> startQuad = { r.topLeft(), r.topRight(), r.bottomRight(), r.bottomLeft() };
+    
     QTransform warp;
-    if ( QTransform::quadToQuad(startQuad, quad, warp) ) {
+    if ( QTransform::quadToQuad(m_startQuad, quad, warp) ) {
       m_layer->setTransform(warp * m_baseTransform);
     }
+    
+    // QRectF r = m_layer->boundingRect();
+    // QVector<QPointF> startQuad = { r.topLeft(), r.topRight(), r.bottomRight(), r.bottomLeft() };
+    // QTransform warp;
+    // if ( QTransform::quadToQuad(startQuad, quad, warp) ) {
+    //   m_layer->setTransform(warp * m_baseTransform);
+    // }
+    
   }
 }
 

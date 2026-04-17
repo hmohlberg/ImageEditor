@@ -69,19 +69,20 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer,
   }
 }
 
-TransformLayerCommand::TransformLayerCommand( LayerItem* layer, const QTransform& oldTransform,
-    const QTransform& newTransform, QUndoCommand* parent )
+TransformLayerCommand::TransformLayerCommand( LayerItem* layer, 
+    const QTransform& oldTransform, const QTransform& newTransform, QUndoCommand* parent )
     : AbstractCommand(parent)
       , m_layer(layer)
       , m_oldTransform(oldTransform)
       , m_newTransform(newTransform)
 {
-  qCDebug(logEditor) << "TransformLayerCommand::TransformLayerCommand(): Base...";
+  qCDebug(logEditor) << "TransformLayerCommand::TransformLayerCommand(): Processing...";
   {
+    m_oldPos = layer->pos();
     m_totalTransform = m_newTransform;
     m_trafoType = LayerTransformType::Scale;
     m_layerId = layer->id();
-    m_name = QString("Scale Transform Layer %1").arg(m_layerId);
+    m_name = QString("Scale Layer %1").arg(m_layerId);
     setText(m_name);
     QByteArray scaleAxesLayerSvg = 
       "<svg viewBox='0 0 64 64'>"
@@ -107,6 +108,8 @@ void TransformLayerCommand::printMessage( bool isUndo )
     if ( m_trafoType == LayerTransformType::Scale ) {
       IMainSystem::instance()->showMessage(QString("Scaled layer %1 by (%2:%3)").arg(m_layerId).
                                arg(m_totalTransform.m11()).arg(m_totalTransform.m22()));
+      IMainSystem::instance()->updateLayerOperationParameter(LayerItem::OperationMode::Scale,
+                                 m_totalTransform.m11(),m_totalTransform.m22());
     } else if ( m_trafoType == LayerTransformType::Rotate ) {
       IMainSystem::instance()->showMessage(QString("Rotated layer %1 by %2 degrees").arg(m_layerId)
                      .arg( isUndo ? -m_rotationAngle : m_rotationAngle));
@@ -127,6 +130,16 @@ void TransformLayerCommand::setRotationAngle( double rotation )
   printMessage();
 }
 
+void TransformLayerCommand::restoreSceneTopLeft( LayerItem* layer, const QRectF& oldSceneRect )
+{
+  if ( !layer ) return;
+  {
+    const QRectF newSceneRect = layer->sceneBoundingRect();
+    const QPointF delta = oldSceneRect.topLeft() - newSceneRect.topLeft();
+    layer->shift(delta);
+  }
+}
+
 // -------------------------------- Merge transforms --------------------------------
 bool TransformLayerCommand::mergeWith( const QUndoCommand *other ) 
 {
@@ -140,15 +153,22 @@ bool TransformLayerCommand::mergeWith( const QUndoCommand *other )
   }
 }
 
+// ---------------------------------------------------------------------------
 // -------------------------------- Undo/Redo --------------------------------
+// ---------------------------------------------------------------------------
+
 void TransformLayerCommand::undo() 
 {
-  qCDebug(logEditor) << "TransformLayerCommand::undo(): m_oldTransform =" << m_oldTransform;
+  qCDebug(logEditor) << "TransformLayerCommand::undo(): Processing...";
   {
     if ( !m_layer || m_deleted ) return;
+    const QRectF oldSceneRect = m_layer->sceneBoundingRect();
     bool invertible = false;
     QTransform inv = m_newTransform.inverted(&invertible);
     if ( invertible ) {
+      if ( m_trafoType == LayerTransformType::Scale ) {
+        m_layer->shiftTo(m_oldPos+QPointF(inv.dx(),inv.dy()));
+      }
       m_layer->setImageTransform(inv);
       m_totalTransform *= inv;
     } else {
@@ -157,7 +177,6 @@ void TransformLayerCommand::undo()
       m_layer->setImageTransform(m_oldTransform);
       m_totalTransform = QTransform();
     }
-    
     if ( m_trafoType == LayerTransformType::Scale ) {
       m_layer->setCageVisible(LayerItem::OperationMode::Scale,false);
     }
@@ -168,13 +187,19 @@ void TransformLayerCommand::undo()
 
 void TransformLayerCommand::redo() 
 {
-  qCDebug(logEditor) << "TransformLayerCommand::redo(): m_newTransform =" << m_newTransform;
+  qCDebug(logEditor) << "TransformLayerCommand::redo(): Processing...";
   {
     if ( m_silent || !m_layer || m_deleted ) return;
+    const QRectF oldSceneRect = m_layer->sceneBoundingRect();
     m_totalTransform *= m_newTransform;
     m_layer->setImageTransform(m_newTransform);
     if ( m_trafoType == LayerTransformType::Scale ) {
+      m_layer->shiftTo(m_oldPos+QPointF(m_newTransform.dx(),m_newTransform.dy()));
+    }
+    if ( m_trafoType == LayerTransformType::Scale ) {
       m_layer->setCageVisible(LayerItem::OperationMode::Scale,true);
+      IMainSystem::instance()->updateLayerOperationParameter(LayerItem::OperationMode::Scale,
+                                 m_totalTransform.m11(),m_totalTransform.m22());
     }
     printMessage();
   }

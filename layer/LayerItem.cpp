@@ -50,6 +50,7 @@ LayerItem::LayerItem( const QPixmap& pixmap, QGraphicsItem* parent ) : QGraphics
   {
     m_image = pixmap.toImage();
     m_originalImage = pixmap.toImage();
+    m_originalImageType = ImageType::Original; 
     init();
   }
 }
@@ -61,12 +62,12 @@ LayerItem::LayerItem( const QImage& image, QGraphicsItem* parent )
 {
   qCDebug(logEditor) << "LayerItem::LayerItem(): Image processing...";
   {
-   if ( qobject_cast<QApplication*>(qApp) ) {
-    setPixmap(QPixmap::fromImage(m_image));
-   } else {
-    m_nogui = true;
+   m_originalImageType = ImageType::Original; 
+   m_nogui = (qobject_cast<QApplication*>(qApp) == nullptr);
+   if ( !m_nogui ) {
+     setPixmap(QPixmap::fromImage(m_image));
+     init();
    }
-   init();
   }
 }
 
@@ -80,12 +81,13 @@ void LayerItem::applyPerspective()
 // returns unified rect of the pixmap AND the m_cageMesh
 QRectF LayerItem::boundingRect() const
 {
-    QRectF pixmapRect(offset(), pixmap().size());
-    if ( m_cageMesh.isActive() ) {
+   QSize s = pixmap().isNull() ? m_image.size() : pixmap().size();
+   QRectF pixmapRect(offset(),s);
+   if ( m_cageMesh.isActive() ) {
       QRectF cageRect = QPolygonF(m_cageMesh.points()).boundingRect();
       return pixmapRect.united(cageRect);
-    }
-    return pixmapRect;
+   }
+   return pixmapRect;
 }
 
 // per default moveable layer item
@@ -124,9 +126,10 @@ void LayerItem::printself( bool debugSave )
   QString geometry = QString("%1x%2+%3+%4").arg(rect.width()).arg(rect.height()).arg(pos().x()).arg(pos().y());
   qInfo() << "  + position =" << pos();
   qInfo() << "  + geometry =" << geometry;
+  qInfo() << "  + originalImageType =" << m_originalImageType;
   qInfo() << "  + selected =" << isSelected();
   qInfo() << "  + zValue =" << zValue();
-  qInfo() << "  + cage: enabled =" << m_cageEnabled << ", edited=" << m_cageEditing;
+  qInfo() << "  + cage: enabled =" << m_cageEnabled << ", edited =" << m_cageEditing;
   qInfo() << "  + cage overlay =" << (m_cageOverlay != nullptr ? "ok" : "null");
   qInfo() << "  + operation mode =" << m_operationMode;
   qInfo() << "  + bounding box =" << m_showBoundingBox;
@@ -194,8 +197,13 @@ void LayerItem::setImageRect( const QRectF& rect ) {
   prepareGeometryChange();
 }
 
-void LayerItem::setOriginalImage( const QImage& originalImage ) {
-  m_originalImage = originalImage;
+void LayerItem::setOriginalImage( const QImage& aImage, ImageType imageType) {
+  qCDebug(logEditor) << "LayerItem::setOriginalImage(): Processing...";
+  {
+    m_originalImage = aImage;
+    m_originalImageType = imageType;
+    m_cageApplied = imageType == ImageType::Warped ? true : false;
+  }
 }
 
 const QImage& LayerItem::originalImage() {
@@ -242,11 +250,16 @@ void LayerItem::updateOriginalImage() {
 }
 
 // ------------------------ Selected ------------------------
-void LayerItem::setIsSelected( bool isSelected ) {
-  qCDebug(logEditor) << "LayerItem::setIsSelected(): name =" << name() << ", select =" << isSelected;
+void LayerItem::setIsSelected( bool isSelected ) 
+{
+  qCDebug(logEditor) << "LayerItem::setIsSelected(): name =" << name() << ", select =" << isSelected << ", operationMode =" << m_operationMode;
   {
     MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
     if ( parent != nullptr ) {
+      if ( isSelected ) {
+        parent->getViewer()->setSelectedLayer(this);
+        parent->setLayerOperationMode(m_operationMode,false);
+      }
       parent->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,m_currentRotation);
     }
     if ( !isSelected ) setCageVisible(false);
@@ -255,12 +268,15 @@ void LayerItem::setIsSelected( bool isSelected ) {
 }
 
 // ------------------------ Mirror ------------------------
-void LayerItem::mirror( int plane ) {
+void LayerItem::mirror( int plane ) 
+{
   qCDebug(logEditor) << "LayerItem::mirror(): name =" << name();
-  if ( m_undoStack != nullptr ) {
-    m_undoStack->push(new MirrorLayerCommand(this, m_index, plane));
-  } else {
-    qWarning() << "CRITICAL - LayerItem::mirror(): m_undoStack is null";
+  { 
+    if ( m_undoStack != nullptr ) {
+      m_undoStack->push(new MirrorLayerCommand(this, m_index, plane));
+    } else {
+      qWarning() << "CRITICAL - LayerItem::mirror(): m_undoStack is null";
+    }
   }
 }
 
@@ -276,6 +292,42 @@ void LayerItem::setMirror( int mirrorPlane ) {
 }
 
 // ------------------------ Transform ------------------------
+void LayerItem::shift( const QPointF &aShift ) {
+  setPos(pos()+aShift);
+}
+void LayerItem::shiftTo( const QPointF &aPosition ) {
+  setPos(aPosition);
+}
+
+void LayerItem::scale( double xscale, double yscale ) 
+{
+  qCDebug(logEditor) << "LayerItem::scale(): name =" << name() << ", scaleX =" << xscale << ", scaleY =" << yscale;
+  {
+    MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
+    if ( parent != nullptr && m_undoStack != nullptr ) {
+      if ( m_undoStack->count() > 0 ) {
+        QString scaleLayerName = QString("Scale Layer %1").arg(id());
+        const QUndoCommand* newestCmd = m_undoStack->command(m_undoStack->count() - 1);
+        if ( newestCmd != nullptr ) {
+          if ( scaleLayerName == newestCmd->text() ) {
+            const TransformLayerCommand *layerCmd = static_cast<const TransformLayerCommand*>(newestCmd);
+            if ( layerCmd != nullptr ) {
+              QTransform layerTransform = layerCmd->transform();
+              m_undoStack->push(new TransformLayerCommand(this, transform(), layerTransform.inverted()));
+              parent->getViewer()->setCageVisible(this,LayerItem::OperationMode::Scale,true);
+            } else {
+              qWarning() << "LayerItem::scale(): static_cast failure for last undo command.";
+            }
+          } else {
+            qWarning() << "LayerItem::scale(): Name mismatch: " << scaleLayerName << " not " << newestCmd->text();
+          }
+        }
+      }
+      parent->updateLayerOperationParameter(LayerItem::OperationMode::Scale,xscale,yscale);
+    }
+  }
+}
+
 void LayerItem::resetTotalTransform()
 {
   qCDebug(logEditor) << "LayerItem::resetTotalTransform(): Processing...";
@@ -286,24 +338,44 @@ void LayerItem::resetTotalTransform()
 }
 
 void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
-  qDebug() << "LayerItem::setImageTransform(): position =" << pos() << ", combine =" << combine;
+  qCDebug(logEditor) << "LayerItem::setImageTransform(): position =" << pos() << ", combine =" << combine << ", originalImageType =" << m_originalImageType;
   {
     // *** DO NOT USE INTERNAL TRANSFORMATIONS ***
-    if ( 1 == 2 && qobject_cast<QApplication*>(qApp) ) {
+    if ( 1 == 2 && !m_nogui && qobject_cast<QApplication*>(qApp) ) {
       qDebug() << " + internal pixmap processing: transform_origin =" << QGraphicsPixmapItem::transformOriginPoint() << ", pos =" << QGraphicsPixmapItem::pos();
-      QGraphicsPixmapItem::setTransform(transform,combine);
+      m_totalTransform = transform;
+      m_image = m_originalImage.transformed(m_totalTransform, Qt::SmoothTransformation);
+      prepareGeometryChange();
+      QPointF imageCenter = QRectF(m_originalImage.rect()).center();
+      QPointF sceneCenter = mapToScene(imageCenter);
+      QPointF newImageCenter(m_image.width() / 2.0, m_image.height() / 2.0);
+      setPixmap(QPixmap::fromImage(m_image));
+      setPos(sceneCenter - newImageCenter);
+      // QGraphicsPixmapItem::setTransform(transform,combine);
       return;
     }
     // *** hard QImage transformation ***
-    qDebug() << "LayerItem::setImageTransform(): ALTERNATIVE PROCESS FOR CASE WHERE NO PIXMAP IS AVAILABLE";
+    qCDebug(logEditor) << "LayerItem::setImageTransform(): ALTERNATIVE PROCESS FOR CASE WHERE NO PIXMAP IS AVAILABLE";
+    // check whether original image is-up-to-date
+    if ( m_cageApplied && m_originalImageType == ImageType::Original ) {
+     // qDebug() << "LayerItem::setImageTransform(): Need image update";
+     m_originalImageType = ImageType::Warped;
+     m_originalImage = m_image.copy();
+    }
     // transform image
     prepareGeometryChange();
     QPointF sceneCenter = qobject_cast<QApplication*>(qApp) ? mapToScene(QRectF(pixmap().rect()).center()) : mapToScene(QRectF(m_originalImage.rect()).center());
-    // QPointF sceneCenter = mapToScene(QRectF(pixmap().rect()).center());
     QPointF imageCenter = QRectF(m_originalImage.rect()).center();
-    m_totalTransform.translate(imageCenter.x(), imageCenter.y());
-    m_totalTransform *= transform; // This is my actual rotation
-    m_totalTransform.translate(-imageCenter.x(), -imageCenter.y());
+    if ( combine ) {
+      m_totalTransform.translate(imageCenter.x(), imageCenter.y());
+      m_totalTransform *= transform;
+      m_totalTransform.translate(-imageCenter.x(), -imageCenter.y());
+    } else {
+      m_totalTransform = QTransform();
+      m_totalTransform.translate(imageCenter.x(), imageCenter.y());
+      m_totalTransform *= transform;
+      m_totalTransform.translate(-imageCenter.x(), -imageCenter.y());
+    }
     m_image = m_originalImage.transformed(m_totalTransform, Qt::SmoothTransformation);
     QPointF newImageCenter(m_image.width() / 2.0, m_image.height() / 2.0);
     setPos(sceneCenter - newImageCenter);
@@ -380,19 +452,21 @@ QImage LayerItem::applyCageWarp( const QString &caller )
 {
   qCDebug(logEditor) << "LayerItem::applyCageWarp(" << caller << "): meshActive =" << m_cageMesh.isActive() << ", cageEnabled =" << m_cageEnabled << ", cageEditing =" << m_cageEditing << ", intialized =" << m_cageMesh.isInitialized();
   {
-#if 0
-    // removed by CLAUDE
-    if ( !m_cageEditing ) {
+    #if 0
+     // removed by CLAUDE
+     if ( !m_cageEditing ) {
       return m_cageMesh.image(); // muss das original image sein vor jedem warp !!!
+     }
+    #endif
+    if ( !m_cageMesh.isInitialized(true) ) {
+      m_cageMesh.setImage(m_image);
     }
-#endif
-    if ( !m_cageMesh.isInitialized(true) ) m_cageMesh.setImage(m_image);
     TriangleWarp::WarpResult warped = TriangleWarp::warp(m_cageMesh.image(),m_cageMesh);
-    // TriangleWarp::WarpResult warped = TriangleWarp::warp(m_originalImage,m_cageMesh); 
     if ( !warped.image.isNull() ) {
      setPixmap(QPixmap::fromImage(warped.image));
      m_image = warped.image;
      QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
+     m_cageApplied = true;
      return m_image.copy();
     } else {
      qCritical() << "CRITICAL - LayerItem::applyCageWarp(): WARNING: Image isNull.";
@@ -622,7 +696,7 @@ void LayerItem::updateCagePoint( TransformHandleItem* handle, const QPointF& loc
 
 void LayerItem::resetCageToPixmap()
 {
-  qDebug() << "LayerItem::resetCageToPixmap(): size =" << m_handles.size();
+  qCDebug(logEditor) << "LayerItem::resetCageToPixmap(): size =" << m_handles.size();
   {
     prepareGeometryChange();
     qreal w = pixmap().width();
@@ -744,12 +818,13 @@ void LayerItem::setPolygonOperationMode( OperationMode mode )
 
 void LayerItem::setOperationMode( OperationMode mode ) 
 {
-   qCDebug(logEditor) << "LayerItem::setOperationMode(): index=" << m_index << ", mode=" << m_operationMode << "|" << mode << "|" << OperationMode::CageWarp;
+   qCDebug(logEditor) << "LayerItem::setOperationMode(): name = " << name() << ", index =" << m_index << ", mode =" << m_operationMode << "|" << mode;
    {
      if ( m_operationMode == mode )
       return;
      if ( m_operationMode == OperationMode::CageWarp ) {
       setCageVisible(false);
+      // setOriginalImage(m_image);
      }
      m_operationMode = mode;
      if ( m_operationMode == OperationMode::CageWarp ) {
@@ -791,7 +866,7 @@ bool LayerItem::isValidMouseEventOperation()
 
 void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
 {
-  qDebug() << "LayerItem::mouseDoubleClickEvent(): index=" << m_index << ", mode=" << m_operationMode;
+  qCDebug(logEditor) << "LayerItem::mouseDoubleClickEvent(): index=" << m_index << ", mode=" << m_operationMode;
   {
     if ( isSelected() && isValidMouseEventOperation() ) {
       if ( m_operationMode == OperationMode::CageWarp ) {
@@ -887,7 +962,7 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
             QString name = "Rotate Layer";
             TransformLayerCommand::LayerTransformType trafoType = TransformLayerCommand::LayerTransformType::Rotate;
             name += QString(" %1").arg(m_index);
-            TransformLayerCommand *layerCommand = new TransformLayerCommand(this, m_startPos, pos(), m_startTransform, transform(), name, trafoType);
+           // TransformLayerCommand *layerCommand = new TransformLayerCommand(this, m_startPos, pos(), m_startTransform, transform(), name, trafoType);
             m_undoStack->push(layerCommand);
         }
        */

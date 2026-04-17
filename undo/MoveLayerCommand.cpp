@@ -50,6 +50,7 @@ void MoveLayerCommand::printMessage( bool isUndo )
    } else {
     IMainSystem::instance()->showMessage(QString("Moved layer %1 from position (%2:%3) to position (%4:%5)").arg(m_layerId).
                                arg(qRound(m_oldPos.x())).arg(qRound(m_oldPos.y())).arg(qRound(m_newPos.x())).arg(qRound(m_newPos.y())));
+    IMainSystem::instance()->updateLayerOperationParameter(LayerItem::OperationMode::Translate,qRound(m_newPos.x()),qRound(m_newPos.y()));
    }
   }
 }

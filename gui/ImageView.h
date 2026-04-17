@@ -125,9 +125,10 @@ class ImageView : public QGraphicsView
     void setMaskOpacity( qreal value ) { if ( m_maskItem ) m_maskItem->setOpacityFactor(value); }
     void setMaskLabel( quint8 index ) { m_currentMaskLabel = index; }
     void setPolygonIndex( quint8 index ) { m_polygonIndex = index; }
-    void setActiveCageLayer( LayerItem *item ) { m_selectedCageLayer = item; }
+    void setActiveCageLayer( LayerItem* item ) { m_selectedCageLayer = item; }
     void setActiveLayer( const QString& name, bool initialize = true );
     void setSelectedLayer( const QString& name );
+    void setSelectedLayer( LayerItem* layer );
     void setLayerOperationMode( LayerItem::OperationMode mode );
     void setOnlySelectedPolygon( const QString& name );
     void setPolygonOperationMode( LayerItem::OperationMode mode );
