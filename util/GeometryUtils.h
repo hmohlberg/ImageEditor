@@ -27,6 +27,44 @@ namespace GeometryUtils
 {
     
     // >>>
+    inline QPointF getBilinearUV( const QPointF& P, const QVector<QPointF>& quad ) {
+       // Implementiere hier die Lösung der quadratischen Gleichung für inverse bilineare Interpolation
+       // Alternativ: Nutze QTransform::quadToQuad, um eine lokale Matrix pro Quad zu erstellen.
+       if (quad.size() < 4) return QPointF(0, 0);
+       // Eckpunkte des Quads:
+       // A (0,0), B (1,0), C (1,1), D (0,1) in UV-Koordinaten
+       const QPointF& A = quad[0]; // unten links
+       const QPointF& B = quad[1]; // unten rechts
+       const QPointF& C = quad[2]; // oben rechts
+       const QPointF& D = quad[3]; // oben links
+       // Vektoren berechnen
+       QPointF e = B - A;
+       QPointF f = D - A;
+       QPointF g = A - B + C - D;
+       QPointF h = P - A;
+       // Wir lösen die quadratische Gleichung: g.x*u*v + e.x*u + f.x*v - h.x = 0
+       // Und die entsprechende für y.
+       // Koeffizienten für die quadratische Gleichung: k2*v^2 + k1*v + k0 = 0
+       double k2 = g.x() * f.y() - g.y() * f.x();
+       double k1 = e.x() * f.y() - e.y() * f.x() + h.x() * g.y() - h.y() * g.x();
+       double k0 = h.x() * e.y() - h.y() * e.x();
+       double v = 0;
+       if (qAbs(k2) < 1e-9) {
+         // Lineare Gleichung, falls das Quad ein Trapez/Parallelogramm ist
+         v = -k0 / k1;
+       } else {
+         // Quadratische Formel: v = (-k1 +- sqrt(k1^2 - 4*k2*k0)) / (2*k2)
+         double delta = k1 * k1 - 4.0 * k2 * k0;
+         if (delta < 0) return QPointF(0, 0); // Punkt außerhalb/Fehler
+         v = (-k1 + qSqrt(delta)) / (2.0 * k2);
+       }
+       // u berechnen basierend auf v
+       double u = (h.x() - f.x() * v) / (e.x() + g.x() * v);
+       return QPointF(u, v);
+    }
+    
+    
+    // >>>
     inline QString getGeometryString( QGraphicsPixmapItem *item ) {
        if ( !item ) return QString();
        int w = item->pixmap().width();

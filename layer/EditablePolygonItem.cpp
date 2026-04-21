@@ -36,16 +36,20 @@ EditablePolygonItem::EditablePolygonItem( EditablePolygon* poly, QGraphicsItem* 
     : QGraphicsObject(parent)
     , m_poly(poly)
 {
+  qCDebug(logEditor) << "EditablePolygonItem::EditablePolygonItem(): Processing...";
+  {
     Q_ASSERT(m_poly);
     m_layer = dynamic_cast<LayerItem*>(parent);
     Q_ASSERT(m_layer);
-    setZValue(1000);
+    setParentItem(nullptr);
+    setZValue(99999);
     setFlags(ItemIsSelectable | ItemIsFocusable);
     setAcceptHoverEvents(true);
     connect(m_poly, &EditablePolygon::changed, this, &EditablePolygonItem::updateGeometry);
     connect(m_poly, &EditablePolygon::visibilityChanged, this, &EditablePolygonItem::onVisibilityChanged);
-    connect(m_poly, &EditablePolygon::selectionChanged, this, &EditablePolygonItem::onSelelctionChanged);
+    connect(m_poly, &EditablePolygon::selectionChanged, this, &EditablePolygonItem::onSelectionChanged);
     rebuildHandles();
+  }
 }
 
 QRectF EditablePolygonItem::boundingRect() const
@@ -61,6 +65,8 @@ QRectF EditablePolygonItem::boundingRect() const
 
 void EditablePolygonItem::paint( QPainter* p, const QStyleOptionGraphicsItem*, QWidget* )
 {
+  qCDebug(logEditor) << "EditablePolygonItem::paint(): Processing...";
+  {
     if ( !m_poly->polygonVisible() )
         return;
     const QPolygonF& poly = m_poly->polygon();
@@ -86,9 +92,29 @@ void EditablePolygonItem::paint( QPainter* p, const QStyleOptionGraphicsItem*, Q
       p->setPen(QPen(m_lineColor, 2,Qt::SolidLine));
       p->drawPolyline(poly);
     }
+  }
 }
 
 // ---------------- Interaction ----------------
+
+void EditablePolygonItem::focusInEvent( QFocusEvent *event ) 
+{
+  qCDebug(logEditor) << "EditablePolygonItem::focusInEvent(): Processing...";
+  {
+    setParentItem(nullptr);
+    setZValue(99999);
+    QGraphicsObject::focusInEvent(event);
+  }
+}
+
+void EditablePolygonItem::focusOutEvent( QFocusEvent *event ) 
+{
+  qCDebug(logEditor) << "EditablePolygonItem::focusOutEvent(): Processing...";
+  {
+    setZValue(10000);
+    QGraphicsObject::focusOutEvent(event);
+  }
+}
 
 void EditablePolygonItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
 {
@@ -275,16 +301,19 @@ void EditablePolygonItem::onVisibilityChanged()
         p->setVisible(m_poly->markersVisible());
 }
 
-void EditablePolygonItem::onSelelctionChanged()
-{
+void EditablePolygonItem::onSelectionChanged()
+{  
+  qCDebug(logEditor) << "EditablePolygonItem::onSelectionChanged(): Processing...";
+  { 
     // Marker (Control Points)
     for ( auto* p : m_handles )
         p->setVisible(m_poly->isSelected());
+  }
 }
 
 void EditablePolygonItem::rebuildHandles()
 {
-  // qDebug() << "EditablePolygonItem::rebuildHandles(): Processing...";
+  qCDebug(logEditor) << "EditablePolygonItem::rebuildHandles(): Processing...";
   {
     qDeleteAll(m_handles);
     m_handles.clear();
@@ -299,7 +328,7 @@ void EditablePolygonItem::rebuildHandles()
         h->setBrush(m_handleColor);
         h->setPen(Qt::NoPen);
         h->setPos(p);
-        h->setZValue(10);
+        h->setZValue(1001);
         m_handles.push_back(h);
     }
   }

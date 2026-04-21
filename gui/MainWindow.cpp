@@ -190,6 +190,22 @@ MainWindow::~MainWindow() {
   }
 }
 
+// --- ---
+QString MainWindow::mainOperationModeName( int mode )
+{
+  switch ( mode ) {
+   case None:          return "None";
+   case Paint:         return "Paint";
+   case Mask:          return "Mask";
+   case FreeSelection: return "FreeSelection";
+   case Polygon:       return "Polygon";
+   case ImageLayer:    return "ImageLayer";
+   case CreateLasso:   return "CreateLasso";
+   case CreatePolygon: return "CreatePolygon";
+  }
+  return "Unknown";
+}
+
 // ---------------------- Catch close/exit event ----------------------
 bool MainWindow::checkUnsavedData( bool isCloseProgram  )
 {
@@ -800,7 +816,7 @@ void MainWindow::toggleDocks()
 // --------------------------------- Layer tools ---------------------------------
 void MainWindow::toggleLayerVisibility(  QListWidgetItem* item )
 {
-  qCDebug(logEditor) << "MainWindow::toggleLayerVisibility(): Processing...";
+  qDebug() << "MainWindow::toggleLayerVisibility(): Processing...";
   {
     if ( !item ) return;
     if ( m_updatingLayerList ) return; // ⚡ verhindert Rekursion
@@ -818,6 +834,8 @@ void MainWindow::toggleLayerVisibility(  QListWidgetItem* item )
     // Update CheckState
     item->setCheckState(layer->m_visible ? Qt::Checked : Qt::Unchecked);
     m_updatingLayerList = false;
+    // Update message
+    showMessage(QString("%1 layer %2").arg(layer->m_visible?"Show":"Hide").arg(layer->id()));
   }   
 }
 
@@ -858,6 +876,8 @@ void MainWindow::rebuildLayerList()
       m_selectLayerItem->addItem(QString("Layer %1").arg(layer->id()), layer->id());
       nItems += 1;
      }
+     // hide all sub toolbars
+     hideAllLayerToolbars();
      // next
      if ( nItems == 0 ) {
        m_selectLayerItem->addItems({"None yet defined"});
@@ -885,7 +905,7 @@ void MainWindow::setSelectedLayer( const QString &name )
 
 void MainWindow::layerItemClicked( QListWidgetItem* item )
 {
-  qCDebug(logEditor) << "MainWindow::layerItemClicked(): Processing...";
+  qDebug() << "MainWindow::layerItemClicked(): Processing...";
   {
     if ( !item ) return;
     toggleLayerVisibility(item);  // Auge/CheckState
@@ -904,7 +924,7 @@ void MainWindow::layerItemClicked( QListWidgetItem* item )
 void MainWindow::onLayerItemClicked( QListWidgetItem* item )
 {
   if ( !item ) return;
-  qCDebug(logEditor) << "MainWindow::onLayerItemClicked(): name =" << item->text();
+  qDebug() << "MainWindow::onLayerItemClicked(): name =" << item->text();
   {
     void* ptr = item->data(Qt::UserRole).value<void*>();
     Layer* layer = static_cast<Layer*>(ptr);
@@ -923,6 +943,7 @@ void MainWindow::onLayerItemClicked( QListWidgetItem* item )
              }
              m_selectedLayerItemName = l->name();
              item->setSelected(l->m_item->isSelected());
+             showMessage(QString("%1 layer %2").arg(layer->m_visible?"Select":"De-select").arg(layer->id()));
            } else {
              l->m_item->setSelected(false);
              l->m_item->setZValue(2);
@@ -1201,7 +1222,7 @@ void MainWindow::updateControlButtonState()
     bool isB = sender() == m_lassoControlAction ? 1 : 0;
     bool isC = sender() == m_maskControlAction ? 1 : 0;
     bool isD = sender() == m_polygonControlAction ? 1 : 0;
-    bool isE = sender() == m_layerControlAction ? 1 : 0; // *** *** ***
+    bool isE = sender() == m_layerControlAction ? 1 : 0;
     // --- ---
     bool paintIsChecked = m_paintControlAction->isChecked();
     bool lassoIsChecked = m_lassoControlAction->isChecked();
@@ -1489,7 +1510,7 @@ void MainWindow::createToolbars()
     m_layerToolbar->addWidget(m_selectLayerItem);
     connect(m_selectLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
       if ( !text.isEmpty() ) {
-        qCDebug(logEditor) << "MainWindow::createToolbars(): Callback call for " << text;
+        qDebug() << "MainWindow::createToolbars(): Callback call for " << text;
         // select active layer
         m_selectedLayerItemName = text;
         // update layer list
@@ -1509,10 +1530,10 @@ void MainWindow::createToolbars()
           if ( layerItem != nullptr ) {
             QString name = l->name().section(' ', -2, -1);
             if ( name == text ) {
-              layerItem->setIsSelected(true);
+              layerItem->setIsSelected(6,true);
               layerItem->setZValue(3);
             } else {
-              layerItem->setIsSelected(false);
+              layerItem->setIsSelected(7,false);
               layerItem->setZValue(2);
             }
           }
@@ -1600,7 +1621,7 @@ void MainWindow::createToolbars()
     m_translateYLayerSpin->setRange(-100000.0,100000.0);
     m_translateYLayerSpin->setValue(0.0);
     m_translateLayerToolbar->addWidget(m_translateYLayerSpin);
-    m_translateLayerToolbar->setVisible(true);
+    m_translateLayerToolbar->setVisible(false);
     
     // --- sub toolbar layer scale ---
     m_scaleLayerToolbar = addToolBar(tr("ScaleLayer"));
@@ -1942,26 +1963,33 @@ void MainWindow::createStatusbar()
 
 void MainWindow::updateLayerOperationParameter( int mode, double value1, double value2 )
 {
-  qCDebug(logEditor) << "MainWindow::updateLayerOperationParameter(): mode =" << mode << ", value =" << value1;
+  qCDebug(logEditor) << "MainWindow::updateLayerOperationParameter(): layerOpMode =" << LayerItem::operationModeName(mode) 
+                 << ", mainOpMode =" << mainOperationModeName(m_operationMode) << ", value =" << value1;
   {
-    if ( mode == LayerItem::OperationMode::Rotate ) {
+    if ( m_operationMode == MainOperationMode::ImageLayer ) {
+     if ( mode == LayerItem::OperationMode::Rotate ) {
       m_rotationLayerAngleSpin->blockSignals(true);
       m_rotationLayerAngleSpin->setValue(value1);
       m_rotationLayerAngleSpin->blockSignals(false);
-    } else if ( mode == LayerItem::OperationMode::Translate ) {
+     } else if ( mode == LayerItem::OperationMode::Translate ) {
       m_translateXLayerSpin->blockSignals(true);
       m_translateXLayerSpin->setValue(value1);
       m_translateXLayerSpin->blockSignals(false);
       m_translateYLayerSpin->blockSignals(true);
       m_translateYLayerSpin->setValue(value2);
       m_translateYLayerSpin->blockSignals(false);
-    } else if ( mode == LayerItem::OperationMode::Scale ) {
+     } else if ( mode == LayerItem::OperationMode::Scale ) {
       m_scaleXLayerSpin->blockSignals(true);
       m_scaleXLayerSpin->setValue(value1);
       m_scaleXLayerSpin->blockSignals(false);
       m_scaleYLayerSpin->blockSignals(true);
       m_scaleYLayerSpin->setValue(value2);
       m_scaleYLayerSpin->blockSignals(false);
+     } else if ( mode == LayerItem::OperationMode::Flip ) {
+      m_mirrorDirectionCombo->setCurrentIndex(0);
+     } else if ( mode == LayerItem::OperationMode::Flop ) {
+      m_mirrorDirectionCombo->setCurrentIndex(1);
+     }
     }
   }
 }
@@ -1992,8 +2020,11 @@ void MainWindow::info()
 
 void MainWindow::setLayerOperationMode( int mode, bool updateMode ) 
 {
-  qCDebug(logEditor) << "MainWindow::setLayerOperationMode(): mode =" << mode << ", update =" << updateMode;
+  qCDebug(logEditor) << "MainWindow::setLayerOperationMode(): layerOpMode =" << LayerItem::operationModeName(mode) << ", mainOpMode =" 
+                  << mainOperationModeName(m_operationMode) << ", update =" << updateMode;
   {
+    if ( m_operationMode != MainOperationMode::ImageLayer ) 
+      return;
     if ( updateMode == false ) { 
       m_transformLayerItem->blockSignals(true);
       hideAllLayerToolbars();

@@ -48,6 +48,8 @@ class LayerItem : public QGraphicsPixmapItem
     enum LayerType { MainImage, LassoLayer };
     enum OperationMode { None, Info, CageEdit, Translate, Rotate, Scale, Flip, Flop, Perspective, CageWarp, 
                           Select, MovePoint, AddPoint, DeletePoint, TranslatePolygon, SmoothPolygon, ReducePolygon, DeletePolygon };
+                          
+    static QString operationModeName( int mode );
 
     LayerItem( const QPixmap& pixmap, QGraphicsItem* parent = nullptr );
     LayerItem( const QImage& image, QGraphicsItem* parent = nullptr );
@@ -74,7 +76,7 @@ class LayerItem : public QGraphicsPixmapItem
       m_totalTransform = transform;
     }
     
-    void setIsSelected( bool isSelected );
+    void setIsSelected( int caller, bool isSelected );
     void setMirror( int plane );
     void mirror( int plane );
     void shift( const QPointF& aShift );
@@ -89,7 +91,7 @@ class LayerItem : public QGraphicsPixmapItem
     void updateCagePoint( TransformHandleItem*, const QPointF& localPos );
     void commitCageTransform( const QVector<QPointF> &cage );
     void beginCageEdit();
-    void setCageVisible( bool isVisible = false );
+    void setCageVisible( int caller, bool isVisible = false );
     bool cageEnabled() const;
     void setCageVisible( LayerItem::OperationMode mode, bool isVisible, bool pushBackImage = false );
     void setInActive( bool isInActive );

@@ -58,17 +58,21 @@ class EditablePolygonItem : public QGraphicsObject
 
   protected:
   
-    // --- mouse-Events ---
+    // --- mouse events ---
     void mousePressEvent( QGraphicsSceneMouseEvent* e ) override;
     void mouseMoveEvent( QGraphicsSceneMouseEvent* e ) override;
     void mouseReleaseEvent( QGraphicsSceneMouseEvent* e ) override;
     void mouseDoubleClickEvent( QGraphicsSceneMouseEvent* e ) override;
+    
+    // --- focus events ---
+    void focusInEvent( QFocusEvent* event ) override;
+    void focusOutEvent( QFocusEvent* event ) override;
 
   private slots:
   
     void updateGeometry();
     void onVisibilityChanged();
-    void onSelelctionChanged();
+    void onSelectionChanged();
 
   private:
 

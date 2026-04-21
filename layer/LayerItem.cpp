@@ -72,6 +72,32 @@ LayerItem::LayerItem( const QImage& image, QGraphicsItem* parent )
 }
 
 // >>>
+QString LayerItem::operationModeName( int mode )
+{
+  switch ( mode ) {
+   case None:             return "None";
+   case Info:             return "Info";
+   case CageEdit:         return "CageEdit";
+   case Translate:        return "Translate";
+   case Rotate:           return "Rotate";
+   case Scale:            return "Scale";
+   case Flip:             return "Flip";
+   case Flop:             return "Flop";
+   case Perspective:      return "Perspective";
+   case CageWarp:         return "CageWarp";
+   case Select:           return "Select";
+   case MovePoint:        return "MovePoint";
+   case AddPoint:         return "AddPoint";
+   case DeletePoint:      return "DeletePoint";
+   case TranslatePolygon: return "TranslatePolygon";
+   case SmoothPolygon:    return "SmoothPolygon";
+   case ReducePolygon:    return "ReducePolygon";
+   case DeletePolygon:    return "DeletePolygon";
+  }
+  return "Unknown";
+}
+
+// >>>
 void LayerItem::applyPerspective()
 {
    QImage warped = m_perspective.apply(m_originalImage);
@@ -250,19 +276,19 @@ void LayerItem::updateOriginalImage() {
 }
 
 // ------------------------ Selected ------------------------
-void LayerItem::setIsSelected( bool isSelected ) 
+void LayerItem::setIsSelected( int caller, bool isSelected ) 
 {
-  qCDebug(logEditor) << "LayerItem::setIsSelected(): name =" << name() << ", select =" << isSelected << ", operationMode =" << m_operationMode;
+  qCDebug(logEditor) << "LayerItem::setIsSelected(" << caller << "): name =" << name() << ", select =" << isSelected << ", operationMode =" << m_operationMode;
   {
     MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
     if ( parent != nullptr ) {
       if ( isSelected ) {
-        parent->getViewer()->setSelectedLayer(this);
+        parent->getViewer()->setSelectedLayer(1,this);
         parent->setLayerOperationMode(m_operationMode,false);
       }
       parent->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,m_currentRotation);
     }
-    if ( !isSelected ) setCageVisible(false);
+    if ( !isSelected ) setCageVisible(1,false);
     QGraphicsItem::setSelected(isSelected);
   }
 }
@@ -450,7 +476,7 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 
 QImage LayerItem::applyCageWarp( const QString &caller )
 {
-  qCDebug(logEditor) << "LayerItem::applyCageWarp(" << caller << "): meshActive =" << m_cageMesh.isActive() << ", cageEnabled =" << m_cageEnabled << ", cageEditing =" << m_cageEditing << ", intialized =" << m_cageMesh.isInitialized();
+  qDebug() << "LayerItem::applyCageWarp(" << caller << "): meshActive =" << m_cageMesh.isActive() << ", cageEnabled =" << m_cageEnabled << ", cageEditing =" << m_cageEditing << ", intialized =" << m_cageMesh.isInitialized();
   {
     #if 0
      // removed by CLAUDE
@@ -528,9 +554,11 @@ void LayerItem::initCage( const QVector<QPointF>& pts, const QRectF &rect, int n
   }
 }
 
-void LayerItem::setCageVisible( bool isVisible )
+void LayerItem::setCageVisible( int caller, bool isVisible )
 {
-  qCDebug(logEditor) << "LayerItem::setCageVisible(): name = "  << name() << ", visible =" << isVisible << ", cageOverlay =" << (m_cageOverlay != nullptr?"ok":"none") << ", cageEditing=" << m_cageEditing << "|" << m_cageEnabled << " nControlPoints=" << m_cageMesh.pointCount();
+  qDebug() << "LayerItem::setCageVisible(): caller =" << caller << ", name =" << name() << ", visible =" << isVisible 
+        << ", cageOverlay =" << (m_cageOverlay != nullptr?"ok":"none") << ", cageEditing =" << m_cageEditing << "|" << m_cageEnabled 
+        << ", nControlPoints =" << m_cageMesh.pointCount();
   {
    ImageView *viewer = getParentImageView();
    if ( m_cageOverlay != nullptr && viewer != nullptr ) {
@@ -574,7 +602,8 @@ void LayerItem::setCageVisible( bool isVisible )
 
 void LayerItem::setCageVisible( LayerItem::OperationMode mode, bool isVisible, bool pushBackImage )
 {
-  qCDebug(logEditor) << "LayerItem::setCageVisible(): name =" << name() << ", mode =" << mode << ", isVisible =" << isVisible << ", pushBackImage =" << pushBackImage << ", cageOverlay =" << (m_cageOverlay != nullptr?"ok":"none");
+  qCDebug(logEditor) << "LayerItem::setCageVisible(): name =" << name() << ", mode =" << mode << ", isVisible =" 
+             << isVisible << ", pushBackImage =" << pushBackImage << ", cageOverlay =" << (m_cageOverlay != nullptr?"ok":"none");
   { 
     switch ( mode ) {
       case LayerItem::OperationMode::CageWarp:
@@ -823,12 +852,12 @@ void LayerItem::setOperationMode( OperationMode mode )
      if ( m_operationMode == mode )
       return;
      if ( m_operationMode == OperationMode::CageWarp ) {
-      setCageVisible(false);
+      setCageVisible(2,false);
       // setOriginalImage(m_image);
      }
      m_operationMode = mode;
      if ( m_operationMode == OperationMode::CageWarp ) {
-       setCageVisible(true);
+       setCageVisible(3,true);
      }
    }
 }
@@ -878,7 +907,7 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
             return;
           }
         } else {
-          setCageVisible(false);
+          setCageVisible(4,false);
         }
       } else if ( m_operationMode == OperationMode::Perspective ) {
           qCDebug(logEditor) << " + perpective call +";

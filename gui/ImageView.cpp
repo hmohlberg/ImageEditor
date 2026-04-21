@@ -136,7 +136,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
                      if( layer ) {
                        // make invisible if there is a cage but no warp (not active)
                        if( !layer->isCageWarp() && layer->hasActiveCage() ) {
-                         layer->setCageVisible(false);
+                         layer->setCageVisible(5,false);
                        }
                      }
                    }
@@ -163,8 +163,10 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
           QRegularExpression re("(\\d+)");
           QRegularExpressionMatch match = re.match(justFinishedCommand->text());
           if ( match.hasMatch() && mainWindow != nullptr ) {
-            layerId = match.captured(1).toInt(); 
-            setSelectedLayer(QString("Layer %1").arg(layerId));
+            if ( !justFinishedCommand->text().startsWith("Editable Polygon") ) {
+              layerId = match.captured(1).toInt(); 
+              setSelectedLayer(2,QString("Layer %1").arg(layerId));
+            }
           }
           if ( justFinishedCommand->text().startsWith("Scale") ) {
             // qDebug() << " *** handle scale transform operation ***";
@@ -279,7 +281,7 @@ void ImageView::forcedUpdate()
   qCDebug(logEditor) << "ImageView::forcedUpdate(): Processing...";
   {
     if ( m_selectedLayer != nullptr ) {
-     m_selectedLayer->setCageVisible(false);
+     m_selectedLayer->setCageVisible(6,false);
     } else {
      qInfo() << " - no selected layer found";
     }
@@ -478,7 +480,7 @@ void ImageView::createMaskLayer( const QSize& size )
 }
 
 void ImageView::saveMaskImage( const QString& filename ) {
-  qDebug() << "ImageView::saveMaskImage(): filename =" << filename;
+  qCDebug(logEditor) << "ImageView::saveMaskImage(): filename =" << filename;
   {
     if ( m_maskLayer != nullptr ) {
      // --- save index class file ---
@@ -517,7 +519,7 @@ void ImageView::saveMaskImage( const QString& filename ) {
 }
 
 void ImageView::loadMaskImage( const QString& filename ) {
-  qDebug() << "ImageView::loadMaskImage(): maskfile =" << filename;
+  qCDebug(logEditor)<< "ImageView::loadMaskImage(): maskfile =" << filename;
   {
     // --- load mask image ---
     QImage img(filename);
@@ -629,21 +631,24 @@ void ImageView::deleteLayer( Layer* layer )
    m_undoStack->push(new DeleteLayerCommand(imageLayer,imageLayer->pos(),layer->id()));
 }
 
-void ImageView::setSelectedLayer( LayerItem* layer  )
+void ImageView::setSelectedLayer( int caller, LayerItem* layer  )
 {
   m_selectedLayer = layer;
 }
 
-void ImageView::setSelectedLayer( const QString &name )
+void ImageView::setSelectedLayer( int caller, const QString &name )
 {
-  MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
-  if ( mainWindow == nullptr ) return;
-  mainWindow->setSelectedLayer(name);
-  for ( auto* item : m_scene->items() ) {
-    auto* layer = dynamic_cast<LayerItem*>(item);
-    if ( layer && !layer->name().startsWith("Main") ) {
-      bool isSelected = layer->name().endsWith(name) ? true : false;
-      layer->setIsSelected(isSelected);
+  qCDebug(logEditor) << "ImageView::setSelectedLayer(" << caller << "): name =" << name;
+  {
+    MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+    if ( mainWindow == nullptr ) return;
+    mainWindow->setSelectedLayer(name);
+    for ( auto* item : m_scene->items() ) {
+      auto* layer = dynamic_cast<LayerItem*>(item);
+      if ( layer && !layer->name().startsWith("Main") ) {
+        bool isSelected = layer->name().endsWith(name) ? true : false;
+        layer->setIsSelected(1,isSelected);
+      }
     }
   }
 }
@@ -656,7 +661,7 @@ void ImageView::setActiveLayer( const QString &name, bool initialize )
       auto* layer = dynamic_cast<LayerItem*>(item);
       if ( layer && !layer->name().startsWith("Main") ) {
         bool isSelected = name == layer->name() ? true : false;
-        layer->setIsSelected(isSelected);
+        layer->setIsSelected(2,isSelected);
         if ( isSelected ) {
           MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
           if ( mainWindow != nullptr ) {
@@ -720,7 +725,7 @@ void ImageView::keyPressEvent( QKeyEvent* event )
           }
           QRegularExpression re("\\d+$"); 
           LayerItem *selectedLayer = layers[index];
-          selectedLayer->setIsSelected(true);
+          selectedLayer->setIsSelected(3,true);
           setOnlyCageVisible(selectedLayer->id());
           QRegularExpressionMatch match = re.match(selectedLayer->name());
           if ( match.hasMatch() ) {
@@ -881,19 +886,19 @@ void ImageView::mousePressEvent( QMouseEvent* event )
           for ( auto* item : m_scene->items() ) {
             auto* layer = dynamic_cast<LayerItem*>(item);
             if ( layer && layer != clickedItem )
-                layer->setIsSelected(false);
+                layer->setIsSelected(4,false);
           }
-          clickedItem->setIsSelected(true);
+          clickedItem->setIsSelected(5,true);
           m_selectedLayer = clickedItem;
         }
         if( m_selectedCageLayer && m_selectedCageLayer != clickedItem ) {
-          m_selectedCageLayer->setCageVisible( false );
+          m_selectedCageLayer->setCageVisible(7,false);
         }
         if( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
           if ( clickedItem->hasActiveCage() ) {
             m_selectedCageLayer = clickedItem;
             m_selectedCageLayer->setCageEditing( true );
-            m_selectedCageLayer->setCageVisible( true );
+            m_selectedCageLayer->setCageVisible( 8, true );
             // this one actually makes the control points visible.
             m_selectedCageLayer->setCageVisible( LayerItem::OperationMode::CageWarp, true );
             m_cageBefore = clickedItem->cageMesh().points();
@@ -1428,7 +1433,7 @@ void ImageView::initCageWarpForLayer( LayerItem *layerItem )
     if ( layerItem->hasActiveCage() ) {
       m_selectedCageLayer = layerItem;
       m_selectedCageLayer->setCageEditing( true );
-      m_selectedCageLayer->setCageVisible( true );
+      m_selectedCageLayer->setCageVisible(9,true);
       // this one actually makes the control points visible.
       m_selectedCageLayer->setCageVisible( LayerItem::OperationMode::CageWarp, true );
       m_cageBefore = layerItem->cageMesh().points();
@@ -1807,7 +1812,7 @@ void ImageView::redoPolygonOperation()
 
 void ImageView::createPolygonLayer()
 {
-  qCDebug(logEditor) << "ImageView::createPolygonLayer(): Processing...";
+  qDebug() << "ImageView::createPolygonLayer(): Processing...";
   {
     if ( m_activePolygon != nullptr ) {
       LayerItem *layer = baseLayer();
@@ -1885,20 +1890,21 @@ void ImageView::setPolygonEnabled( bool enabled )
 { 
   qCDebug(logEditor) << "ImageView::setPolygonEnabled(): npolygons=" << m_editablePolygons.size() << ", enabled=" << enabled;
   {
+   // disable polygon selecting
+   setActiveLayer(QString("None"));
+   // prepare polygon drawing
    LayerItem *layer = baseLayer();
    if ( layer != nullptr ) {
     m_polygonEnabled = enabled;
     if ( m_polygonEnabled ) {
      QString name = QString("Polygon %1").arg(1+m_editablePolygons.size());
-     m_activePolygon = new EditablePolygon("ImageView::setPolygonEnabled()",name,this);
+     m_activePolygon = new EditablePolygon("ImageView::setPolygonEnabled()",name);
      m_editablePolygons.push_back(m_activePolygon);
      m_activePolygonItem = new EditablePolygonItem(m_activePolygon,layer);
-     m_activePolygonItem->setColor(QColor(255,0,0)); // set polygon color here
+     m_activePolygonItem->setColor(QColor(255,0,0));
      m_activePolygonItem->setName(name);
     } else {
      finishPolygonDrawing(layer);
-     // m_activePolygonItem = nullptr;
-     // m_activePolygon = nullptr;
     }
    }
   }
@@ -1948,7 +1954,8 @@ void ImageView::setOnlyCageVisible( int ident )
    for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
     auto* layer = dynamic_cast<LayerItem*>(item);
     if ( layer ) {
-      layer->setCageVisible( layer->id() == ident ? true : false );
+      bool isVisible = ( layer->id() == ident && layer->operationMode() == LayerItem::OperationMode::CageWarp ) ? true : false ;
+      layer->setCageVisible( 10, isVisible);
     }
    }
   }

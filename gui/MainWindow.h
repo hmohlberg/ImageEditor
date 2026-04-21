@@ -41,9 +41,8 @@ class MainWindow : public QMainWindow, public IMainSystem
  public:
 
     enum MainOperationMode { None, Paint, Mask, FreeSelection, Polygon, ImageLayer, CreateLasso, CreatePolygon };
-
-    // explicit MainWindow( const QString& imagePath = QString(), const QString& historyPath = QString(), 
-    //            bool useVulkan = false, QWidget* parent = nullptr );
+    
+    static QString mainOperationModeName( int mode );
                 
     explicit MainWindow( const QJsonObject& options, QWidget* parent = nullptr );
     ~MainWindow();

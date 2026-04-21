@@ -127,8 +127,8 @@ class ImageView : public QGraphicsView
     void setPolygonIndex( quint8 index ) { m_polygonIndex = index; }
     void setActiveCageLayer( LayerItem* item ) { m_selectedCageLayer = item; }
     void setActiveLayer( const QString& name, bool initialize = true );
-    void setSelectedLayer( const QString& name );
-    void setSelectedLayer( LayerItem* layer );
+    void setSelectedLayer( int caller, const QString& name );
+    void setSelectedLayer( int caller, LayerItem* layer );
     void setLayerOperationMode( LayerItem::OperationMode mode );
     void setOnlySelectedPolygon( const QString& name );
     void setPolygonOperationMode( LayerItem::OperationMode mode );

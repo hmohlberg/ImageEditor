@@ -54,13 +54,18 @@ MirrorLayerCommand::MirrorLayerCommand( LayerItem* layer, const int idx, int mir
 
 void MirrorLayerCommand::printMessage( bool isUndo )
 {
-  if ( auto *ms = IMainSystem::instance() ) {
-    if ( m_mirrorPlane == 2 ) {
-     IMainSystem::instance()->showMessage(QString("Mirrored layer %1 horizontally").arg(m_layerId));
-    } else if ( m_mirrorPlane == 1 ) {
-     IMainSystem::instance()->showMessage(QString("Mirrored layer %1 vertically").arg(m_layerId));
-    } else {
-     IMainSystem::instance()->showMessage(QString("Invalid mirror plane for layer %1").arg(m_layerId),1);
+  qCDebug(logEditor) << "MirrorLayerCommand::printMessage(): undo =" << isUndo;
+  {
+    if ( auto *ms = IMainSystem::instance() ) {
+      if ( m_mirrorPlane == 2 ) {
+       IMainSystem::instance()->showMessage(QString("Mirrored layer %1 horizontally").arg(m_layerId));
+       IMainSystem::instance()->updateLayerOperationParameter(LayerItem::OperationMode::Flip,1,0);
+      } else if ( m_mirrorPlane == 1 ) {
+       IMainSystem::instance()->showMessage(QString("Mirrored layer %1 vertically").arg(m_layerId));
+       IMainSystem::instance()->updateLayerOperationParameter(LayerItem::OperationMode::Flop,1,0);
+      } else {
+       IMainSystem::instance()->showMessage(QString("Invalid mirror plane for layer %1").arg(m_layerId),1);
+      }
     }
   }
 }
