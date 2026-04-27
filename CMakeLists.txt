@@ -67,7 +67,6 @@ set(SOURCES
     undo/MirrorLayerCommand.cpp
     undo/EditablePolygonCommand.cpp
     undo/TransformLayerCommand.cpp
-    undo/PerspectiveTransformCommand.cpp
     undo/PerspectiveWarpCommand.cpp
     undo/PolygonMovePointCommand.cpp
     undo/PolygonInsertPointCommand.cpp
@@ -111,7 +110,6 @@ set(HEADERS
     undo/MaskPaintCommand.h
     undo/MirrorLayerCommand.h
     undo/TransformLayerCommand.h
-    undo/PerspectiveTransformCommand.h
     undo/PerspectiveWarpCommand.h
     undo/EditablePolygonCommand.h
     undo/PolygonMovePointCommand.h

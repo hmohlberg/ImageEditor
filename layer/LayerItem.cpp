@@ -101,7 +101,11 @@ QString LayerItem::operationModeName( int mode )
 void LayerItem::applyPerspective()
 {
    QImage warped = m_perspective.apply(m_originalImage);
-   setPixmap(QPixmap::fromImage(warped));
+   // OLD: setPixmap(QPixmap::fromImage(warped));
+   m_image = warped;
+   if ( !m_nogui && qobject_cast<QApplication*>(qApp) ) {
+     setPixmap(QPixmap::fromImage(warped));
+   }
 }
 
 // returns unified rect of the pixmap AND the m_cageMesh
@@ -278,7 +282,8 @@ void LayerItem::updateOriginalImage() {
 // ------------------------ Selected ------------------------
 void LayerItem::setIsSelected( int caller, bool isSelected ) 
 {
-  qCDebug(logEditor) << "LayerItem::setIsSelected(" << caller << "): name =" << name() << ", select =" << isSelected << ", operationMode =" << m_operationMode;
+  qCDebug(logEditor) << "LayerItem::setIsSelected(" << caller << "): name =" << name() 
+                  << ", select =" << isSelected << ", operationMode =" << m_operationMode;
   {
     MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
     if ( parent != nullptr ) {
@@ -307,7 +312,7 @@ void LayerItem::mirror( int plane )
 }
 
 void LayerItem::setMirror( int mirrorPlane ) {
-  qCDebug(logEditor) << "LayerItem::setMirror(): mirrorPlane=" << mirrorPlane;
+  qCDebug(logEditor) << "LayerItem::setMirror(): mirrorPlane =" << mirrorPlane;
   {
     if ( mirrorPlane > 0 ) {
       QTransform transform;
@@ -363,8 +368,22 @@ void LayerItem::resetTotalTransform()
   }
 }
 
+void LayerItem::resetImageState( const QImage& image, const QPointF& position, const QTransform& transform )
+{
+  qDebug() << "LayerItem::resetImageState(): name =" << name() << ", position =" << position;
+  {
+    prepareGeometryChange();
+    setTransform(QTransform());
+    setPos(position);
+    m_image = image;
+    m_totalTransform = transform;
+    updatePixmap();
+  }
+}
+
 void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
-  qCDebug(logEditor) << "LayerItem::setImageTransform(): position =" << pos() << ", combine =" << combine << ", originalImageType =" << m_originalImageType;
+  qDebug() << "LayerItem::setImageTransform(): position =" << pos() << ", combine =" 
+                        << combine << ", originalImageType =" << m_originalImageType << ", transform =" << transform;
   {
     // *** DO NOT USE INTERNAL TRANSFORMATIONS ***
     if ( 1 == 2 && !m_nogui && qobject_cast<QApplication*>(qApp) ) {
@@ -402,7 +421,7 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
       m_totalTransform *= transform;
       m_totalTransform.translate(-imageCenter.x(), -imageCenter.y());
     }
-    m_image = m_originalImage.transformed(m_totalTransform, Qt::SmoothTransformation);
+    m_image = m_originalImage.transformed(m_totalTransform,Qt::SmoothTransformation);
     QPointF newImageCenter(m_image.width() / 2.0, m_image.height() / 2.0);
     setPos(sceneCenter - newImageCenter);
     // reset transform
@@ -416,7 +435,7 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
 void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget )
 {
 #if 0
-  qCDebug(logEditor) << "LayerItem::paint(): Processing " << (m_layer?m_layer->name():"unknown") << ", selected = " << isSelected();
+  qCDebug(logEditor) << "LayerItem::paint(): Processing " << (m_layer?m_layer->name():"unknown") << ", selected =" << isSelected();
 #endif
   {
     QGraphicsPixmapItem::paint(painter,option,widget);
@@ -476,7 +495,8 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 
 QImage LayerItem::applyCageWarp( const QString &caller )
 {
-  qDebug() << "LayerItem::applyCageWarp(" << caller << "): meshActive =" << m_cageMesh.isActive() << ", cageEnabled =" << m_cageEnabled << ", cageEditing =" << m_cageEditing << ", intialized =" << m_cageMesh.isInitialized();
+  qDebug() << "LayerItem::applyCageWarp(" << caller << "): name =" << name() << ", meshActive =" << m_cageMesh.isActive() 
+        << ", cageEnabled =" << m_cageEnabled << ", cageEditing =" << m_cageEditing << ", intialized =" << m_cageMesh.isInitialized();
   {
     #if 0
      // removed by CLAUDE
@@ -489,6 +509,8 @@ QImage LayerItem::applyCageWarp( const QString &caller )
     }
     TriangleWarp::WarpResult warped = TriangleWarp::warp(m_cageMesh.image(),m_cageMesh);
     if ( !warped.image.isNull() ) {
+     m_cageMesh.image().save(QString("/tmp/origImage_layer%1.png").arg(id()));
+     warped.image.save(QString("/tmp/warpedImage_layer%1.png").arg(id()));
      setPixmap(QPixmap::fromImage(warped.image));
      m_image = warped.image;
      QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
@@ -503,7 +525,8 @@ QImage LayerItem::applyCageWarp( const QString &caller )
 
 void LayerItem::enableCage( int cols, int rows )
 {
-  qCDebug(logEditor) << "LayerItem::enableCage(): cols =" << cols << ", rows =" << rows << ", initialized =" << m_cageMesh.isInitialized() << ", enabled =" << m_cageEnabled;
+  qCDebug(logEditor) << "LayerItem::enableCage(): cols =" << cols << ", rows =" << rows 
+                  << ", initialized =" << m_cageMesh.isInitialized() << ", enabled =" << m_cageEnabled;
   {
     if ( m_cageMesh.isInitialized() ) return;
     int ncols = cols == -1 ? m_cageMesh.cols() : cols;
@@ -539,7 +562,8 @@ void LayerItem::enableCage( int cols, int rows )
 
 void LayerItem::initCage( const QVector<QPointF>& pts, const QRectF &rect, int nrows, int ncolumns )
 {
-  qCDebug(logEditor) << "LayerItem::initCage(): cageOverlay =" << (m_cageOverlay!=nullptr?"ok":"null") << ", rect =" << rect << ", rows =" << nrows << ", ncolumns =" << ncolumns;
+  qCDebug(logEditor) << "LayerItem::initCage(): cageOverlay =" << (m_cageOverlay!=nullptr?"ok":"null") 
+                          << ", rect =" << rect << ", rows =" << nrows << ", ncolumns =" << ncolumns;
   {
     m_cageMesh.setIsInitialized();
     m_cageMesh.create(rect,nrows,ncolumns);  
@@ -653,7 +677,7 @@ void LayerItem::setCageVisible( LayerItem::OperationMode mode, bool isVisible, b
 
 int LayerItem::changeNumberOfActiveCagePoints( int step ) 
 {
-  qCDebug(logEditor) << "LayerItem::changeNumberOfActiveCagePoints(): cage = " << m_cageMesh.cols() << ", step =" << step;
+  qCDebug(logEditor) << "LayerItem::changeNumberOfActiveCagePoints(): cage =" << m_cageMesh.cols() << ", step =" << step;
   {
      int expo = std::log2(m_cageMesh.cols()-1);
      expo -= step > 0 ? 0 : 1;
@@ -847,7 +871,8 @@ void LayerItem::setPolygonOperationMode( OperationMode mode )
 
 void LayerItem::setOperationMode( OperationMode mode ) 
 {
-   qCDebug(logEditor) << "LayerItem::setOperationMode(): name = " << name() << ", index =" << m_index << ", mode =" << m_operationMode << "|" << mode;
+   qCDebug(logEditor) << "LayerItem::setOperationMode(): name =" << name() << ", index =" 
+                             << m_index << ", mode =" << m_operationMode << "|" << mode;
    {
      if ( m_operationMode == mode )
       return;
@@ -895,7 +920,7 @@ bool LayerItem::isValidMouseEventOperation()
 
 void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
 {
-  qCDebug(logEditor) << "LayerItem::mouseDoubleClickEvent(): index=" << m_index << ", mode=" << m_operationMode;
+  qCDebug(logEditor) << "LayerItem::mouseDoubleClickEvent(): index =" << m_index << ", mode =" << m_operationMode;
   {
     if ( isSelected() && isValidMouseEventOperation() ) {
       if ( m_operationMode == OperationMode::CageWarp ) {
@@ -920,7 +945,9 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
 {
-  qCDebug(logEditor) << "LayerItem::mousePressEvent(): layer =" << name() << ", selected =" << isSelected() << ", zValue =" << zValue() << ", operationMode =" << m_operationMode << ", active=" << m_mouseOperationActive;
+  qCDebug(logEditor) << "LayerItem::mousePressEvent(): layer =" << name() << ", selected =" 
+               << isSelected() << ", zValue =" << zValue() << ", operationMode =" << m_operationMode 
+               << ", active =" << m_mouseOperationActive;
   {
     if ( event->button() != Qt::LeftButton ) {
       QGraphicsPixmapItem::mousePressEvent(event);

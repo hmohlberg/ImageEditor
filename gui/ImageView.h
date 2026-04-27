@@ -116,6 +116,7 @@ class ImageView : public QGraphicsView
     int pushEditablePolygon( EditablePolygon* edtitablePolygon );
     int getMaskCutToolType( const QString& name );
     
+    bool scaleScene( int direction );
     void setBrushRadius( int r ) { m_brushRadius = r; }
     void setMaskBrushRadius( int r ) { m_maskBrushRadius = r; }
     void setBrushColor( const QColor& c ) { m_brushColor = c; }

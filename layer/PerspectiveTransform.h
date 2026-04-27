@@ -29,7 +29,7 @@ class PerspectiveTransform : public QObject
 {
     Q_OBJECT
 
-public:
+ public:
 
     enum Constraint {
         None            = 0,
@@ -64,10 +64,10 @@ public:
     QJsonObject toJson() const;
     static PerspectiveTransform fromJson( const QJsonObject& );
 
-signals:
+ signals:
     void changed();
 
-private:
+ private:
 
     void applyConstraints(int idx);
 

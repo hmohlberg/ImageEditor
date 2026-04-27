@@ -86,13 +86,14 @@ class LayerItem : public QGraphicsPixmapItem
     double getRotationAngle() const { return m_currentRotation; }
     void setImageRect( const QRectF& rect );
     void setImageTransform( const QTransform& transform, bool combine = true );
+    void resetImageState( const QImage& image, const QPointF& position, const QTransform& transform );
     void endCageEdit( int idx, const QPointF& pos );
     void setType( LayerType layerType );
     void updateCagePoint( TransformHandleItem*, const QPointF& localPos );
     void commitCageTransform( const QVector<QPointF> &cage );
     void beginCageEdit();
     void setCageVisible( int caller, bool isVisible = false );
-    bool cageEnabled() const;
+    bool cageEnabled() const { return m_cageEnabled; }
     void setCageVisible( LayerItem::OperationMode mode, bool isVisible, bool pushBackImage = false );
     void setInActive( bool isInActive );
     CageWarpCommand* getCageWarpCommand() { return m_cageWarpCommand; }

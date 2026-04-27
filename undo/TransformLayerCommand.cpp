@@ -36,7 +36,7 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer,
       , m_name(name)
       , m_trafoType(trafoType)
 {
-  qCDebug(logEditor) << "TransformLayerCommand::TransformLayerCommand(): trafotype =" << m_trafoType << ", name =" << m_name;
+  qCDebug(logEditor) << "TransformLayerCommand::TransformLayerCommand(): trafotype =" << m_trafoType << ", name =" << m_name << ", oldPos =" << m_oldPos;
   {
     m_layerId = layer->id();
     m_totalTransform = m_newTransform;
@@ -187,13 +187,14 @@ void TransformLayerCommand::undo()
 
 void TransformLayerCommand::redo() 
 {
-  qCDebug(logEditor) << "TransformLayerCommand::redo(): Processing...";
+  qCDebug(logEditor) << "TransformLayerCommand::redo(): trafoType =" << m_trafoType << "|" << LayerTransformType::Scale;
   {
     if ( m_silent || !m_layer || m_deleted ) return;
     const QRectF oldSceneRect = m_layer->sceneBoundingRect();
     m_totalTransform *= m_newTransform;
     m_layer->setImageTransform(m_newTransform);
     if ( m_trafoType == LayerTransformType::Scale ) {
+      qDebug() << "TransformLayerCommand::redo(): oldPos = " << m_oldPos << ", shiftTo = " << m_newTransform.dx() << ":" << m_newTransform.dy();
       m_layer->shiftTo(m_oldPos+QPointF(m_newTransform.dx(),m_newTransform.dy()));
     }
     if ( m_trafoType == LayerTransformType::Scale ) {
@@ -244,6 +245,8 @@ QJsonObject TransformLayerCommand::toJson() const
 
 TransformLayerCommand* TransformLayerCommand::fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent )
 {
+  qCDebug(logEditor) << "TransformLayerCommand(): Processing...";
+  {
     // Layer
     const int layerId = obj["layerId"].toInt(-1);
     LayerItem* layer = nullptr;
@@ -254,8 +257,8 @@ TransformLayerCommand* TransformLayerCommand::fromJson( const QJsonObject& obj, 
         }
     }
     if ( !layer ) {
-        qWarning() << "TransformLayerCommand::fromJson(): Layer not found:" << layerId;
-        return nullptr;
+      qWarning() << "TransformLayerCommand::fromJson(): Layer not found:" << layerId;
+      return nullptr;
     }
     
     // core
@@ -264,9 +267,9 @@ TransformLayerCommand* TransformLayerCommand::fromJson( const QJsonObject& obj, 
     
     // points
     QJsonObject oldPointObj = obj["oldPosition"].toObject();
-    QPoint oldPos(oldPointObj["x"].toInt(), oldPointObj["y"].toInt());
+    QPointF oldPos(oldPointObj["x"].toDouble(), oldPointObj["y"].toDouble());
     QJsonObject newPointObj = obj["newPosition"].toObject();
-    QPoint newPos(newPointObj["x"].toInt(), newPointObj["y"].toInt());
+    QPointF newPos(newPointObj["x"].toDouble(), newPointObj["y"].toDouble());
 
     // transforms
     double rotationAngle = obj["rotationAngle"].toDouble();
@@ -294,4 +297,5 @@ TransformLayerCommand* TransformLayerCommand::fromJson( const QJsonObject& obj, 
         name,
         trafoType
     );
+  }
 }

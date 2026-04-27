@@ -735,6 +735,11 @@ void ImageView::keyPressEvent( QKeyEvent* event )
             IMainSystem::instance()->showMessage(QString("Selected layer %1 with geometry %2").arg(selectedLayer->name()).arg(geometryString));
           }
          }
+         return;
+      } else if ( event->key() == Qt::Key_Plus ) {
+       scaleScene(+1);
+      } else if ( event->key() == Qt::Key_Minus ) {
+       scaleScene(-1);
       } 
       // operation specific
       if ( opMode == MainWindow::MainOperationMode::Polygon ) {
@@ -816,7 +821,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
 {
   MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
   if ( mainWindow == nullptr ) return;  
-  qCDebug(logEditor) << "ImageView::mousePressEvent(): operationMode = " << mainWindow->getOperationMode() << ", polygonEnabled =" << m_polygonEnabled;
+  qCDebug(logEditor) << "ImageView::mousePressEvent(): operationMode =" << mainWindow->getOperationMode() << ", polygonEnabled =" << m_polygonEnabled;
   {
     if ( !scene() )
         return;     
@@ -1177,34 +1182,37 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
   qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): selectedCageLayer =" << ( m_selectedCageLayer == nullptr ? "null" : "ok" );
   {
     if ( !scene() )
-        return;
+      return;
+        
     // --- Cage warp beenden ---
-    if ( event->button() == Qt::LeftButton && m_selectedCageLayer ) {
-        QVector<QPointF> cageAfter = m_selectedCageLayer->cageMesh().points();
-        QVector<QPointF> cageBefore = m_selectedCageLayer->cageMesh().originalPoints();    
-        qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): layer =" << m_selectedCageLayer->name() 
+    LayerItem *selectedCageLayer = m_selectedCageLayer != nullptr ? m_selectedCageLayer : getSelectedItem(true);
+    if ( event->button() == Qt::LeftButton && selectedCageLayer != nullptr ) {
+        QVector<QPointF> cageAfter = selectedCageLayer->cageMesh().points();
+        QVector<QPointF> cageBefore = selectedCageLayer->cageMesh().originalPoints();    
+        qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): layer =" << selectedCageLayer->name() 
                                << ": cageAfter =" << cageAfter.size() << ", cageBefore =" << m_cageBefore.size();
         if ( cageAfter != m_cageBefore ) {
-         if ( m_selectedCageLayer->getCageWarpCommand() == nullptr ) {
+         if ( selectedCageLayer->getCageWarpCommand() == nullptr ) {
            qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): Creating new cage layer undo/redo instance...";
-           int rows = m_selectedCageLayer->cageMesh().rows();
-           int columns = m_selectedCageLayer->cageMesh().cols();
-           m_undoStack->push( new CageWarpCommand(m_selectedCageLayer, cageBefore, cageAfter, 
-                                                        m_selectedCageLayer->sceneBoundingRect(), m_selectedCageLayer->pos(),
+           int rows = selectedCageLayer->cageMesh().rows();
+           int columns = selectedCageLayer->cageMesh().cols();
+           m_undoStack->push( new CageWarpCommand(selectedCageLayer, cageBefore, cageAfter, 
+                                                        selectedCageLayer->sceneBoundingRect(), selectedCageLayer->pos(),
                                                         rows, columns ) );
          } else {
-           m_selectedCageLayer->getCageWarpCommand()->pushNewWarpStep( m_selectedCageLayer->pos(), cageAfter );
+           selectedCageLayer->getCageWarpCommand()->pushNewWarpStep( selectedCageLayer->pos(), cageAfter );
          }
-         if( m_selectedCageLayer ) {
-           m_selectedCageLayer->applyCageWarp("ImageView::1");
+         if( selectedCageLayer ) {
+           selectedCageLayer->applyCageWarp("ImageView::1");
          }
         }
         m_cageBefore.clear();
     }
+    
     // --- Lasso beenden ---
     if ( m_lassoEnabled && event->button() == Qt::LeftButton ) {
         if ( m_lassoPolygon.size() > 2 ) {
-            createLassoLayer(); // erzeugt neues Layer aus Polygon
+            createLassoLayer();
         }
         // Polygon entfernen
         if ( m_lassoPreview ) {
@@ -1219,8 +1227,9 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
             m_lassoBoundingBox = nullptr;
         }
         m_lassoPolygon.clear();
-        return; // fertig, kein weiteres Event
+        return;
     }
+    
     // --- Painting beenden ---
     if ( m_painting && event->button() == Qt::LeftButton ) {
         if ( m_currentStroke.size() > 1 ) {
@@ -1231,6 +1240,7 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
         m_currentStroke.clear();
         m_painting = false;
     }
+    
     // --- Misc ---
     if ( event->button() == Qt::LeftButton ) {
         m_painting = false;
@@ -1246,6 +1256,7 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
             viewport()->update();
         }
     }
+    
     // --- Mask Painting beenden ---
     if ( m_maskPainting && (event->button() == Qt::LeftButton || event->button() == Qt::RightButton) ) {
         m_maskStrokeActive = false;
@@ -1271,9 +1282,9 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
             )
         );
         */
-        
         return;
     } 
+    
     QGraphicsView::mouseReleaseEvent(event);
   }
 }
@@ -1282,25 +1293,29 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
 //    If newScale will be too small (e.g. < 0.001), the BSP-Tree crashed.
 void ImageView::wheelEvent( QWheelEvent* event )
 {
-  qCDebug(logEditor) << "ImageView::wheelEvent(): currentScale =" << transform().m11();
-  {
-    if ( !scene() || scene()->items().isEmpty() ) {
-      event->ignore();
-      return;
-    }
+  if ( ImageView::scaleScene(event->angleDelta().y()>0?+1:-1) ) {
+    event->accept();
+    return;
+  }
+  event->ignore();
+}
+
+bool ImageView::scaleScene( int direction )
+{
+  if ( scene() && !scene()->items().isEmpty() ) {
     constexpr qreal zoomFactor = 1.15;
-    qreal factor = (event->angleDelta().y() > 0) ? zoomFactor : 1.0 / zoomFactor;
+    qreal factor = direction > 0 ? zoomFactor : 1.0 / zoomFactor;
     qreal currentScale = transform().m11();
     qreal newScale = currentScale * factor;
     if ( newScale < 0.01 || newScale > 100.0 ) {
-      event->ignore();
-      return;
+      return false;
     }
     emit scaleChanged(transform().m11());
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     scale(factor, factor);
-    event->accept();
+    return true;
   }
+  return false;
 }
 
 // --------------------------------- drawing ---------------------------------
@@ -1389,27 +1404,27 @@ LayerItem* ImageView::getLayerItem( int id )
 
 LayerItem* ImageView::getSelectedItem( bool isActiveCageItem )
 {
-
-   // Priority: Choose selected if there is a selected one.
-
-   for ( auto* item : m_scene->items() ) {
-        auto* layer = dynamic_cast<LayerItem*>(item);
-        if ( layer && layer->isSelected() ) {
-          return layer;
-        }
-   }
-
-   if ( isActiveCageItem ) {
+  qCDebug(logEditor) << "ImageView::getSelectedItem(): isActiveCageItem =" << isActiveCageItem;
+  {
+    if ( isActiveCageItem ) {
      for ( auto* item : m_scene->items(Qt::DescendingOrder) ) {
        auto* layer = dynamic_cast<LayerItem*>(item);
        if ( layer && layer->getType() != LayerItem::MainImage ) {
-         if ( layer->hasActiveCage() && layer->isCageWarp() ) {
+         if ( layer->hasActiveCage() && layer->isCageWarp() && layer->cageEnabled() ) {
            return layer;
          }
        }
      }
-   }
-   return nullptr;
+    } else {
+     for ( auto* item : m_scene->items() ) {
+        auto* layer = dynamic_cast<LayerItem*>(item);
+        if ( layer && layer->isSelected() ) {
+          return layer;
+        }
+     }
+    }
+    return nullptr;
+  }
 }
 
 void ImageView::setPolygonOperationMode( LayerItem::OperationMode mode )
@@ -1523,7 +1538,8 @@ void ImageView::createLassoLayer()
 
 LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QString &name )
 {
-  qCDebug(logEditor) << "ImageView::createNewLayer(): name =" << name << ",  polygon_size =" << polygon.size() << ", operationMode = " << m_layerOperationMode;
+  qCDebug(logEditor) << "ImageView::createNewLayer(): name =" << name << ",  polygon_size =" 
+                << polygon.size() << ", operationMode =" << m_layerOperationMode;
   {
     // --- switch to layer operation mode ---
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
@@ -2010,7 +2026,7 @@ void ImageView::setEnablePerspectiveWarp( LayerItem* layer )
     }
     m_perspectiveOverlay = new PerspectiveOverlay(layer, m_undoStack);
     scene()->addItem(m_perspectiveOverlay);
-    m_perspectiveOverlay->updateOverlay();
+    // NOT REQUIRED: m_perspectiveOverlay->updateOverlay();
   }
 }
 
