@@ -395,7 +395,7 @@ void ImageView::rebuildUndoStack()
 // need a re-build of the undostack stack if only the commands of layer N are involved
 void ImageView::removeOperationsByIndexUndoStack( const QString &name, int index )
 {
-  qDebug() << "ImageView::removeOperationsByIndexUndoStack(): name =" << name << ", index =" << index;
+  qCDebug(logEditor) << "ImageView::removeOperationsByIndexUndoStack(): name =" << name << ", index =" << index;
   {
     if ( index < 0 || index >= m_undoStack->count() ) {
       return;
@@ -419,7 +419,7 @@ void ImageView::removeOperationsByIndexUndoStack( const QString &name, int index
 
 void ImageView::removeOperationsByIdUndoStack( int id )
 {
-  qDebug() << "ImageView::removeOperationsByIdUndoStack(): id =" << id;
+  qCDebug(logEditor) << "ImageView::removeOperationsByIdUndoStack(): id =" << id;
   {
     QList<QUndoCommand*> allCommands;
     for ( int i = 0; i < m_undoStack->count(); ++i ) {
@@ -821,7 +821,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
 {
   MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
   if ( mainWindow == nullptr ) return;  
-  qCDebug(logEditor) << "ImageView::mousePressEvent(): operationMode =" << mainWindow->getOperationMode() << ", polygonEnabled =" << m_polygonEnabled;
+  qDebug() << "ImageView::mousePressEvent(): operationMode =" << mainWindow->getOperationMode() << ", polygonEnabled =" << m_polygonEnabled;
   {
     if ( !scene() )
         return;     
@@ -1179,7 +1179,7 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
 
 void ImageView::mouseReleaseEvent( QMouseEvent* event )
 {
-  qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): selectedCageLayer =" << ( m_selectedCageLayer == nullptr ? "null" : "ok" );
+  qDebug() << "ImageView::mouseReleaseEvent(): selectedCageLayer =" << ( m_selectedCageLayer == nullptr ? "null" : "ok" );
   {
     if ( !scene() )
       return;
@@ -1828,7 +1828,7 @@ void ImageView::redoPolygonOperation()
 
 void ImageView::createPolygonLayer()
 {
-  qDebug() << "ImageView::createPolygonLayer(): Processing...";
+  qCDebug(logEditor) << "ImageView::createPolygonLayer(): Processing...";
   {
     if ( m_activePolygon != nullptr ) {
       LayerItem *layer = baseLayer();
@@ -1906,13 +1906,11 @@ void ImageView::setPolygonEnabled( bool enabled )
 { 
   qCDebug(logEditor) << "ImageView::setPolygonEnabled(): npolygons=" << m_editablePolygons.size() << ", enabled=" << enabled;
   {
-   // disable polygon selecting
-   setActiveLayer(QString("None"));
-   // prepare polygon drawing
    LayerItem *layer = baseLayer();
    if ( layer != nullptr ) {
     m_polygonEnabled = enabled;
     if ( m_polygonEnabled ) {
+     setActiveLayer(QString("None")); // disable layer
      QString name = QString("Polygon %1").arg(1+m_editablePolygons.size());
      m_activePolygon = new EditablePolygon("ImageView::setPolygonEnabled()",name);
      m_editablePolygons.push_back(m_activePolygon);
@@ -2015,7 +2013,7 @@ void ImageView::disableTransformMode()
 
 void ImageView::setEnablePerspectiveWarp( LayerItem* layer )
 {
-  qDebug() << "ImageView::setEnablePerspectiveWarp(): layer =" << (layer != nullptr ? layer->name() : "NULL");
+  qCDebug(logEditor) << "ImageView::setEnablePerspectiveWarp(): layer =" << (layer != nullptr ? layer->name() : "NULL");
   {
     if ( !scene() || !layer )
         return;

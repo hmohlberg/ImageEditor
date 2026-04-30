@@ -816,7 +816,7 @@ void MainWindow::toggleDocks()
 // --------------------------------- Layer tools ---------------------------------
 void MainWindow::toggleLayerVisibility(  QListWidgetItem* item )
 {
-  qDebug() << "MainWindow::toggleLayerVisibility(): Processing...";
+  qCDebug(logEditor) << "MainWindow::toggleLayerVisibility(): Processing...";
   {
     if ( !item ) return;
     if ( m_updatingLayerList ) return; // ⚡ verhindert Rekursion
@@ -893,7 +893,7 @@ void MainWindow::rebuildLayerList()
 
 void MainWindow::setSelectedLayer( const QString &name )
 {
-  qCDebug(logEditor) << "MainWindow::setSelectedLayer(): name =" << name;
+  qDebug() << "MainWindow::setSelectedLayer(): name =" << name;
   {
     // set layer index
     int index = m_selectLayerItem->findText(name);

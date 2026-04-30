@@ -282,7 +282,7 @@ void LayerItem::updateOriginalImage() {
 // ------------------------ Selected ------------------------
 void LayerItem::setIsSelected( int caller, bool isSelected ) 
 {
-  qCDebug(logEditor) << "LayerItem::setIsSelected(" << caller << "): name =" << name() 
+  qDebug() << "LayerItem::setIsSelected(" << caller << "): name =" << name() 
                   << ", select =" << isSelected << ", operationMode =" << m_operationMode;
   {
     MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
@@ -370,7 +370,7 @@ void LayerItem::resetTotalTransform()
 
 void LayerItem::resetImageState( const QImage& image, const QPointF& position, const QTransform& transform )
 {
-  qDebug() << "LayerItem::resetImageState(): name =" << name() << ", position =" << position;
+  qCDebug(logEditor) << "LayerItem::resetImageState(): name =" << name() << ", position =" << position;
   {
     prepareGeometryChange();
     setTransform(QTransform());
@@ -495,7 +495,7 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 
 QImage LayerItem::applyCageWarp( const QString &caller )
 {
-  qDebug() << "LayerItem::applyCageWarp(" << caller << "): name =" << name() << ", meshActive =" << m_cageMesh.isActive() 
+  qCDebug(logEditor) << "LayerItem::applyCageWarp(" << caller << "): name =" << name() << ", meshActive =" << m_cageMesh.isActive() 
         << ", cageEnabled =" << m_cageEnabled << ", cageEditing =" << m_cageEditing << ", intialized =" << m_cageMesh.isInitialized();
   {
     #if 0
@@ -580,7 +580,7 @@ void LayerItem::initCage( const QVector<QPointF>& pts, const QRectF &rect, int n
 
 void LayerItem::setCageVisible( int caller, bool isVisible )
 {
-  qDebug() << "LayerItem::setCageVisible(): caller =" << caller << ", name =" << name() << ", visible =" << isVisible 
+  qCDebug(logEditor) << "LayerItem::setCageVisible(): caller =" << caller << ", name =" << name() << ", visible =" << isVisible 
         << ", cageOverlay =" << (m_cageOverlay != nullptr?"ok":"none") << ", cageEditing =" << m_cageEditing << "|" << m_cageEnabled 
         << ", nControlPoints =" << m_cageMesh.pointCount();
   {
@@ -945,7 +945,7 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
 {
-  qCDebug(logEditor) << "LayerItem::mousePressEvent(): layer =" << name() << ", selected =" 
+  qDebug() << "LayerItem::mousePressEvent(): layer =" << name() << ", selected =" 
                << isSelected() << ", zValue =" << zValue() << ", operationMode =" << m_operationMode 
                << ", active =" << m_mouseOperationActive;
   {
