@@ -34,7 +34,7 @@ class EditablePolygon : public QObject
 {
     Q_OBJECT
     
-public:
+ public:
 
     explicit EditablePolygon( const QString& caller, const QString& name = "", QObject* parent = nullptr );
 
@@ -43,6 +43,8 @@ public:
     QUndoStack* undoStack() { return &m_undoStack; }
     const QPolygonF& polygon() const { return m_polygon; }
     int pointCount() const { return m_polygon.size(); }
+    int index() const { return m_index; }
+    void setIndex( const QString &name );
     QPointF point( int idx ) const;
 
     // --- Modifikation (NUR über Commands aufrufen!) ---
@@ -57,7 +59,7 @@ public:
     void setPolygon( const QPolygonF& poly );
 
     // --- Misc ---
-    void setName( const QString& name ) { m_name = name; }
+    void setName( const QString& name );
     bool isSelected() const { return m_polygonSelected; }
     void setSelected( bool isSelected );
     bool polygonVisible() const { return m_polygonVisible; }
@@ -74,15 +76,16 @@ public:
     QJsonObject toJson() const;
     static EditablePolygon* fromJson( const QJsonObject& obj );
 
-signals:
+ signals:
 
     void changed();
     void visibilityChanged();
     void selectionChanged();
 
-private:
+ private:
 
     QString m_name;
+    int m_index;
 
     QPolygonF m_polygon;
     QUndoStack m_undoStack;

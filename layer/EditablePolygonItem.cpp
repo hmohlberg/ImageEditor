@@ -125,7 +125,7 @@ void EditablePolygonItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
     if ( m_layer != nullptr ) {
       // --- show polygon name in polygon toolbar ---
       MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_layer->parent());
-      if ( mainWindow != nullptr ) mainWindow->setActivePolygon(m_name);
+      if ( mainWindow != nullptr ) mainWindow->activePolygon(m_name);
       // --- ---
       LayerItem::OperationMode mode = m_layer->getPolygonOperationMode();      
       if ( mode == LayerItem::OperationMode::TranslatePolygon ) {

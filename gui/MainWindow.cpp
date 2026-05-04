@@ -96,12 +96,14 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     qApp->setStyleSheet(R"(
       QMainWindow { background-color: #2a2a2a; }
       QWidget { color: #e0e0e0; background-color: #2a2a2a; }
+      QWidget:disabled { color: #606060; }
       QToolBar { background-color: #303030; border-bottom: 1px solid #1e1e1e; spacing: 4px; }
       QToolBar::separator { background-color: #a0a0a0; width: 1px; height: 4px; }
       QToolButton { background-color: #3a3a3a; border: 1px solid #1e1e1e; padding: 4px; }
       QToolButton:hover { background-color: #505050; }
       QToolButton:checked { background-color: #6a6a6a; border: 1px solid #909090; font-weight: bold; }
       QToolButton:checked:hover { background-color: #7a7a7a; }
+      QToolButton:disabled { background-color: #2a2a2a; color: #959595; border: 1px solid #222222; }
       QStatusBar { background-color: #303030; border-top: 1px solid #1e1e1e; }
       QStatusBar QLabel { color: #e0e0e0; }
       QSlider::groove:horizontal { height: 4px; background: #1e1e1e; }
@@ -1859,15 +1861,17 @@ void MainWindow::createToolbars()
     
     m_polygonToolbar->addAction(m_polygonAction);
     
+    // --- Polygon selection stuff ---
     QLabel* polygonColorLabel = new QLabel("  Index:");
     m_polygonToolbar->addWidget(polygonColorLabel);
     m_polygonIndexBox = buildDefaultColorComboBox("Polygon");
     connect(m_polygonIndexBox, &QComboBox::currentTextChanged, this, [this](const QString& text){
+      qDebug() << "MainWindow::createToolbars(): name =" << text;
       QString numOnly;
       for( auto c : text ) {
        if( c.isDigit() ) numOnly.append(c);
       }
-      m_imageView->setPolygonIndex(numOnly.toInt());
+      m_imageView->setPolygonIndex(numOnly.toInt(),true);
     });
     m_polygonToolbar->addWidget(m_polygonIndexBox);
     
@@ -1898,9 +1902,10 @@ void MainWindow::createToolbars()
     connect(polygonRedoAction, &QAction::triggered, m_imageView, &ImageView::redoPolygonOperation);
     m_polygonToolbar->addAction(polygonRedoAction);
     
-    QAction *polygonCreateLayerAction = new QAction(tr("Create new polygon layer"), this);
-    connect(polygonCreateLayerAction, &QAction::triggered, m_imageView, &ImageView::createPolygonLayer);
-    m_polygonToolbar->addAction(polygonCreateLayerAction);
+    m_polygonCreateLayerAction = new QAction(tr("Create new polygon layer"), this);
+    connect(m_polygonCreateLayerAction, &QAction::triggered, m_imageView, &ImageView::createPolygonLayer);
+    m_polygonToolbar->addAction(m_polygonCreateLayerAction);
+    
   }
 }
 
@@ -2064,7 +2069,18 @@ void MainWindow::setLayerOperationMode( int mode, bool updateMode )
 
 void MainWindow::setPolygonOperationMode( int mode ) 
 {
-   m_polygonOperationItem->setCurrentIndex(mode-10);
+  qDebug() << "MainWindow::setPolygonOperationMode(): mode =" << mode;
+  {
+    if ( mode == -1 ) {
+     m_polygonCreateLayerAction->setEnabled(false);
+     m_polygonAction->setEnabled(true);
+    } else if ( mode == -2 ) {
+     m_polygonCreateLayerAction->setEnabled(true);
+     m_polygonAction->setEnabled(false);
+    } else {
+     m_polygonOperationItem->setCurrentIndex(mode-10);
+    }
+  }
 }
 
 void MainWindow::setMainOperationMode( MainOperationMode mode )
@@ -2087,13 +2103,19 @@ void MainWindow::setMainOperationMode( MainOperationMode mode )
   }
 }
 
-int MainWindow::setActivePolygon( const QString& polygonName )
+int MainWindow::activePolygon( const QString& polygonName )
 {
-  int index = m_polygonIndexBox->findText(polygonName);
-  if ( index != -1 ) {
+  qDebug() << "MainWindow::activePolygon(): polygonName =" << polygonName;
+  {
+   if ( polygonName.isEmpty() ) {
+     return m_polygonIndexBox->currentText().section(' ',1).toInt();;
+   }
+   int index = m_polygonIndexBox->findText(polygonName);
+   if ( index != -1 ) {
     m_polygonIndexBox->setCurrentIndex(index);
-  } 
-  return index;
+   } 
+   return index;
+  }
 }
 
 QString MainWindow::getSelectedLayerItemName() 

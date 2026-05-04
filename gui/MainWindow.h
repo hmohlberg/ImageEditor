@@ -54,7 +54,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     ImageView* getViewer() const { return m_imageView; }
     void setMainOperationMode( MainOperationMode = ImageLayer );
     MainOperationMode getOperationMode() const { return m_operationMode; }
-    int setActivePolygon( const QString& polygonName );
+    int activePolygon( const QString& polygonName );
     void setLayerOperationMode( int mode, bool updateMode = true );
     void setPolygonOperationMode( int mode );
     void setSelectedLayer( const QString &name );
@@ -152,6 +152,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     QAction* m_maskControlAction = nullptr;
     QAction* m_layerControlAction = nullptr;
     QAction* m_polygonControlAction = nullptr;
+    QAction* m_polygonCreateLayerAction = nullptr;
     QAction* m_openAction = nullptr;
     QAction* m_saveAsAction = nullptr;
     QAction* m_cutAction = nullptr;

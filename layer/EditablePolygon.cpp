@@ -38,7 +38,23 @@ EditablePolygon::EditablePolygon( const QString &caller, const QString& name, QO
     : QObject(parent)
      , m_name(name)
 {
-  qCDebug(logEditor) << "EditablePolygon::EditablePolygon(): caller =" << caller << ", name=" << m_name;
+  setIndex(name);
+}
+
+void EditablePolygon::setName( const QString& name ) 
+{ 
+  m_name = name; 
+  setIndex(name);
+}
+
+void EditablePolygon::setIndex( const QString &name )
+{
+  QRegularExpression re("\\d+");
+  QRegularExpressionMatch match = re.match(name);
+  if ( match.hasMatch() ) {
+    QString numberStr = match.captured(0);
+    m_index = numberStr.toInt();
+  }
 }
 
 void EditablePolygon::setVisible( bool isVisible )

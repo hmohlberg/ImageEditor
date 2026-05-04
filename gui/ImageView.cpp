@@ -104,7 +104,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
     // --- history control (only stable for step-by-step processing) ---
     connect(m_undoStack, &QUndoStack::indexChanged, this, [this](int currentIndex) {
       // *** have to go to all commands between last and current index ***
-      // qDebug() << "ImageView::ImageView(): lastIndex =" << m_lastIndex << ", currentIndex =" << currentIndex;
+      qDebug() << "ImageView::ImageView(): lastIndex =" << m_lastIndex << ", currentIndex =" << currentIndex;
       if ( currentIndex == 0 ) {
         if ( auto *ms = IMainSystem::instance() ) {
           IMainSystem::instance()->showMessage(QString("Initial state"));
@@ -179,15 +179,16 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
               mainWindow->updateLayerList();
             }
           } else if ( justFinishedCommand->text().startsWith("Editable Polygon") ) {
-            // qDebug() << " *** handle editable polygon operation ***";
+            qDebug() << " *** handle editable polygon operation ***";
             mainWindow->setMainOperationMode(MainWindow::MainOperationMode::Polygon);
             EditablePolygonCommand *polyCommand = const_cast<EditablePolygonCommand*>(
                                             dynamic_cast<const EditablePolygonCommand*>(justFinishedCommand));
             if ( polyCommand != nullptr ) {
-                polyCommand->setVisible(true);
-                if ( polyCommand->layer() != nullptr ) {
-                  polyCommand->layer()->update();
-                }
+              polyCommand->setVisible(true);
+              if ( polyCommand->layer() != nullptr ) {
+                mainWindow->activePolygon(polyCommand->name());
+                polyCommand->layer()->update();
+              }
             }
           } else if ( justFinishedCommand->text().startsWith("Polygon") && justFinishedCommand->text().endsWith("Cut")) {
             mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
@@ -1009,7 +1010,7 @@ void ImageView::mouseDoubleClickEvent( QMouseEvent* event )
            if ( editablePolygon->hitTestPolygon(scenePos) > 0 ) {
             editablePolygon->polygon()->setSelected(!editablePolygon->polygon()->isSelected());
             if ( editablePolygon->polygon()->isSelected() ) {
-              int index = mainWindow->setActivePolygon(editablePolygon->polygon()->name());
+              int index = mainWindow->activePolygon(editablePolygon->polygon()->name());
               if ( index >= 0 ) {
                QVector<QColor> colors = defaultMaskColors();
                editablePolygon->setColor(colors[(index+1)%colors.length()]);
@@ -1774,10 +1775,43 @@ void ImageView::setCageWarpFixBoundary( bool isChecked )
 // ---------------------------- Polygon methods -----------------------------
 // ---------------------------- --------------- -----------------------------
 
+void ImageView::setPolygonIndex( quint8 index, bool doUpdate ) 
+{ 
+  qDebug() << "ImageView::setPolygonIndex(): index =" << index << ", update =" << doUpdate;
+  {
+    m_polygonIndex = index; 
+    if ( !doUpdate ) return;
+return;
+    // >>>
+    int visIndex = -1;
+    bool foundAnyPolygon = false;
+    QString polyName = QString("Polygon %1").arg(index);
+    for ( EditablePolygon* polygon : m_editablePolygons ) {
+      if ( polygon ) {
+        if ( polygon->name() == polyName ) {
+         polygon->setVisible(true);
+         IMainSystem::instance()->showMessage(QString("Selected %1").arg(polyName));
+         visIndex = -2;
+         foundAnyPolygon = true;
+        } else {
+         polygon->setVisible(false);
+        }
+      }
+    }
+    if ( foundAnyPolygon == false ) {
+      IMainSystem::instance()->showMessage(QString("No selectable polygon found"));
+    }
+    MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+    if ( mainWindow ) mainWindow->setPolygonOperationMode(visIndex);
+  }
+}
+
 EditablePolygonCommand* ImageView::getPolygonUndoCommand( const QString& name, bool isSelected )
 {
-  if ( name == "" ) {
-   if ( isSelected == true ) {
+  qDebug() << "ImageView::getPolygonUndoCommand(): name =" << name << ", isSelected =" << isSelected;
+  {
+   if ( name == "" ) {
+    if ( isSelected == true ) {
      for ( int i = 0; i < m_undoStack->count(); ++i ) {
         const QUndoCommand* baseCmd = m_undoStack->command(i);
         auto polyCmd = dynamic_cast<const EditablePolygonCommand*>(baseCmd);
@@ -1786,26 +1820,30 @@ EditablePolygonCommand* ImageView::getPolygonUndoCommand( const QString& name, b
         }
      }
      return nullptr;
-   }
-   const QUndoCommand* cmd = m_undoStack->command(m_undoStack->index() - 1);
-   EditablePolygonCommand* polyCmd = const_cast<EditablePolygonCommand*>(
+    }
+    const QUndoCommand* cmd = m_undoStack->command(m_undoStack->index() - 1);
+    EditablePolygonCommand* polyCmd = const_cast<EditablePolygonCommand*>(
         dynamic_cast<const EditablePolygonCommand*>(cmd)
-   );
-   return polyCmd;
-  }
-  for ( int i = m_undoStack->count() - 1; i >= 0; --i ) {
+    );
+    return polyCmd;
+   }
+   for ( int i = m_undoStack->count() - 1; i >= 0; --i ) {
     const QUndoCommand* cmd = m_undoStack->command(i);
+    qDebug() << cmd->text();
     if ( cmd->text() == name ) {
        return const_cast<EditablePolygonCommand*>(
            dynamic_cast<const EditablePolygonCommand*>(cmd)
        );
     }
+   }
+   return nullptr;
   }
-  return nullptr;
 }
 
 void ImageView::undoPolygonOperation()
 {
+  qDebug() << "ImageView::undoPolygonOperation(): polygonIndex =" << m_polygonIndex;
+  {
     EditablePolygonCommand* polyCmd = ImageView::getPolygonUndoCommand(QString("Editable Polygon %1").arg(m_polygonIndex));
     if ( polyCmd == nullptr )
       return;
@@ -1813,10 +1851,13 @@ void ImageView::undoPolygonOperation()
     if ( polygon != nullptr ) {
      polygon->undoStack()->undo();
     }
+  }
 }
 
 void ImageView::redoPolygonOperation()
 {
+  qDebug() << "ImageView::redoPolygonOperation(): polygonIndex =" << m_polygonIndex;
+  {
     EditablePolygonCommand* polyCmd = ImageView::getPolygonUndoCommand(QString("Editable Polygon %1").arg(m_polygonIndex));
     if ( polyCmd == nullptr )
       return;
@@ -1824,11 +1865,12 @@ void ImageView::redoPolygonOperation()
     if ( polygon != nullptr ) {
      polygon->undoStack()->redo();
     }
+  }
 }
 
 void ImageView::createPolygonLayer()
 {
-  qCDebug(logEditor) << "ImageView::createPolygonLayer(): Processing...";
+  qDebug() << "ImageView::createPolygonLayer(): polygonIndex =" << m_polygonIndex;
   {
     if ( m_activePolygon != nullptr ) {
       LayerItem *layer = baseLayer();
@@ -1841,10 +1883,13 @@ void ImageView::createPolygonLayer()
       mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
     }
     // get active polygon
-    EditablePolygonCommand* polyCmd = ImageView::getPolygonUndoCommand("",true);
-    if ( polyCmd == nullptr )
+    EditablePolygonCommand* polyCmd = ImageView::getPolygonUndoCommand(QString("Editable Polygon %1").arg(m_polygonIndex),true);
+    if ( polyCmd == nullptr ) {
+      qWarning() << "ImageView::createPolygonLayer(): No polygon " << m_polygonIndex << " found";
       return;
+    }
     // process polygon
+    qDebug() << "ImageView::createPolygonLayer(): polygon name =" << polyCmd->name();
     EditablePolygon *editablePolygon = polyCmd->model();
     if ( editablePolygon != nullptr ) {
      int index = m_layers.size()+1;
@@ -1861,7 +1906,7 @@ void ImageView::createPolygonLayer()
 
 void ImageView::finishPolygonDrawing( LayerItem* layer )
 {
-  qCDebug(logEditor) << "ImageView::finishPolygonDrawing(): Processing...";
+  qCDebug(logEditor) << "ImageView::finishPolygonDrawing(): polygonIndex =" << m_polygonIndex;
   {
     if ( !m_activePolygon || m_activePolygon->pointCount() < 3 )
         return;
@@ -1869,7 +1914,7 @@ void ImageView::finishPolygonDrawing( LayerItem* layer )
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow != nullptr ) {
       mainWindow->setMainOperationMode(MainWindow::MainOperationMode::CreatePolygon);
-      int index = mainWindow->setActivePolygon(m_activePolygon->name());
+      int index = mainWindow->activePolygon(m_activePolygon->name());
       if ( index >= 0 ) {
         QVector<QColor> colors = defaultMaskColors();
         color = colors[(index+1)%colors.length()];
@@ -1882,7 +1927,7 @@ void ImageView::finishPolygonDrawing( LayerItem* layer )
     delete m_activePolygon;
     m_activePolygon = nullptr;
     m_activePolygonItem = nullptr;
-    EditablePolygonCommand *polyCmd = new EditablePolygonCommand(layer,scene(),poly,QString("Polygon %1").arg(m_editablePolygons.size()));
+    EditablePolygonCommand *polyCmd = new EditablePolygonCommand(layer,scene(),poly,QString("Polygon %1").arg(m_polygonIndex)); // m_editablePolygons.size()));
     polyCmd->setColor(color);
     m_undoStack->push(polyCmd);
   }
@@ -1904,19 +1949,37 @@ void ImageView::setOnlySelectedPolygon( const QString& name )
 
 void ImageView::setPolygonEnabled( bool enabled )
 { 
-  qCDebug(logEditor) << "ImageView::setPolygonEnabled(): npolygons=" << m_editablePolygons.size() << ", enabled=" << enabled;
+  qDebug() << "ImageView::setPolygonEnabled(): npolygons=" << m_editablePolygons.size() << ", enabled=" << enabled;
   {
    LayerItem *layer = baseLayer();
    if ( layer != nullptr ) {
     m_polygonEnabled = enabled;
     if ( m_polygonEnabled ) {
-     setActiveLayer(QString("None")); // disable layer
-     QString name = QString("Polygon %1").arg(1+m_editablePolygons.size());
+    
+     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+     if ( mainWindow == nullptr ) return;
+     int polygonIndex = mainWindow->activePolygon("");
+     // check whether index is already in use
+     for ( EditablePolygon* polygon : m_editablePolygons ) {
+      if ( polygon && polygon->index() == polygonIndex ) {
+        mainWindow->showMessage(QString("Polygon %1 already used.").arg(polygonIndex),1);    
+        return;
+      }
+     }
+     
+     mainWindow->setPolygonOperationMode(-2);
+     setActiveLayer(QString("None"));
+     QString name = QString("Polygon %1").arg(polygonIndex); // 1+m_editablePolygons.size());
+     
+     qDebug() << " create new polygon with index " << polygonIndex << ", name =" << name;
+     
+     m_polygonIndex = polygonIndex;
      m_activePolygon = new EditablePolygon("ImageView::setPolygonEnabled()",name);
      m_editablePolygons.push_back(m_activePolygon);
      m_activePolygonItem = new EditablePolygonItem(m_activePolygon,layer);
      m_activePolygonItem->setColor(QColor(255,0,0));
      m_activePolygonItem->setName(name);
+     
     } else {
      finishPolygonDrawing(layer);
     }

@@ -125,7 +125,7 @@ class ImageView : public QGraphicsView
     void setBrushPreviewVisible( bool visible ) { m_showBrushPreview = visible; viewport()->update(); }
     void setMaskOpacity( qreal value ) { if ( m_maskItem ) m_maskItem->setOpacityFactor(value); }
     void setMaskLabel( quint8 index ) { m_currentMaskLabel = index; }
-    void setPolygonIndex( quint8 index ) { m_polygonIndex = index; }
+    void setPolygonIndex( quint8 index, bool doUpdate = false );
     void setActiveCageLayer( LayerItem* item ) { m_selectedCageLayer = item; }
     void setActiveLayer( const QString& name, bool initialize = true );
     void setSelectedLayer( int caller, const QString& name );
