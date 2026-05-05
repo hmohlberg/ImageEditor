@@ -822,7 +822,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
 {
   MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
   if ( mainWindow == nullptr ) return;  
-  qDebug() << "ImageView::mousePressEvent(): operationMode =" << mainWindow->getOperationMode() << ", polygonEnabled =" << m_polygonEnabled;
+  qCDebug(logEditor) << "ImageView::mousePressEvent(): operationMode =" << mainWindow->getOperationMode() << ", polygonEnabled =" << m_polygonEnabled;
   {
     if ( !scene() )
         return;     
@@ -1180,7 +1180,7 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
 
 void ImageView::mouseReleaseEvent( QMouseEvent* event )
 {
-  qDebug() << "ImageView::mouseReleaseEvent(): selectedCageLayer =" << ( m_selectedCageLayer == nullptr ? "null" : "ok" );
+  qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): selectedCageLayer =" << ( m_selectedCageLayer == nullptr ? "null" : "ok" );
   {
     if ( !scene() )
       return;
@@ -1433,6 +1433,34 @@ void ImageView::setPolygonOperationMode( LayerItem::OperationMode mode )
   qCDebug(logEditor) << "ImageView::setPolygonOperationMode(): mode =" << mode << ", m_polygonEnabled =" << m_polygonEnabled;
   {
     m_polygonOperationMode = mode; 
+    QString todoText;
+    switch ( mode ) {
+     case LayerItem::OperationMode::MovePoint:
+      todoText = "Select polygon point and move point";
+      break;
+     case LayerItem::OperationMode::AddPoint:
+      todoText = "Double click near a polygon line to add a new polygon point";
+      break;
+     case LayerItem::OperationMode::DeletePoint:
+      todoText = "Double click on polygon point to delete this point";
+      break;
+     case LayerItem::OperationMode::TranslatePolygon:
+      todoText = "Click inside the polygon and move it by holding down the left mouse button";
+      break;
+     case LayerItem::OperationMode::SmoothPolygon:
+      todoText = "Double click inside the polygon to enable Laplace smoothing";
+      break;
+     case LayerItem::OperationMode::ReducePolygon:
+      todoText = "Double click inside the polygon to reduce number of polygon points";
+      break;
+     case LayerItem::OperationMode::DeletePolygon:
+      todoText = "Double click inside the polygon to delete it";
+      break;
+     default:
+      todoText = "";
+      break;
+    }
+    IMainSystem::instance()->showMessage(QString(todoText));
   }
 }
 
@@ -1556,7 +1584,7 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     QColor backgroundColor = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
     QPolygonF polyF = QPolygonF(polygon.begin(), polygon.end());
     QRectF boundsF = polyF.boundingRect();
-    QRect bounds = boundsF.toAlignedRect(); // ganzzahlig
+    QRect bounds = boundsF.toAlignedRect();
     QImage backup = src.copy(bounds);
     // --- create mask ---
     QImage mask(bounds.size(), QImage::Format_Alpha8);
@@ -1641,7 +1669,7 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
         QPoint imgPos(bounds.left() + x, ypos);
         QColor c = src.pixelColor(imgPos);
         if ( c != backgroundColor && m[x] > 0 ) {
-         c.setAlpha(m[x]); 
+         // results in border artefacts: c.setAlpha(m[x]); cut.setPixelColor(x,y,c);
          cut.setPixelColor(x,y,c);
         }
       }
@@ -1652,6 +1680,7 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     Layer* layer = new Layer(nidx,cut);
     layer->m_name = QString("%1 %2").arg(name).arg(nidx);
     layer->m_creator = name;
+    layer->m_bounds = bounds;
     LayerItem* newLayer = new LayerItem(cut);
     newLayer->setParent(m_parent);
     newLayer->setIndex(nidx);
@@ -1781,28 +1810,36 @@ void ImageView::setPolygonIndex( quint8 index, bool doUpdate )
   {
     m_polygonIndex = index; 
     if ( !doUpdate ) return;
-return;
     // >>>
     int visIndex = -1;
     bool foundAnyPolygon = false;
     QString polyName = QString("Polygon %1").arg(index);
     for ( EditablePolygon* polygon : m_editablePolygons ) {
-      if ( polygon ) {
+      if ( !polygon ) continue;
+      try {
         if ( polygon->name() == polyName ) {
-         polygon->setVisible(true);
-         IMainSystem::instance()->showMessage(QString("Selected %1").arg(polyName));
-         visIndex = -2;
-         foundAnyPolygon = true;
+            polygon->setVisible(true);
+            IMainSystem* system = IMainSystem::instance();
+            if ( system ) {
+             system->showMessage(QString("Selected %1").arg(polyName));
+            }
+            visIndex = -2;
+            foundAnyPolygon = true;
         } else {
-         polygon->setVisible(false);
+            polygon->setVisible(false);
         }
+      } catch (...) {
+        qDebug() << "Crash verhindert: Ein Polygon-Objekt ist ungueltig!";
       }
     }
-    if ( foundAnyPolygon == false ) {
-      IMainSystem::instance()->showMessage(QString("No selectable polygon found"));
-    }
+
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
-    if ( mainWindow ) mainWindow->setPolygonOperationMode(visIndex);
+    if ( mainWindow ) {
+     if ( foundAnyPolygon == false ) {
+       mainWindow->showMessage(QString("No selectable polygon %1 found").arg(index));
+     }
+     mainWindow->setPolygonOperationMode(visIndex);
+    }
   }
 }
 
@@ -1904,6 +1941,7 @@ void ImageView::createPolygonLayer()
   }
 }
 
+// finalize polygon drawing
 void ImageView::finishPolygonDrawing( LayerItem* layer )
 {
   qCDebug(logEditor) << "ImageView::finishPolygonDrawing(): polygonIndex =" << m_polygonIndex;
@@ -1913,6 +1951,7 @@ void ImageView::finishPolygonDrawing( LayerItem* layer )
     QColor color = QColor(255,0,0);
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow != nullptr ) {
+      mainWindow->setPolygonOperationMode(-2);
       mainWindow->setMainOperationMode(MainWindow::MainOperationMode::CreatePolygon);
       int index = mainWindow->activePolygon(m_activePolygon->name());
       if ( index >= 0 ) {
@@ -1923,9 +1962,11 @@ void ImageView::finishPolygonDrawing( LayerItem* layer )
     setOnlySelectedPolygon(m_activePolygon->name());
     QPolygonF poly = m_activePolygon->polygon();
     scene()->removeItem(m_activePolygonItem);
-    m_activePolygonItem->deleteLater(); // Instead of 'delete m_activePolygonItem;'
-    delete m_activePolygon;
+    m_activePolygonItem->deleteLater();
+    
+    // delete m_activePolygon;
     m_activePolygon = nullptr;
+    
     m_activePolygonItem = nullptr;
     EditablePolygonCommand *polyCmd = new EditablePolygonCommand(layer,scene(),poly,QString("Polygon %1").arg(m_polygonIndex)); // m_editablePolygons.size()));
     polyCmd->setColor(color);
@@ -1955,7 +1996,6 @@ void ImageView::setPolygonEnabled( bool enabled )
    if ( layer != nullptr ) {
     m_polygonEnabled = enabled;
     if ( m_polygonEnabled ) {
-    
      MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
      if ( mainWindow == nullptr ) return;
      int polygonIndex = mainWindow->activePolygon("");
@@ -1966,20 +2006,14 @@ void ImageView::setPolygonEnabled( bool enabled )
         return;
       }
      }
-     
-     mainWindow->setPolygonOperationMode(-2);
      setActiveLayer(QString("None"));
      QString name = QString("Polygon %1").arg(polygonIndex); // 1+m_editablePolygons.size());
-     
-     qDebug() << " create new polygon with index " << polygonIndex << ", name =" << name;
-     
      m_polygonIndex = polygonIndex;
      m_activePolygon = new EditablePolygon("ImageView::setPolygonEnabled()",name);
      m_editablePolygons.push_back(m_activePolygon);
      m_activePolygonItem = new EditablePolygonItem(m_activePolygon,layer);
      m_activePolygonItem->setColor(QColor(255,0,0));
      m_activePolygonItem->setName(name);
-     
     } else {
      finishPolygonDrawing(layer);
     }

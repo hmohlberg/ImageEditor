@@ -127,6 +127,7 @@ bool ImageProcessor::process( const QString& filePath )
         }
       }
     }
+    // loading sublayers
     int nCreatedLayers = m_layers.size();
     for ( const QJsonValue& v : layerArray ) {
       QJsonObject layerObj = v.toObject();
@@ -134,13 +135,30 @@ bool ImageProcessor::process( const QString& filePath )
       if ( id != 0 ) {
         QString name = layerObj["name"].toString();
         if ( layerObj.contains("data") ) {
-         // qDebug() << "ImageProcessor::load(): Creating new layer " << name << ": id " << id << "...";
+         LayerItem* newLayer = nullptr;
          QString imgBase64 = layerObj["data"].toString();
          QByteArray ba = QByteArray::fromBase64(imgBase64.toUtf8());
          QImage image;
          image.loadFromData(ba,"PNG");
-         // >>>
-         LayerItem* newLayer = new LayerItem(image);
+         bool isBinaryMask = layerObj.value("binaryMask").toBool(false);
+         int x = layerObj.value("x").toInt(-1);
+         int y = layerObj.value("y").toInt(-1);
+         if ( isBinaryMask && x >= 0 && y >= 0 ) {
+          QImage subImage = m_image.copy(x, y, image.width(), image.height());
+          subImage = subImage.convertToFormat(QImage::Format_ARGB32);
+          for ( int y = 0; y < subImage.height(); ++y ) {
+            QRgb *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
+            const uchar *maskData = image.constScanLine(y);
+            for ( int x = 0; x < subImage.width(); ++x ) {
+             if ( maskData[x] != 255 ) {
+              rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
+             }
+            }
+          }
+          newLayer = new LayerItem(subImage);
+         } else {
+          newLayer = new LayerItem(image);
+         }
          newLayer->setName(name);
          newLayer->setIndex(id);
          newLayer->setParent(nullptr);

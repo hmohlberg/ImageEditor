@@ -187,7 +187,7 @@ class ImageView : public QGraphicsView
     void disablePerspectiveWarp();
 
     QList<Layer*> m_layers;
-    QList<EditablePolygon*> m_editablePolygons;
+    QList<QPointer<EditablePolygon>> m_editablePolygons;
     QVector<MaskPaintCommand::PixelChange> m_currentMaskStroke;
     
     LayerItem* m_selectedLayer = nullptr;
@@ -209,7 +209,6 @@ class ImageView : public QGraphicsView
     TransformOverlay* m_transformOverlay = nullptr;
     PerspectiveOverlay* m_perspectiveOverlay = nullptr;
     
-    //CageWarpCommand* m_cageWarpCommand = nullptr;  // CLAUDE moved to LayerItem class
 
     QWidget* m_parent = nullptr;
     QUndoStack* m_undoStack = nullptr;

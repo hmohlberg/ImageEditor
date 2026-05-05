@@ -68,6 +68,7 @@
         QLoggingCategory::setFilterRules("editor.graphics.debug=false");
       }
       m_hasPerspective = settings.value("Main/perspective", false).toBool();
+      m_binaryMasking = settings.value("Main/binaryMasking", false).toBool();
       
       // Cage quads
       m_useCageQuads = settings.value("Cage/quads", true).toBool();
@@ -120,6 +121,7 @@
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
     bool hasPerspective() const { return m_hasPerspective; }
+    bool binaryMasking() const { return m_binaryMasking; }
     double rotationSingleStep() const { return m_rotationSingleStep; }
     Qt::TransformationMode transformationMode() const { return m_transformationMode; }
 
@@ -135,6 +137,7 @@
           m_loggingIsEnabled(false), 
           m_useCageQuads(true), 
           m_hasPerspective(false),
+          m_binaryMasking(false),
           m_windowSize("default"),
           m_version("public"),
           m_cageWarpColor(Qt::green), 
@@ -161,6 +164,7 @@
     bool m_loggingIsEnabled;
     bool m_useCageQuads;
     bool m_hasPerspective;
+    bool m_binaryMasking;
     double m_rotationSingleStep;
     
  };

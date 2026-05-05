@@ -43,7 +43,9 @@ class Layer {
     
     bool m_visible = true;
     bool m_active = true;
+    bool m_binaryMask = false;
     
+    QRect m_bounds;
     QGraphicsItem* m_item = nullptr;
     
     QImage m_image;

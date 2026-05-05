@@ -294,11 +294,14 @@ void EditablePolygonItem::updateGeometry()
 
 void EditablePolygonItem::onVisibilityChanged()
 {
+  qDebug() << "EditablePolygonItem::onVisibilityChanged(): Processing...";
+  {
     // Polygon
     setVisible(m_poly->polygonVisible());
     // Marker (Control Points)
     for ( auto* p : m_handles )
         p->setVisible(m_poly->markersVisible());
+  }
 }
 
 void EditablePolygonItem::onSelectionChanged()

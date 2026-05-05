@@ -59,9 +59,12 @@ void EditablePolygon::setIndex( const QString &name )
 
 void EditablePolygon::setVisible( bool isVisible )
 {
+  qDebug() << "EditablePolygon::setVisible(): name =" << m_name << ", visible =" << isVisible;
+  {
     m_polygonVisible = isVisible;
     m_markersVisible = isVisible;
     emit visibilityChanged();
+  }
 }
 
 void EditablePolygon::setSelected( bool isSelected )

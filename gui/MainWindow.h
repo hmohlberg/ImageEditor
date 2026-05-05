@@ -97,6 +97,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     
     void updateButtonState();
     void updateControlButtonState();
+    void updatePolygonEnabledState( bool isToggled );
 
  private:
     

@@ -416,11 +416,42 @@ bool MainWindow::saveProject( const QString& filePath )
         layerObj["name"] = layer->name();
         // Image -> Base64
         if ( layer->id() != 0 ) {
+         bool binaryMasking = layer->m_bounds.isNull() ? false : EditorStyle::instance().binaryMasking();
          QByteArray ba;
          QBuffer buffer(&ba);
          buffer.open(QIODevice::WriteOnly);
-         layer->m_image.save(&buffer, "PNG");
+         if ( binaryMasking ) {
+          if ( !layer->m_binaryMask ) {
+            QImage alphaImage = layer->m_image.convertToFormat(QImage::Format_Alpha8);
+            QImage indexedImage = alphaImage.convertToFormat(QImage::Format_Indexed8);
+            QList<QRgb> palette;
+            for ( int i = 0; i < 256; ++i ) {
+             if ( i == 0 ) 
+              palette.append(qRgba(0, 0, 0, 255));
+             else 
+              palette.append(qRgba(255, 255, 255, 255));
+            }
+            indexedImage.setColorTable(palette);
+            for ( int y = 0; y < indexedImage.height(); ++y ) {
+             uchar *pixels = indexedImage.scanLine(y);
+             for ( int x = 0; x < indexedImage.width(); ++x ) {
+              pixels[x] = (pixels[x] > 0) ? 255 : 0;
+             }
+            }
+            indexedImage.save(&buffer, "PNG");
+          } else {
+           layer->m_image.save(&buffer, "PNG");
+          }
+         } else {
+          layer->m_image.save(&buffer, "PNG");
+          binaryMasking = false;
+         }
          layerObj["data"] = QString::fromUtf8(ba.toBase64());
+         layerObj["binaryMask"] = binaryMasking;
+         if ( binaryMasking == true ) {
+           layerObj["x"] = layer->m_bounds.x();
+           layerObj["y"] = layer->m_bounds.y();
+         }
         }
         layerObj["opacity"] = layer->opacity();
         layerObj["creator"] = layer->creator();
@@ -431,9 +462,9 @@ bool MainWindow::saveProject( const QString& filePath )
     // --- Undo/Redo Stack ---
     QJsonArray undoArray;
     for ( int i = 0; i < undoStack->count(); ++i ) {
-        auto* cmd = dynamic_cast<const AbstractCommand*>(undoStack->command(i));
-        if ( !cmd ) continue;
-        undoArray.append(cmd->toJson());
+      auto* cmd = dynamic_cast<const AbstractCommand*>(undoStack->command(i));
+      if ( !cmd ) continue;
+      undoArray.append(cmd->toJson());
     }
     root["undoStack"] = undoArray;
 
@@ -445,6 +476,9 @@ bool MainWindow::saveProject( const QString& filePath )
     
     // --- Set clean flag in undo stack ---
     m_imageView->undoStack()->setClean();
+    
+    // --- Misc ---
+    showMessage(QString("Saved project history file '%1'").arg(filePath));
     
     return true;
 }
@@ -512,19 +546,43 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
       if ( id != 0 ) {
         QString name = layerObj["name"].toString();
         if ( layerObj.contains("data") ) {
+         QRect rect;
+         LayerItem* newLayer = nullptr;
          QString imgBase64 = layerObj["data"].toString();
          QByteArray ba = QByteArray::fromBase64(imgBase64.toUtf8());
-         QImage image;
-         image.loadFromData(ba,"PNG");
-         // create new layer
-         LayerItem* newLayer = new LayerItem(image);
+         QImage mask;
+         mask.loadFromData(ba,"PNG");
+         bool isBinaryMask = layerObj.value("binaryMask").toBool(false);
+         int x = layerObj.value("x").toInt(-1);
+         int y = layerObj.value("y").toInt(-1);
+         if ( isBinaryMask && x >= 0 && y >= 0 ) {
+           qDebug() << " * found binary mask at position " << x << " : " << y;
+           QImage mainImage = m_layerItem->image();
+           QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
+           subImage = subImage.convertToFormat(QImage::Format_ARGB32);
+           for ( int y = 0; y < subImage.height(); ++y ) {
+            QRgb *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
+            const uchar *maskData = mask.constScanLine(y);
+            for ( int x = 0; x < subImage.width(); ++x ) {
+             if ( maskData[x] != 255 ) {
+              rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
+             }
+            }
+           }
+           newLayer = new LayerItem(subImage);
+           rect = QRect(x,y,mask.width(), mask.height());
+         } else {
+           newLayer = new LayerItem(mask);
+           isBinaryMask = false;
+         }
          newLayer->setIndex(id);
          newLayer->setParent(this);
          newLayer->setUndoStack(m_imageView->undoStack());
-         // qDebug() << " image layer " << id << " rect =" << newLayer->boundingRect();
-         Layer* layer = new Layer(id,image);
+         Layer* layer = new Layer(id,mask);
+         layer->m_binaryMask = isBinaryMask;
          layer->m_name = name;
          layer->m_item = newLayer;
+         layer->m_bounds = rect;
          newLayer->setLayer(layer);
          m_imageView->layers().push_back(layer);
          m_imageView->getScene()->addItem(newLayer);
@@ -1155,7 +1213,7 @@ void MainWindow::createActions()
     m_polygonAction = new QAction(" Create new polygon", this);
     m_polygonAction->setCheckable(true);
     connect(m_polygonAction, &QAction::toggled, m_imageView, &ImageView::setPolygonEnabled);
-    // connect(m_polygonAction, &QAction::toggled, this, &MainWindow::updateButtonState);
+    connect(m_polygonAction, &QAction::toggled, this, &MainWindow::updatePolygonEnabledState);
     
     // mask image actions
     m_createMaskImageAction = new QAction(" Create new class", this);
@@ -1212,6 +1270,11 @@ void MainWindow::hideAllLayerToolbars()
     m_scaleLayerToolbar->setVisible(false);
     m_perspectiveLayerToolbar->setVisible(false);
   }
+}
+
+void MainWindow::updatePolygonEnabledState( bool isToggled )
+{
+  // m_polygonIndexBox->setEnabled(!isToggled);
 }
 
 void MainWindow::updateControlButtonState() 
@@ -1859,14 +1922,12 @@ void MainWindow::createToolbars()
     m_polygonToolbar = addToolBar(tr("Polygon"));
     m_polygonToolbar->setVisible(false);
     
-    m_polygonToolbar->addAction(m_polygonAction);
-    
     // --- Polygon selection stuff ---
     QLabel* polygonColorLabel = new QLabel("  Index:");
     m_polygonToolbar->addWidget(polygonColorLabel);
     m_polygonIndexBox = buildDefaultColorComboBox("Polygon");
     connect(m_polygonIndexBox, &QComboBox::currentTextChanged, this, [this](const QString& text){
-      qDebug() << "MainWindow::createToolbars(): name =" << text;
+      qDebug() << "MainWindow::createToolbars(): New polygon index name =" << text;
       QString numOnly;
       for( auto c : text ) {
        if( c.isDigit() ) numOnly.append(c);
@@ -1874,6 +1935,8 @@ void MainWindow::createToolbars()
       m_imageView->setPolygonIndex(numOnly.toInt(),true);
     });
     m_polygonToolbar->addWidget(m_polygonIndexBox);
+    
+    m_polygonToolbar->addAction(m_polygonAction);
     
     QLabel* polygonOperationLabel = new QLabel(" Operation mode:");
     m_polygonToolbar->addWidget(polygonOperationLabel);
@@ -2085,7 +2148,7 @@ void MainWindow::setPolygonOperationMode( int mode )
 
 void MainWindow::setMainOperationMode( MainOperationMode mode )
 {
-  qCDebug(logEditor) << "MainWindow::setMainOperationMode(): mode =" << mode;
+  qDebug() << "MainWindow::setMainOperationMode(): mode =" << mode;
   {
     if ( mode == MainOperationMode::ImageLayer ) {
       m_layerControlAction->setChecked(true);
