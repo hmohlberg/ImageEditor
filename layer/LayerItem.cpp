@@ -495,7 +495,8 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 
 QImage LayerItem::applyCageWarp( const QString &caller )
 {
-  qCDebug(logEditor) << "LayerItem::applyCageWarp(" << caller << "): name =" << name() << ", meshActive =" << m_cageMesh.isActive() 
+  qDebug() << "LayerItem::applyCageWarp(" << caller << "): name =" << name() << ", meshActive =" << m_cageMesh.isActive()
+        << ", activeCagePointId =" << m_cageMesh.activeCagePointId()
         << ", cageEnabled =" << m_cageEnabled << ", cageEditing =" << m_cageEditing << ", intialized =" << m_cageMesh.isInitialized();
   {
     #if 0
@@ -509,8 +510,6 @@ QImage LayerItem::applyCageWarp( const QString &caller )
     }
     TriangleWarp::WarpResult warped = TriangleWarp::warp(m_cageMesh.image(),m_cageMesh);
     if ( !warped.image.isNull() ) {
-     m_cageMesh.image().save(QString("/tmp/origImage_layer%1.png").arg(id()));
-     warped.image.save(QString("/tmp/warpedImage_layer%1.png").arg(id()));
      setPixmap(QPixmap::fromImage(warped.image));
      m_image = warped.image;
      QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
@@ -801,6 +800,7 @@ void LayerItem::setCagePoint( int idx, const QPointF& pos )
     for ( int i = 0; i < m_handles.size(); ++i ) {
         m_handles[i]->setPos(m_cageMesh.point(i));
     }
+    m_cageMesh.setActiveCagePointId(idx);
     m_cageMesh.relax();
     update();
   }

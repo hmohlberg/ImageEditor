@@ -1180,14 +1180,15 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
 
 void ImageView::mouseReleaseEvent( QMouseEvent* event )
 {
-  qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): selectedCageLayer =" << ( m_selectedCageLayer == nullptr ? "null" : "ok" );
+  qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): panning = " << m_panning << ", selectedCageLayer =" << ( m_selectedCageLayer == nullptr ? "null" : "ok" );
   {
     if ( !scene() )
       return;
-        
-    // --- Cage warp beenden ---
-    LayerItem *selectedCageLayer = m_selectedCageLayer != nullptr ? m_selectedCageLayer : getSelectedItem(true);
-    if ( event->button() == Qt::LeftButton && selectedCageLayer != nullptr ) {
+      
+    if ( m_panning == false ) {    
+     // --- Cage warp beenden ---
+     LayerItem *selectedCageLayer = m_selectedCageLayer != nullptr ? m_selectedCageLayer : getSelectedItem(true);
+     if ( event->button() == Qt::LeftButton && selectedCageLayer != nullptr ) {
         QVector<QPointF> cageAfter = selectedCageLayer->cageMesh().points();
         QVector<QPointF> cageBefore = selectedCageLayer->cageMesh().originalPoints();    
         qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): layer =" << selectedCageLayer->name() 
@@ -1208,10 +1209,9 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
          }
         }
         m_cageBefore.clear();
-    }
-    
-    // --- Lasso beenden ---
-    if ( m_lassoEnabled && event->button() == Qt::LeftButton ) {
+     }
+     // --- Lasso beenden ---
+     if ( m_lassoEnabled && event->button() == Qt::LeftButton ) {
         if ( m_lassoPolygon.size() > 2 ) {
             createLassoLayer();
         }
@@ -1229,10 +1229,9 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
         }
         m_lassoPolygon.clear();
         return;
-    }
-    
-    // --- Painting beenden ---
-    if ( m_painting && event->button() == Qt::LeftButton ) {
+     }
+     // --- Painting beenden ---
+     if ( m_painting && event->button() == Qt::LeftButton ) {
         if ( m_currentStroke.size() > 1 ) {
             m_undoStack->push(new PaintStrokeCommand(m_paintLayer,m_currentStroke,m_brushColor,
                                     m_brushRadius,m_brushHardness));
@@ -1240,6 +1239,7 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
         m_paintLayer = nullptr;
         m_currentStroke.clear();
         m_painting = false;
+     }
     }
     
     // --- Misc ---
@@ -1832,7 +1832,6 @@ void ImageView::setPolygonIndex( quint8 index, bool doUpdate )
         qDebug() << "Crash verhindert: Ein Polygon-Objekt ist ungueltig!";
       }
     }
-
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow ) {
      if ( foundAnyPolygon == false ) {
@@ -1909,6 +1908,17 @@ void ImageView::createPolygonLayer()
 {
   qDebug() << "ImageView::createPolygonLayer(): polygonIndex =" << m_polygonIndex;
   {
+    // check whether a layer has been already created
+    for ( int i=0 ; i<m_editablePolygons.size() ; i++ ) {
+      if ( m_editablePolygons[i]->index() == m_polygonIndex ) {
+        if ( m_editablePolygons[i]->layer() ) {
+          IMainSystem::instance()->showMessage(QString("Cannot create layer. %1 layer already created.").arg(m_editablePolygons[i]->name()),1);
+          return;
+        }
+        m_editablePolygons[i]->setLayer();
+      }
+    }
+    // >>>
     if ( m_activePolygon != nullptr ) {
       LayerItem *layer = baseLayer();
       if ( layer != nullptr ) {
@@ -1944,7 +1954,7 @@ void ImageView::createPolygonLayer()
 // finalize polygon drawing
 void ImageView::finishPolygonDrawing( LayerItem* layer )
 {
-  qCDebug(logEditor) << "ImageView::finishPolygonDrawing(): polygonIndex =" << m_polygonIndex;
+  qDebug() << "ImageView::finishPolygonDrawing(): polygonIndex =" << m_polygonIndex << ", nEditablePolygons =" << m_editablePolygons.size();
   {
     if ( !m_activePolygon || m_activePolygon->pointCount() < 3 )
         return;
@@ -1990,7 +2000,7 @@ void ImageView::setOnlySelectedPolygon( const QString& name )
 
 void ImageView::setPolygonEnabled( bool enabled )
 { 
-  qDebug() << "ImageView::setPolygonEnabled(): npolygons=" << m_editablePolygons.size() << ", enabled=" << enabled;
+  qDebug() << "ImageView::setPolygonEnabled(): npolygons =" << m_editablePolygons.size() << ", enabled =" << enabled;
   {
    LayerItem *layer = baseLayer();
    if ( layer != nullptr ) {

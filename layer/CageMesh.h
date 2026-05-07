@@ -60,6 +60,9 @@ class CageMesh
     const QVector<QPointF>& points() const { return m_points; }
     const QVector<QPointF>& originalPoints() const { return m_originalPoints; }
 
+    int activeCagePointId() const { return m_activePointId; }
+    void setActiveCagePointId( int id ) { m_activePointId = id; }
+    
     int pointCount() const { return m_points.size(); }
     bool isActive() const { return m_active; }
     void setActive( bool );
@@ -107,6 +110,8 @@ class CageMesh
     bool m_fixedBoundaries = true;
     double m_stiffness = 0.0;
     int m_relaxationSteps = 0;
+    
+    int m_activePointId = -1;
     
     int m_cols = 3;
     int m_rows = 3;

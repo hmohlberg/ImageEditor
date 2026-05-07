@@ -47,7 +47,10 @@ class EditablePolygonItem : public QGraphicsObject
     EditablePolygon* polygon() const { return m_poly; }
     int hitTestPolygon( const QPointF& scenePos ) const;
     void setColor( const QColor& color ) { m_lineColor = color; }
-    void setName( const QString& name ) { m_name = name; } 
+    void setName( const QString& name ) { 
+      setObjectName(name);
+      m_name = name; 
+    } 
 
   signals:
   

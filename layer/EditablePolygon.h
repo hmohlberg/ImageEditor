@@ -59,6 +59,8 @@ class EditablePolygon : public QObject
     void setPolygon( const QPolygonF& poly );
 
     // --- Misc ---
+    void setLayer() { m_hasLayer = true; }
+    bool layer() const { return m_hasLayer; }
     void setName( const QString& name );
     bool isSelected() const { return m_polygonSelected; }
     void setSelected( bool isSelected );
@@ -93,6 +95,7 @@ class EditablePolygon : public QObject
     bool m_polygonSelected = true;
     bool m_polygonVisible = true;
     bool m_markersVisible = true;
+    bool m_hasLayer = false;
     
 };
 

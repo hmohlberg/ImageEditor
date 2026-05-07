@@ -35,7 +35,7 @@ CageControlPointItem::CageControlPointItem( LayerItem* layer, int index )
 
 void CageControlPointItem::mousePressEvent( QGraphicsSceneMouseEvent *e )
 {
-  qCDebug(logEditor) << "CageControlPointItem::mousePressEvent((): Processing...";
+  qDebug() << "CageControlPointItem::mousePressEvent((): index =" << m_index;
   {
     if ( m_layer == nullptr ) return;
     // The purpose of this offset is to account for the small

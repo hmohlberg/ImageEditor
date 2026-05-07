@@ -208,7 +208,6 @@ class ImageView : public QGraphicsView
     
     TransformOverlay* m_transformOverlay = nullptr;
     PerspectiveOverlay* m_perspectiveOverlay = nullptr;
-    
 
     QWidget* m_parent = nullptr;
     QUndoStack* m_undoStack = nullptr;

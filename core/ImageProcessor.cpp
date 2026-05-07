@@ -37,6 +37,7 @@
 #include "../undo/CageWarpCommand.h"
 
 #include <iostream>
+#include <algorithm>
 
 // ----------------------- Constructor -----------------------
 ImageProcessor::ImageProcessor( const QImage& image ) : m_image(image) 
@@ -220,23 +221,55 @@ bool ImageProcessor::process( const QString& filePath )
     }
     
     // ---  combine layer images ---
+    bool sizeLayerSorting = true;
     if ( setOutputImage(0) ) {
-      qInfo() << "Creating output image...";
-      for ( auto* item : m_layers ) {
-       auto* layer = dynamic_cast<LayerItem*>(item);
-       if ( layer && layer->id() != 0 ) {
+     qInfo() << "Creating output image...";
+     if ( sizeLayerSorting ) {
+      auto sortedLayers = m_layers;
+      std::sort(sortedLayers.begin(), sortedLayers.end(), [](QGraphicsItem* a, QGraphicsItem* b) {
+       auto* layerA = dynamic_cast<LayerItem*>(a);
+       auto* layerB = dynamic_cast<LayerItem*>(b);
+       if ( !layerA || !layerB ) return false;
+       auto rectA = layerA->image().size();
+       auto rectB = layerB->image().size();
+       long areaA = (long)rectA.width() * rectA.height();
+       long areaB = (long)rectB.width() * rectB.height();
+       return areaA > areaB;
+      });
+      QPainter painter(&m_outImage);
+       painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+       for ( auto* item : sortedLayers ) {
+        auto* layer = dynamic_cast<LayerItem*>(item);
+        if ( layer && layer->id() != 0 ) {
+         QImage overlayImage = layer->image();
+         if ( !overlayImage.isNull() ) {
+          int x = static_cast<int>(layer->pos().x());
+          int y = static_cast<int>(layer->pos().y());     
+          qInfo() << " + drawing layer =" << layer->name() << ": size =" 
+                    << overlayImage.width() << "x" << overlayImage.height();   
+          painter.drawImage(x, y, overlayImage);
+         }
+        }
+       }
+      painter.end();
+     } else {
+      QPainter painter(&m_outImage);
+       painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+       for ( auto* item : m_layers ) {
+        auto* layer = dynamic_cast<LayerItem*>(item);
+        if ( layer && layer->id() != 0 ) {
          QImage overlayImage = layer->image();
          if ( !overlayImage.isNull() ) {
           int x = layer->pos().x();
           int y = layer->pos().y();
-          qInfo() << " layer =" << layer->name() << ", id=" << layer->id( )<< ", pos=" << layer->pos();
-          QPainter painter(&m_outImage);
-           painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-           painter.drawImage(x,y,overlayImage);
-          painter.end();
+          qInfo() << " + drawing layer =" << layer->name() << ": id =" << layer->id( )<< ", pos =" 
+               << layer->pos() << ", rect =" << layer->boundingRect();
+          painter.drawImage(x, y, overlayImage);
          }
+        }
        }
-      }
+      painter.end();
+     }
     } else {
       qInfo() << "Warning: Malfunction in ImageProcessor::setOutputImage().";
       return false;

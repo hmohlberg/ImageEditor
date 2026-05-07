@@ -555,8 +555,25 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
          bool isBinaryMask = layerObj.value("binaryMask").toBool(false);
          int x = layerObj.value("x").toInt(-1);
          int y = layerObj.value("y").toInt(-1);
-         if ( isBinaryMask && x >= 0 && y >= 0 ) {
-           qDebug() << " * found binary mask at position " << x << " : " << y;
+         // fix by Claude to ensure that m_bounds is always defined correctly
+         if( !(  x > 0 && y > 0 ) ) {
+           QJsonArray undoArray = root["undoStack"].toArray();
+           for ( const QJsonValue& v : undoArray ) {
+             QJsonObject cmdObj = v.toObject();
+             QString type = cmdObj["type"].toString();
+             if ( type == "LassoCut" || type == "LassoCutCommand" ) {
+               if( id == cmdObj["newLayerId"].toInt(-1) ) {
+                 QJsonObject r = cmdObj["rect"].toObject();
+                 x = r["x"].toInt();
+                 y = r["y"].toInt();
+               }
+             }
+           }
+         }
+         rect = QRect(x,y,mask.width(), mask.height());
+         // binary masking
+         if ( isBinaryMask ) {
+           qDebug() << " * process binary mask at position " << x << " : " << y;
            QImage mainImage = m_layerItem->image();
            QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
            subImage = subImage.convertToFormat(QImage::Format_ARGB32);
@@ -570,7 +587,6 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
             }
            }
            newLayer = new LayerItem(subImage);
-           rect = QRect(x,y,mask.width(), mask.height());
          } else {
            newLayer = new LayerItem(mask);
            isBinaryMask = false;

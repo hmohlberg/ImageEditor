@@ -33,10 +33,52 @@ namespace TriangleWarp
     QImage image;    // Das fertig transformierte Bild
     QPointF offset;  // Die Verschiebung relativ zum Original-Nullpunkt
   };
+  
+  // --- --- ---
+  void transformQuad( int x, int y, int cols, int rows, const QImage& originalImage, QImage& warped, 
+                   const CageMesh& cageMesh, const QRectF& dstBounds ) {
+    // Bounds-Check: Existiert das Quad (x, y) bis (x+1, y+1)?
+    if ( x < 0 || x + 1 >= cols || y < 0 || y + 1 >= rows ) return;
+
+    int i00 = y * cols + x;
+    int i10 = i00 + 1;
+    int i01 = i00 + cols;
+    int i11 = i01 + 1;
+
+    float srcL = float(x) * originalImage.width() / (cols - 1);
+    float srcR = float(x + 1) * originalImage.width() / (cols - 1);
+    float srcT = float(y) * originalImage.height() / (rows - 1);
+    float srcB = float(y + 1) * originalImage.height() / (rows - 1);
+    
+    QVector<QPointF> dstQuad{
+        cageMesh.point(i00) - dstBounds.topLeft(),
+        cageMesh.point(i10) - dstBounds.topLeft(),
+        cageMesh.point(i11) - dstBounds.topLeft(),
+        cageMesh.point(i01) - dstBounds.topLeft()
+    };
+    
+    QRect br = QPolygonF(dstQuad).boundingRect().toAlignedRect();
+    br &= warped.rect();
+    for ( int py = br.top(); py <= br.bottom(); ++py ) {
+        QRgb* scanline = reinterpret_cast<QRgb*>(warped.scanLine(py));
+        for ( int px = br.left(); px <= br.right(); ++px ) {
+            QPointF p(px, py);
+            if ( !GeometryUtils::pointInQuad(p, dstQuad) ) continue;
+            QPointF uv = GeometryUtils::getBilinearUV(p,dstQuad);
+            float srcX = srcL + uv.x() * (srcR - srcL);
+            float srcY = srcT + uv.y() * (srcB - srcT);
+            if ( srcX >= 0 && srcX < originalImage.width() && 
+                srcY >= 0 && srcY < originalImage.height() ) {
+                scanline[px] = originalImage.pixel(int(srcX), int(srcY));
+            }
+        }
+    }
+    
+  }
 
   WarpResult warp( const QImage& originalImage, const CageMesh& cageMesh )
   {
-   qDebug() << "WarpResult:warp(): useQuads =" << EditorStyle::instance().useCageQuads();
+   qCDebug(logEditor) << "TriangleWarp:warp(): useQuads =" << EditorStyle::instance().useCageQuads();
    {
     if ( cageMesh.pointCount() < 4 ) {
       return { QImage(), QPointF(0,0) }; 
@@ -94,47 +136,42 @@ namespace TriangleWarp
       
      #else
      
+      // *** new code ***
+      // int xc = cageMesh.activeCagePointId() % cols;
+      // int yc = cageMesh.activeCagePointId() / cols;
+      // transformQuad(xc - 1, yc - 1, cols, rows, originalImage, warped, cageMesh, dstBounds);
+      // transformQuad(xc,     yc - 1, cols, rows, originalImage, warped, cageMesh, dstBounds);
+      // transformQuad(xc - 1, yc,     cols, rows, originalImage, warped, cageMesh, dstBounds);
+      // transformQuad(xc,     yc,     cols, rows, originalImage, warped, cageMesh, dstBounds);
+      
       for ( int y = 0; y + 1 < rows; ++y ) {
        for ( int x = 0; x + 1 < cols; ++x ) {
-        // 1. Indizes vorbereiten
         int i00 = y * cols + x;
         int i10 = i00 + 1;
         int i01 = i00 + cols;
         int i11 = i01 + 1;
-        // 2. Quell-Koordinaten (einmal pro Quad berechnen)
         float srcL = float(x) * originalImage.width() / (cols - 1);
         float srcR = float(x + 1) * originalImage.width() / (cols - 1);
         float srcT = float(y) * originalImage.height() / (rows - 1);
         float srcB = float(y + 1) * originalImage.height() / (rows - 1);
-        // 3. Ziel-Quad (relativ zum neuen Bild-Offset)
         QVector<QPointF> dstQuad{
             cageMesh.point(i00) - dstBounds.topLeft(),
             cageMesh.point(i10) - dstBounds.topLeft(),
             cageMesh.point(i11) - dstBounds.topLeft(),
             cageMesh.point(i01) - dstBounds.topLeft()
         };
-        // 4. Bounding Box des Ziel-Quads für den Scanline-Algorithmus
         QRect br = QPolygonF(dstQuad).boundingRect().toAlignedRect();
-        // Clip gegen die Bildgrenzen des neuen 'warped' Bildes
         br &= warped.rect();
-        // 5. Pixel-Iteration
         for ( int py = br.top(); py <= br.bottom(); ++py ) {
-            // Zeilen-Pointer für schnelleren Zugriff (statt setPixel)
             QRgb* scanline = reinterpret_cast<QRgb*>(warped.scanLine(py));
             for ( int px = br.left(); px <= br.right(); ++px ) {
                 QPointF p(px, py);
-                // Schneller Check: Liegt der Punkt im Quad?
                 if ( !GeometryUtils::pointInQuad(p, dstQuad) ) continue;
-                // 6. Inverse Bilineare Interpolation (liefert u, v zwischen 0 und 1)
-                // Diese Funktion musst du in GeometryUtils implementieren für sauberes Warping
                 QPointF uv = GeometryUtils::getBilinearUV(p, dstQuad);
-                // Rückrechnung auf Quell-Pixel
                 float srcX = srcL + uv.x() * (srcR - srcL);
                 float srcY = srcT + uv.y() * (srcB - srcT);
-                // 7. Sampling & Bounds Check
-                if (srcX >= 0 && srcX < originalImage.width() && 
-                    srcY >= 0 && srcY < originalImage.height()) {
-                    // Nutze pixelColor für ARGB32-Korrektheit
+                if ( srcX >= 0 && srcX < originalImage.width() && 
+                    srcY >= 0 && srcY < originalImage.height() ) {
                     scanline[px] = originalImage.pixel(int(srcX), int(srcY));
                 }
             }

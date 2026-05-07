@@ -1,0 +1,113 @@
+{
+    "layers": [
+        {
+            "filename": "pm2264o.png",
+            "filetime": "2026-02-27 15:46:06",
+            "id": "0",
+            "md5checksum": "e3247030c98b32f75760ce27d203a755",
+            "name": "MainImage",
+            "pathname": "/Users/hmohlberg/Projects/Software/HITools/progs/qt/ImageEditor/samples/images"
+        },
+        {
+            "binaryMask": true,
+            "creator": "Polygon 1 Layer",
+            "data": "iVBORw0KGgoAAAANSUhEUgAAAaoAAAHGCAMAAAASZz/lAAADAFBMVEUAAAD///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8HPQsIAAAACXBIWXMAAAsTAAALEwEAmpwYAAAHoklEQVR4nO3TC3YbNxQEUe9/08mxLSnycEjOB0B1O3VXgNOF9+OHJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJEmSJOX45yX6df9Xr6uYLMONSpZbZnAlk80xM5O9xlnSyVq3LexkrTuWh7LWeUwka50Hl/qJnqADXekP9Bi56DK76FEC0UleoKeJQsd4ix4oBJ3hIHomHl3gBHoqFr3+WfReHHr5C+jJGPTqF9GzAejJb6CnW4ye+yZ6vnXopQegJ1yEnnkMesUV6I2HoYecjh54IHrKyeh5h6LHnInedjR6z3noZcejF52F3nUKetQp6FEnoWedgJ50GnrY4ehBJ6KnHYtecy563XHoJeejFx6F3nEBeuIx6BXXoFcegd5wFXrn++gF16GXvomebyV661vo8Raj576Bnm41eu/r6OWWowe/jB6OQG9+Db0ahd79PHoxDr38WfReJHr7c+i1UPT4p9Bjsej1z6C3gtHzn0BPRaP3P45eCkcHOIweikcXOIreKQHd4Bh6pQh0hGPolSLQEQ6hRwpBZziAnigF3eE9eqEYdIj36IVi0CHeogfKQZd4ix4oBh3iLXqgIHSKN+h5ktAtXqPXyULXeIkeJwtd4xV6mzB0jhfoadLQPV6gp0lD93iOXiYOHeQ5epk8dJGn6GHy0EWeoXcJRCd5ht4lEJ3kGXqXQHSSJ+hZEtFNnqBnSUQ32UevEomOso9eJRNdZRc9Sia6yi56lEx0lV30KJnoKnvoTULRWfbQm4Sis+yhNwlFZ9lDbxKKzrKH3iQUnWUPvUkoOsseepNQdJY99Cap6C476ElS0V0e0YvEosM8oheJRYd5QA+Siy7zgB4kGJ1mi94jGJ1mi94jGJ1mi94jGJ1mi94jGJ1mi94jGJ1mg54jGd1mi94jGJ1mi94jGJ1mi94jGJ1mi94jGJ3mAT1ILrrMA3qQYHSaLXqPYHSaLXqPYHSaLXqPYHSaLXqPYHSaB/QguegyD+hBctFlHtCD5KLLPKAHyUWX2aL3CEan2aDniEbH+QM9Rja6znf0FuHoPN/RW4Sj83xDT5GO7vMNPUU6us839BTx6EBf6CHy0YW+0EPkowt9oYfIRxf6Qg+Rjy70hR4iH13oCz1EPrrQF3qIfHShT/QOBehEn+gdCtCJPtE7FKATfaJ3aEA3+kDP0IBu9IGeoQHd6AM9QwU60m/0ChXoSL/RKzSgG32gZ2hAN/pAz9CAbvSBnqECHek3eoUKdKTf6BUq0JF+oUfoQFf6hR6hA13pF3qEDnSln+gNOtCVfqI3aEF3+mGqo+hOljqMDmWp4yxVw1I1TFXDVDUsVcNUNSzVw1Q1TFXDUjVMVcNUNSxVw1Q1TFXDUjVMVcNSNUzVw1Q1LFXDVDVMVcNSNUxVw1Q9LFXDVDUsVcNUNSxVw1Q1TFXDUj1MVcNUNSxVw1Q1LNXDVC0sVcNUNUzVw1I1TFXDVDUsVcNUNSzVw1Q1LFXDVDUsVcNUNSxVw1QtLNXDVDUs1cNSNSxVw1I1TFXDUjVMVWNmKlsNZaoapqphqhpTU9lqJFPVMFUPU9WYmspWI5mqhqlqmKqGqWrMTWWrgUzVw1Qt5pYy1UCTU9lqHFPVMFUNU/WwVQ1T1TBVDVP1MFWNyalsNY6papiqhqlqzE5lq2FMVcNUNUzVYnopW41iqhqmarGglKnGMFWNFalsNcKSUqYawVQt1pQy1X2LStnqPlO1WFbKVHeZqsW6Ura6Z2UpU92xtJSpblhbylQ3LE5lq8tWlzLVVctLmeqi9aVMdZGpWgClbHUJUspUFzClTHUeVMpW52GpbHUSV8pU54ClbHUKWspUJ7ClbHUYHcpUR9GdfqI36EBX+oUeoQId6QM9QwE60Rd6iHh0oP/QS6Sj+3xHb5GNrvMHeoxodJwNeo5kdJsNeo5cdJlH9CKp6C576E0y0VV20aMkops8Q++Shy7yFD1MHDrIC/Q0WegaL9HjRKFjvEHPE4RO8Q69Tww6xAH0RBnoCsfQKyWgGxxEz8SjCxxHLwWj5z+D3opFr38OvRaInv4sei8Ovfx59GIQevZL6NEI9OYX0bOtRy9+Hb3cYvTcd9DbLUWPfRM930L01HfR+61DL30fveAi9Mwj0BsuQY88CD3jfPTC49BLzkWvOxQ95kT0tMPRg85C7zoBPekc9Kpz0KuORy86DT3saPSeM9HbjkWvORe97kD0lLPR+w5DD7kAPfEY9IqL0DPfRg+4ED31TfR8a9FrX0cvB6Anv4ZeDULPfh69GIde/ix6LxQ9/hn0Vjg6wFH0TgnoBkfQG8WgQ7xD7xOFjvECPU0cOsgT9CyZ6Co76Ely0WX+RK+Rja7zDT1FPrrQB3qGDkbqYaYihipiqB6GKmKnIoYqYqYeVipipiKG6mGmInYqYqgehipiqCKG6pEYyh/xRFApT/edgFDrT7cUG2rdh/grQKEWfoi/yPJOKw/3b7Mq1NrD/TtNW/BlHENdMnLAw30Mdc2gAc93MtRpAwa80MlQl6zvZKjLLu93qZOh7riw37VKdlrtaidDrWWnDgbqYJ98BupgnwoGamCfEgZqYaBd/wJrTIQTpsK+0gAAAABJRU5ErkJggg==",
+            "id": 1,
+            "name": "Polygon 1 Layer 1",
+            "opacity": 1,
+            "x": 2479,
+            "y": 428
+        }
+    ],
+    "undoStack": [
+        {
+            "childLayerId": 1,
+            "layerId": 0,
+            "name": "Polygon 1",
+            "points": [
+                {
+                    "x": 2479.0919669919713,
+                    "y": 679.2482292089186
+                },
+                {
+                    "x": 2492.2175366385204,
+                    "y": 580.8064568598
+                },
+                {
+                    "x": 2505.3431062850696,
+                    "y": 515.1786086270542
+                },
+                {
+                    "x": 2546.3605114305356,
+                    "y": 464.3170262466763
+                },
+                {
+                    "x": 2656.287157220385,
+                    "y": 428.2217097186661
+                },
+                {
+                    "x": 2823.6381702138865,
+                    "y": 459.39493762922035
+                },
+                {
+                    "x": 2869.5776639768083,
+                    "y": 549.6332289492458
+                },
+                {
+                    "x": 2904.032284299,
+                    "y": 654.637786121639
+                },
+                {
+                    "x": 2877.7811450059016,
+                    "y": 771.1272167347627
+                },
+                {
+                    "x": 2830.200955037161,
+                    "y": 817.0667104976848
+                },
+                {
+                    "x": 2712.0708282182186,
+                    "y": 872.8503814955186
+                },
+                {
+                    "x": 2626.754625515649,
+                    "y": 881.0538625246119
+                },
+                {
+                    "x": 2529.9535493723492,
+                    "y": 823.6294953209593
+                },
+                {
+                    "x": 2500.4210176676133,
+                    "y": 771.1272167347627
+                }
+            ],
+            "text": "Editable Polygon 1",
+            "type": "EditablePolygonCommand",
+            "undo": [
+            ]
+        },
+        {
+            "name": "Polygon 1 Layer",
+            "newLayerId": 1,
+            "originalLayerId": 0,
+            "rect": {
+                "height": 454,
+                "width": 426,
+                "x": 2479,
+                "y": 428
+            },
+            "text": "Polygon 1 Layer 1 Cut",
+            "type": "LassoCutCommand"
+        },
+        {
+            "fromX": 2479,
+            "fromY": 428,
+            "layerId": 1,
+            "text": "Move Layer 1",
+            "toX": 3038.477406184157,
+            "toY": 621.6021522865999,
+            "type": "MoveLayer"
+        }
+    ]
+}
