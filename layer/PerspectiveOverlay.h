@@ -42,7 +42,8 @@ class PerspectiveOverlay : public QObject, public QGraphicsItem
     void paint( QPainter*, const QStyleOptionGraphicsItem*, QWidget* ) override;
 
     void updateOverlay( bool fromStart = false );
-
+    void reset(); 
+    
     void beginWarp();
     void endWarp();
 
@@ -57,6 +58,7 @@ class PerspectiveOverlay : public QObject, public QGraphicsItem
  private:
  
     bool m_dragging = false;
+    bool m_undo = true;
  
     LayerItem* m_layer;
     QUndoStack* m_undoStack = nullptr;

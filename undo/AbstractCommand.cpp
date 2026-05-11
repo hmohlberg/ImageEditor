@@ -73,8 +73,6 @@ AbstractCommand* AbstractCommand::fromJson( const QJsonObject& obj, const QList<
         return MoveLayerCommand::fromJson(obj,layers);
     if ( type == "Paint" )
         return nullptr;
-    if ( type == "LassoCut" || type == "LassoCutCommand" )
-        return nullptr;
     if ( type == "PaintStroke" || type == "PaintStrokeCommand" )
         return PaintStrokeCommand::fromJson(obj,layers);
     if ( type == "InvertLayer" || type == "InvertLayerCommand" )

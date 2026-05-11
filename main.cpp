@@ -298,15 +298,15 @@ int main( int argc, char *argv[] )
         image = proc.getOutputImage();
        } else {
         printError(QString("Malfunction in ImageLoader::load(%1).").arg(imagePath));
-        return 0;
+        return 1;
        }
       }
       image.setColorSpace(QColorSpace(QColorSpace::SRgb)); // no change
       if ( loader.saveAs(image,outputPath) ) {
        qInfo() << "Saved image file " << outputPath << ".";
-       return 1;
+       return 0;
       }
-      return 1;
+      return 0;
     }
     
     // --- gui processing ---

@@ -292,6 +292,17 @@ void EditablePolygonItem::updateGeometry()
     update();
 }
 
+void EditablePolygonItem::visibilityChangedTo( bool isVisible )
+{
+  qDebug() << "EditablePolygonItem::visibilityChangedTo(): isVisible =" << isVisible;
+  {
+    m_poly->setVisible(isVisible);
+    setVisible(isVisible);
+    for ( auto* p : m_handles )
+      p->setVisible(isVisible);
+  }
+}
+
 void EditablePolygonItem::onVisibilityChanged()
 {
   qDebug() << "EditablePolygonItem::onVisibilityChanged(): Processing...";
@@ -300,7 +311,7 @@ void EditablePolygonItem::onVisibilityChanged()
     setVisible(m_poly->polygonVisible());
     // Marker (Control Points)
     for ( auto* p : m_handles )
-        p->setVisible(m_poly->markersVisible());
+      p->setVisible(m_poly->markersVisible());
   }
 }
 

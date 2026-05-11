@@ -1381,6 +1381,13 @@ void ImageView::clearSelection()
     viewport()->update();
 }
 
+void ImageView::reset( LayerItem::OperationMode mode )
+{
+  if ( mode == LayerItem::OperationMode::Perspective && m_perspectiveOverlay != nullptr ) {
+    m_perspectiveOverlay->reset();
+  }
+}
+
 // ---------------------------- Layer methods -----------------------------
 LayerItem* ImageView::getLayerItem( const QString& name )
 {
@@ -1567,7 +1574,7 @@ void ImageView::createLassoLayer()
 
 LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QString &name )
 {
-  qCDebug(logEditor) << "ImageView::createNewLayer(): name =" << name << ",  polygon_size =" 
+  qDebug() << "ImageView::createNewLayer(): name =" << name << ",  polygon_size =" 
                 << polygon.size() << ", operationMode =" << m_layerOperationMode;
   {
     // --- switch to layer operation mode ---
@@ -1829,7 +1836,7 @@ void ImageView::setPolygonIndex( quint8 index, bool doUpdate )
             polygon->setVisible(false);
         }
       } catch (...) {
-        qDebug() << "Crash verhindert: Ein Polygon-Objekt ist ungueltig!";
+        qDebug() << "FATAL ERROR: Polygon-Object is invalid!";
       }
     }
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
@@ -1839,6 +1846,24 @@ void ImageView::setPolygonIndex( quint8 index, bool doUpdate )
      }
      mainWindow->setPolygonOperationMode(visIndex);
     }
+   
+    // find polygon
+    
+     for ( auto* item : m_scene->items() ) {
+      auto* editablePolygon = dynamic_cast<EditablePolygonItem*>(item);
+      if ( editablePolygon && !editablePolygon->polygon()->layer() ) {
+        qDebug() << " + polygon_name: " << editablePolygon->name() << ", hasLayer =" << editablePolygon->polygon()->layer();
+        if ( editablePolygon->name() == polyName == true ) {
+         m_activePolygonItem = editablePolygon;
+         editablePolygon->visibilityChangedTo(true);
+        } else {
+         editablePolygon->visibilityChangedTo(false);
+        }
+      }
+     }
+     
+    // end test
+    
   }
 }
 
@@ -1912,7 +1937,7 @@ void ImageView::createPolygonLayer()
     for ( int i=0 ; i<m_editablePolygons.size() ; i++ ) {
       if ( m_editablePolygons[i]->index() == m_polygonIndex ) {
         if ( m_editablePolygons[i]->layer() ) {
-          IMainSystem::instance()->showMessage(QString("Cannot create layer. %1 layer already created.").arg(m_editablePolygons[i]->name()),1);
+          IMainSystem::instance()->showMessage(QString("Cannot create a new layer from %1. Layer already created.").arg(m_editablePolygons[i]->name()),1);
           return;
         }
         m_editablePolygons[i]->setLayer();

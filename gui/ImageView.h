@@ -150,6 +150,7 @@ class ImageView : public QGraphicsView
     void loadMaskImage( const QString& filename );
     void removeOperationsByIdUndoStack( int id = -1 );
     void removeOperationsByIndexUndoStack( const QString& name, int index = 0 );
+    void reset( LayerItem::OperationMode mode );
     void rebuildUndoStack();
     void forcedUpdate();
     

@@ -633,11 +633,13 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
            cmd = PaintStrokeCommand::fromJson(cmdObj, layers);
         } else if ( type == "LassoCut" || type == "LassoCutCommand" ) {
            cmd = LassoCutCommand::fromJson(cmdObj, layers);
-           LassoCutCommand* cutCommand = dynamic_cast<LassoCutCommand*>(cmd);
-           if ( cutCommand != nullptr ) {
-             cutCommand->setController(editablePolyCommand);
+           if ( cmd != nullptr ) {
+            LassoCutCommand* cutCommand = dynamic_cast<LassoCutCommand*>(cmd);
+            if ( cutCommand != nullptr ) {
+              cutCommand->setController(editablePolyCommand);
+            }
+            boundingBoxLayerMap.insert(cutCommand->layerId(),cutCommand->rect());
            }
-           boundingBoxLayerMap.insert(cutCommand->layerId(),cutCommand->rect());
         } else if ( type == "MoveLayer" || type == "MoveLayerCommand" ) {
            cmd = MoveLayerCommand::fromJson(cmdObj, layers);
         } else if ( type == "MirrorLayer" || type == "MirrorLayerCommand" ) {
@@ -1770,10 +1772,10 @@ void MainWindow::createToolbars()
     
     // --- sub toolbar layer perspective ---
     m_perspectiveLayerToolbar = addToolBar(tr("PerspectiveLayer"));
-    QPushButton *resetPerspectiveAction = new QPushButton("Reset");
+    QPushButton *resetPerspectiveAction = new QPushButton("Undo/Redo");
     resetPerspectiveAction->setFocusPolicy(Qt::ClickFocus);
     connect(resetPerspectiveAction, &QPushButton::clicked, this, [this]() {
-      qDebug() << " pressed reset qpushbutton ";
+      m_imageView->reset(LayerItem::OperationMode::Perspective);
     });
     m_perspectiveLayerToolbar->addWidget(resetPerspectiveAction);
     m_perspectiveLayerToolbar->setVisible(false);

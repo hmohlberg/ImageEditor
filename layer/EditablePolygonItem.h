@@ -44,9 +44,11 @@ class EditablePolygonItem : public QGraphicsObject
     void pointMoved( int idx, const QPointF& scenePos );
     
     // --- Misc ---
+    void visibilityChangedTo( bool isVisible );
     EditablePolygon* polygon() const { return m_poly; }
     int hitTestPolygon( const QPointF& scenePos ) const;
     void setColor( const QColor& color ) { m_lineColor = color; }
+    QString name() const { return m_name; }
     void setName( const QString& name ) { 
       setObjectName(name);
       m_name = name; 
@@ -105,4 +107,5 @@ class EditablePolygonItem : public QGraphicsObject
 
     QString m_name = "";
     bool m_editable = true;
+    
 };

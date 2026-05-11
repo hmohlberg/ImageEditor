@@ -169,7 +169,7 @@ void PerspectiveOverlay::commitTransformation()
 
 void PerspectiveOverlay::moveCorner( PerspectiveCorner corner, const QPointF& scenePos )
 {
-  qCDebug(logEditor) << "PerspectiveOverlay::moveCorner(): corner =" << int(corner) << ", pos =" << scenePos;
+  qDebug() << "PerspectiveOverlay::moveCorner(): corner =" << int(corner) << ", pos =" << scenePos;
   {
     if ( !m_layer || !m_dragging ) return;
     QPointF localPos = m_sceneToLocalSnapshot.map(scenePos);
@@ -181,9 +181,23 @@ void PerspectiveOverlay::moveCorner( PerspectiveCorner corner, const QPointF& sc
       m_layer->setTransform(warp * m_startTransform);
     }
 #else
+    // qDebug() << " >>> " << m_startQuad << ":" << m_currentQuad << ":" << m_finalQuad;
     warp = GeometryUtils::quadToQuad( m_startQuad, m_currentQuad );
     m_layer->setTransform(warp * m_startTransform);
 #endif
     updateOverlay(true);
   }
+}
+
+void PerspectiveOverlay::reset()
+{
+  if ( m_undo ) {
+   m_layer->setTransform(QTransform());
+  } else {
+   QTransform warp = GeometryUtils::quadToQuad( m_initialQuad, m_finalQuad );
+   m_layer->setTransform(warp * m_startTransform);
+   m_currentQuad = m_finalQuad;
+  }
+  m_undo = !m_undo;
+  updateOverlay(true);
 }
