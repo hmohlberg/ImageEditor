@@ -208,7 +208,20 @@ QString MainWindow::mainOperationModeName( int mode )
   return "Unknown";
 }
 
-// ---------------------- Catch close/exit event ----------------------
+// ---------------------- Catch events ----------------------
+bool MainWindow::eventFilter( QObject *obj, QEvent *event )
+{
+  if ( obj == m_polygonToolbar && event->type() == QEvent::Show ) {
+    if ( m_imageView != nullptr ) {
+      int polygon_index = m_imageView->getNextFreePolygonIndex();
+      if ( polygon_index > 0 ) {
+        activePolygon(QString("Polygon %1").arg(polygon_index));
+      }
+    } 
+  }
+  return QMainWindow::eventFilter(obj, event);
+}
+
 bool MainWindow::checkUnsavedData( bool isCloseProgram  )
 {
   qCDebug(logEditor) << "MainWindow::checkUnsavedData(): closeProgram =" << isCloseProgram;
@@ -633,13 +646,11 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
            cmd = PaintStrokeCommand::fromJson(cmdObj, layers);
         } else if ( type == "LassoCut" || type == "LassoCutCommand" ) {
            cmd = LassoCutCommand::fromJson(cmdObj, layers);
-           if ( cmd != nullptr ) {
-            LassoCutCommand* cutCommand = dynamic_cast<LassoCutCommand*>(cmd);
-            if ( cutCommand != nullptr ) {
-              cutCommand->setController(editablePolyCommand);
-            }
-            boundingBoxLayerMap.insert(cutCommand->layerId(),cutCommand->rect());
+           LassoCutCommand* cutCommand = dynamic_cast<LassoCutCommand*>(cmd);
+           if ( cutCommand != nullptr ) {
+             cutCommand->setController(editablePolyCommand);
            }
+           boundingBoxLayerMap.insert(cutCommand->layerId(),cutCommand->rect());
         } else if ( type == "MoveLayer" || type == "MoveLayerCommand" ) {
            cmd = MoveLayerCommand::fromJson(cmdObj, layers);
         } else if ( type == "MirrorLayer" || type == "MirrorLayerCommand" ) {
@@ -1772,10 +1783,12 @@ void MainWindow::createToolbars()
     
     // --- sub toolbar layer perspective ---
     m_perspectiveLayerToolbar = addToolBar(tr("PerspectiveLayer"));
-    QPushButton *resetPerspectiveAction = new QPushButton("Undo/Redo");
+    QPushButton *resetPerspectiveAction = new QPushButton("Reset");
     resetPerspectiveAction->setFocusPolicy(Qt::ClickFocus);
     connect(resetPerspectiveAction, &QPushButton::clicked, this, [this]() {
-      m_imageView->reset(LayerItem::OperationMode::Perspective);
+      if ( m_imageView ) {
+        m_imageView->setPerspectiveWarpReset();
+      }
     });
     m_perspectiveLayerToolbar->addWidget(resetPerspectiveAction);
     m_perspectiveLayerToolbar->setVisible(false);
@@ -1938,6 +1951,7 @@ void MainWindow::createToolbars()
     // create polygon toolbar
     // ============================================================
     m_polygonToolbar = addToolBar(tr("Polygon"));
+    m_polygonToolbar->installEventFilter(this);
     m_polygonToolbar->setVisible(false);
     
     // --- Polygon selection stuff ---

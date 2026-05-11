@@ -21,6 +21,10 @@
 #include "../core/Config.h"
 #include "../layer/LayerItem.h"
 
+#include <QPainter>
+#include <QPolygonF>
+#include <QtMath>
+
 // -------------- Constructor --------------
 PerspectiveWarpCommand::PerspectiveWarpCommand(
        LayerItem* layer, const QVector<QPointF>& before, const QVector<QPointF>& after, QUndoCommand* parent )
@@ -31,17 +35,14 @@ PerspectiveWarpCommand::PerspectiveWarpCommand(
 {
   qCDebug(logEditor) << "PerspectiveWarpCommand::PerspectiveWarpCommand(): Processing...";
   {
-    // initialize
-    m_isInitialized = true;
-    // get layer image data
+    m_isInitialized = false;
     m_origPosition = m_layer->pos();
     m_origTransform = m_layer->transform();
+    m_origSceneTransform = m_layer->sceneTransform();
     m_origImage = m_layer->image(0);
-    // >>>
     const QRectF r = m_layer->boundingRect();
     m_startQuad = { r.topLeft(), r.topRight(), r.bottomRight(), r.bottomLeft() };
     setAfterQuad(after);
-    // >>>
     m_layerId = m_layer->id();
     m_name = QString("Perspective Warp Layer %1").arg(m_layerId);
     setText(m_name);
@@ -59,6 +60,23 @@ PerspectiveWarpCommand::PerspectiveWarpCommand(
   }
 }
 
+AbstractCommand* PerspectiveWarpCommand::clone() const
+{
+    auto* cmd = new PerspectiveWarpCommand(m_layer, m_beforeQuad, m_afterQuad);
+    cmd->m_layerId = m_layerId;
+    cmd->m_name = m_name;
+    cmd->m_isInitialized = m_isInitialized;
+    cmd->m_origImage = m_origImage;
+    cmd->m_origPosition = m_origPosition;
+    cmd->m_origTransform = m_origTransform;
+    cmd->m_origSceneTransform = m_origSceneTransform;
+    cmd->m_warpTransform = m_warpTransform;
+    cmd->m_newPosition = m_newPosition;
+    cmd->m_startQuad = m_startQuad;
+    cmd->setText(text());
+    return cmd;
+}
+
 // -------------- Methods --------------
 void PerspectiveWarpCommand::printMessage( bool isUndo )
 {
@@ -73,28 +91,23 @@ void PerspectiveWarpCommand::printMessage( bool isUndo )
 
 bool PerspectiveWarpCommand::mergeWith( const QUndoCommand* other ) 
 {
-  qDebug() << "PerspectiveWarpCommand::mergeWith(): Processing...";
+  qCDebug(logEditor) << "PerspectiveWarpCommand::mergeWith(): Processing...";
   {
     if ( other->id() != id() )
         return false;
-qDebug() << "1";
     auto* cmd = static_cast<const PerspectiveWarpCommand*>(other);
     if ( cmd->m_layer != m_layer )
         return false;
-qDebug() << "2";
     if ( cmd->m_deleted != m_deleted )
         return false;
-qDebug() << "3";
     if ( cmd->m_startQuad.size() != 4 || m_startQuad.size() != 4 )
         return false;
-qDebug() << "4";
     if ( cmd->m_startQuad != m_startQuad )
         return false;
-qDebug() << "5";
     if ( cmd->m_origTransform != m_origTransform )
         return false;
-qDebug() << "Got it";
     m_afterQuad = cmd->m_afterQuad;
+    rebuildWarp();
     return true;
   }
 }
@@ -104,9 +117,104 @@ void PerspectiveWarpCommand::setAfterQuad( const QVector<QPointF>& after )
   qCDebug(logEditor) << "PerspectiveWarpCommand::setAfterQuad(): after =" << after;
   {
     m_afterQuad = after; 
-    m_warpTransform = m_layer->transform();
-    m_newPosition = m_layer->sceneBoundingRect().topLeft();
+    rebuildWarp();
   }
+}
+
+void PerspectiveWarpCommand::setAfterQuadFromScene( const QVector<QPointF>& sceneQuad )
+{
+  qCDebug(logEditor) << "PerspectiveWarpCommand::setAfterQuadFromScene(): sceneQuad =" << sceneQuad;
+  {
+    if ( sceneQuad.size() != 4 ) return;
+    bool invertible = false;
+    QTransform sceneToOriginal = m_origSceneTransform.inverted(&invertible);
+    if ( !invertible ) {
+      qWarning() << "PerspectiveWarpCommand::setAfterQuadFromScene(): Original scene transform is not invertible.";
+      return;
+    }
+    QVector<QPointF> after;
+    after.reserve(4);
+    for ( const QPointF& point : sceneQuad ) {
+      after.push_back(sceneToOriginal.map(point));
+    }
+    setAfterQuad(after);
+  }
+}
+
+void PerspectiveWarpCommand::resetWarp()
+{
+  qCDebug(logEditor) << "PerspectiveWarpCommand::resetWarp(): Processing...";
+  {
+    m_afterQuad = m_beforeQuad;
+    rebuildWarp();
+    redo();
+  }
+}
+
+QVector<QPointF> PerspectiveWarpCommand::displayQuad() const
+{
+    QVector<QPointF> shifted;
+    if ( m_afterQuad.size() != 4 ) {
+        return shifted;
+    }
+    const QPointF topLeft = QPolygonF(m_afterQuad).boundingRect().topLeft();
+    shifted.reserve(4);
+    for ( const QPointF& point : m_afterQuad ) {
+        shifted.push_back(point - topLeft);
+    }
+    return shifted;
+}
+
+void PerspectiveWarpCommand::rebuildWarp()
+{
+    m_warpTransform = QTransform();
+    if ( m_beforeQuad.size() != 4 || m_afterQuad.size() != 4 ) {
+        return;
+    }
+
+    const QRectF targetBounds = QPolygonF(m_afterQuad).boundingRect();
+    QVector<QPointF> shiftedAfter;
+    shiftedAfter.reserve(4);
+    for ( const QPointF& point : m_afterQuad ) {
+        shiftedAfter.push_back(point - targetBounds.topLeft());
+    }
+
+    if ( !QTransform::quadToQuad(m_beforeQuad, shiftedAfter, m_warpTransform) ) {
+        qWarning() << "PerspectiveWarpCommand::rebuildWarp(): Cannot build perspective transform.";
+        m_warpTransform = QTransform();
+        return;
+    }
+
+    m_newPosition = m_origSceneTransform.map(targetBounds.topLeft());
+}
+
+bool PerspectiveWarpCommand::applyWarp()
+{
+    if ( !m_layer || m_beforeQuad.size() != 4 || m_afterQuad.size() != 4 || m_origImage.isNull() ) {
+        return false;
+    }
+
+    if ( m_afterQuad == m_beforeQuad ) {
+        m_layer->resetImageState(m_origImage, m_origPosition, m_origTransform);
+        m_layer->setOriginalImage(m_origImage,LayerItem::ImageType::Original);
+        return true;
+    }
+
+    const QRectF targetBounds = QPolygonF(m_afterQuad).boundingRect();
+    const QSize targetSize(qMax(1, qCeil(targetBounds.width())),
+                           qMax(1, qCeil(targetBounds.height())));
+    QImage warped(targetSize, QImage::Format_ARGB32_Premultiplied);
+    warped.fill(Qt::transparent);
+
+    QPainter painter(&warped);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    painter.setTransform(m_warpTransform);
+    painter.drawImage(QPointF(0, 0), m_origImage);
+    painter.end();
+
+    m_layer->resetImageState(warped, m_newPosition, QTransform());
+    m_layer->setOriginalImage(warped,LayerItem::ImageType::Original);
+    return true;
 }
 
 // -------------- Undo / redo --------------
@@ -116,21 +224,17 @@ void PerspectiveWarpCommand::undo()
   {
     if ( !m_layer ) return;
     m_layer->resetImageState(m_origImage,m_origPosition,m_origTransform);
+    m_layer->setOriginalImage(m_origImage,LayerItem::ImageType::Original);
     printMessage(true);
   }
 }
 
 void PerspectiveWarpCommand::redo()
 {
-  qDebug() << "PerspectiveWarpCommand::redo(): isInitialized =" << m_isInitialized << ", position =" << m_newPosition;
+  qCDebug(logEditor) << "PerspectiveWarpCommand::redo(): isInitialized =" << m_isInitialized << ", position =" << m_newPosition;
   {
     if ( !m_layer || m_deleted ) return;
-    if ( m_isInitialized == true ) {
-      m_isInitialized = false;
-    } else {
-      m_layer->setImageTransform(m_warpTransform,false);
-      QPointF after = m_layer->sceneBoundingRect().topLeft();
-      m_layer->setPos(m_layer->pos() + (m_newPosition - after));
+    if ( applyWarp() ) {
       printMessage();
     }
   }
@@ -139,9 +243,9 @@ void PerspectiveWarpCommand::redo()
 // -------------- History --------------
 void PerspectiveWarpCommand::buildFromJson( const QPointF& position )
 {
-  m_newPosition = position;
   m_isInitialized = false;
-  QTransform::quadToQuad(m_beforeQuad, m_afterQuad, m_warpTransform);
+  rebuildWarp();
+  m_newPosition = position;
 }
 
 QJsonObject PerspectiveWarpCommand::toJson() const
@@ -183,8 +287,12 @@ PerspectiveWarpCommand* PerspectiveWarpCommand::fromJson( const QJsonObject& obj
     }
     
     // >>>
-    QJsonObject newPositionObj = obj["newPosition"].toObject();
-    QPointF newPosition(newPositionObj["x"].toDouble(), newPositionObj["y"].toDouble());
+    QPointF newPosition;
+    const bool hasNewPosition = obj.contains("newPosition");
+    if ( hasNewPosition ) {
+        QJsonObject newPositionObj = obj["newPosition"].toObject();
+        newPosition = QPointF(newPositionObj["x"].toDouble(), newPositionObj["y"].toDouble());
+    }
     
     // >>>
     QVector<QPointF> before, after;
@@ -200,6 +308,6 @@ PerspectiveWarpCommand* PerspectiveWarpCommand::fromJson( const QJsonObject& obj
     }
 
     PerspectiveWarpCommand* perspectiveWarpCommand = new PerspectiveWarpCommand(layer,before,after);
-    perspectiveWarpCommand->buildFromJson(newPosition);
+    perspectiveWarpCommand->buildFromJson(hasNewPosition ? newPosition : perspectiveWarpCommand->m_newPosition);
     return perspectiveWarpCommand;
 }

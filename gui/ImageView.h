@@ -113,6 +113,7 @@ class ImageView : public QGraphicsView
       if ( !m_maskItem ) return Qt::transparent;
       return m_maskItem->labelColor(label);
     }
+    int getNextFreePolygonIndex( void );
     int pushEditablePolygon( EditablePolygon* edtitablePolygon );
     int getMaskCutToolType( const QString& name );
     
@@ -140,6 +141,7 @@ class ImageView : public QGraphicsView
     void setCageWarpRelaxationSteps( int nRelaxationSteps );
     void setCageWarpStiffness( double stiffness );
     void setCageWarpReset();
+    void setPerspectiveWarpReset();
     void setOverlayVisibility( int overlayType, bool isVisible );
     void setCageVisible( LayerItem* layer, LayerItem::OperationMode mode, bool isVisible );
     void setOnlyCageVisible( int ident );
@@ -150,7 +152,6 @@ class ImageView : public QGraphicsView
     void loadMaskImage( const QString& filename );
     void removeOperationsByIdUndoStack( int id = -1 );
     void removeOperationsByIndexUndoStack( const QString& name, int index = 0 );
-    void reset( LayerItem::OperationMode mode );
     void rebuildUndoStack();
     void forcedUpdate();
     

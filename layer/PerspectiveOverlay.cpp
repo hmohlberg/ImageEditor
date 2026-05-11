@@ -51,20 +51,27 @@ PerspectiveOverlay::PerspectiveOverlay( LayerItem* layer, QUndoStack* undoStack 
 
 QRectF PerspectiveOverlay::boundingRect() const
 {
-    return m_rect;
+    return m_rect.adjusted(-4, -4, 4, 4);
 }
 
 void PerspectiveOverlay::paint( QPainter* p, const QStyleOptionGraphicsItem*, QWidget* )
 {
-  #ifdef AAA
+  {
     p->setRenderHint(QPainter::Antialiasing);
     QPen pen(Qt::cyan);
     pen.setStyle(Qt::DashLine);
     pen.setWidth(2);
     p->setPen(pen);
-    if ( m_currentQuad.size() == 4 )
-        p->drawPolygon(QPolygonF(m_currentQuad));
-  #endif
+    p->setBrush(Qt::NoBrush);
+    if ( m_handles.size() == 4 ) {
+        QPolygonF polygon;
+        polygon << m_handles[PerspectiveCorner::TL]->pos()
+                << m_handles[PerspectiveCorner::TR]->pos()
+                << m_handles[PerspectiveCorner::BR]->pos()
+                << m_handles[PerspectiveCorner::BL]->pos();
+        p->drawPolygon(polygon);
+    }
+  }
 }
 
 void PerspectiveOverlay::updateOverlay( bool fromStart )
@@ -145,14 +152,70 @@ void PerspectiveOverlay::endWarp()
     if ( m_currentQuad == m_startQuad ) {
       return;
     }
-    // setTransform(QTransform());
-    if ( !m_warpCommand ) {
-      m_warpCommand = new PerspectiveWarpCommand(m_layer,m_startQuad,m_currentQuad); // m_initialQuad -> m_startQuad
-      m_undoStack->push(m_warpCommand);
-    } else {
-      m_warpCommand->setAfterQuad(m_finalQuad);
-      updateOverlay(true);        // added by CLAUDE
+    QVector<QPointF> sceneQuad;
+    sceneQuad.reserve(m_startQuad.size());
+    for ( const QPointF& point : m_startQuad ) {
+        sceneQuad.push_back(m_layer->mapToScene(point));
     }
+    m_layer->setTransform(m_startTransform);
+    if ( !m_warpCommand ) {
+        m_warpCommand = new PerspectiveWarpCommand(m_layer,m_startQuad,m_currentQuad);
+        m_undoStack->push(m_warpCommand);
+    } else {
+        m_warpCommand->setAfterQuadFromScene(sceneQuad);
+        m_warpCommand->redo();
+    }
+
+    QVector<QPointF> displayQuad = m_warpCommand->displayQuad();
+    if ( displayQuad.size() != 4 ) {
+        return;
+    }
+    m_startQuad = displayQuad;
+    m_currentQuad = displayQuad;
+    m_initialQuad = displayQuad;
+    m_finalQuad = displayQuad;
+    updateOverlay();
+	  }
+	}
+
+void PerspectiveOverlay::resetWarp()
+{
+  qDebug() << "PerspectiveOverlay::resetWarp(): Processing...";
+  {
+    if ( !m_layer )
+        return;
+    m_dragging = false;
+    if ( !m_warpCommand && m_undoStack ) {
+        for ( int i = m_undoStack->count() - 1; i >= 0; --i ) {
+            auto* cmd = const_cast<PerspectiveWarpCommand*>(dynamic_cast<const PerspectiveWarpCommand*>(m_undoStack->command(i)));
+            if ( cmd && cmd->layer() == m_layer ) {
+                m_warpCommand = cmd;
+                break;
+            }
+        }
+    }
+    if ( m_warpCommand ) {
+        m_warpCommand->resetWarp();
+        QVector<QPointF> displayQuad = m_warpCommand->displayQuad();
+        if ( displayQuad.size() == 4 ) {
+            m_startQuad = displayQuad;
+            m_currentQuad = displayQuad;
+            m_initialQuad = displayQuad;
+            m_finalQuad = displayQuad;
+        }
+    } else {
+        QRectF r = m_layer->boundingRect();
+        m_startQuad = {
+            r.topLeft(),
+            r.topRight(),
+            r.bottomRight(),
+            r.bottomLeft()
+        };
+        m_currentQuad = m_startQuad;
+        m_initialQuad = m_startQuad;
+        m_finalQuad = m_startQuad;
+    }
+    updateOverlay();
   }
 }
 
@@ -169,7 +232,7 @@ void PerspectiveOverlay::commitTransformation()
 
 void PerspectiveOverlay::moveCorner( PerspectiveCorner corner, const QPointF& scenePos )
 {
-  qDebug() << "PerspectiveOverlay::moveCorner(): corner =" << int(corner) << ", pos =" << scenePos;
+  qCDebug(logEditor) << "PerspectiveOverlay::moveCorner(): corner =" << int(corner) << ", pos =" << scenePos;
   {
     if ( !m_layer || !m_dragging ) return;
     QPointF localPos = m_sceneToLocalSnapshot.map(scenePos);
@@ -181,23 +244,9 @@ void PerspectiveOverlay::moveCorner( PerspectiveCorner corner, const QPointF& sc
       m_layer->setTransform(warp * m_startTransform);
     }
 #else
-    // qDebug() << " >>> " << m_startQuad << ":" << m_currentQuad << ":" << m_finalQuad;
     warp = GeometryUtils::quadToQuad( m_startQuad, m_currentQuad );
     m_layer->setTransform(warp * m_startTransform);
 #endif
     updateOverlay(true);
   }
-}
-
-void PerspectiveOverlay::reset()
-{
-  if ( m_undo ) {
-   m_layer->setTransform(QTransform());
-  } else {
-   QTransform warp = GeometryUtils::quadToQuad( m_initialQuad, m_finalQuad );
-   m_layer->setTransform(warp * m_startTransform);
-   m_currentQuad = m_finalQuad;
-  }
-  m_undo = !m_undo;
-  updateOverlay(true);
 }

@@ -375,11 +375,11 @@ void LayerItem::resetImageState( const QImage& image, const QPointF& position, c
     prepareGeometryChange();
     setTransform(QTransform());
     setPos(position);
-    m_image = image;
-    m_totalTransform = transform;
-    updatePixmap();
-  }
-}
+	    m_image = image;
+	    m_totalTransform = transform;
+	    updatePixmap();
+	  }
+	}
 
 void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
   qDebug() << "LayerItem::setImageTransform(): position =" << pos() << ", combine =" 
@@ -439,6 +439,9 @@ void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option
 #endif
   {
     QGraphicsPixmapItem::paint(painter,option,widget);
+    if ( m_operationMode == OperationMode::Perspective ) {
+      return;
+    }
     if ( isSelected() ) {
       painter->setPen(m_selectedPen);
       painter->setBrush(Qt::NoBrush);

@@ -20,6 +20,8 @@
 #include "AbstractCommand.h"
 #include <QVector>
 #include <QPointF>
+#include <QImage>
+#include <QTransform>
 
 class LayerItem;
 
@@ -30,13 +32,16 @@ class PerspectiveWarpCommand : public AbstractCommand
   
     PerspectiveWarpCommand( LayerItem* layer, const QVector<QPointF>& before, const QVector<QPointF>& after, QUndoCommand* parent = nullptr );
                            
-    AbstractCommand* clone() const override { return new PerspectiveWarpCommand(m_layer,m_beforeQuad,m_afterQuad); }
+    AbstractCommand* clone() const override;
 
     void buildFromJson( const QPointF& position );
     void setAfterQuad( const QVector<QPointF>& after );
+    void setAfterQuadFromScene( const QVector<QPointF>& sceneQuad );
+    void resetWarp();
+    QVector<QPointF> displayQuad() const;
     QString type() const override { return "PerspectiveWarp"; }
     bool mergeWith( const QUndoCommand* other ) override;
-    LayerItem* layer() const override { return nullptr; }
+    LayerItem* layer() const override { return m_layer; }
     int id() const override { return 1031; }
     
     void printMessage( bool isUndo = false );
@@ -48,6 +53,9 @@ class PerspectiveWarpCommand : public AbstractCommand
     static PerspectiveWarpCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent = nullptr );
 
   private:
+
+    void rebuildWarp();
+    bool applyWarp();
   
     int m_layerId = -1;
     LayerItem* m_layer = nullptr;
@@ -59,6 +67,7 @@ class PerspectiveWarpCommand : public AbstractCommand
     QImage m_origImage;
     QPointF m_origPosition;
     QTransform m_origTransform;
+    QTransform m_origSceneTransform;
     
     QTransform m_warpTransform;
     QPointF m_newPosition;

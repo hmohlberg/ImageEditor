@@ -1381,13 +1381,6 @@ void ImageView::clearSelection()
     viewport()->update();
 }
 
-void ImageView::reset( LayerItem::OperationMode mode )
-{
-  if ( mode == LayerItem::OperationMode::Perspective && m_perspectiveOverlay != nullptr ) {
-    m_perspectiveOverlay->reset();
-  }
-}
-
 // ---------------------------- Layer methods -----------------------------
 LayerItem* ImageView::getLayerItem( const QString& name )
 {
@@ -1732,6 +1725,16 @@ void ImageView::setCageWarpReset()
   }
 }
 
+void ImageView::setPerspectiveWarpReset()
+{
+  qCDebug(logEditor) << "ImageView::setPerspectiveWarpReset(): Processing...";
+  {
+    if ( !m_perspectiveOverlay )
+        return;
+    m_perspectiveOverlay->resetWarp();
+  }
+}
+
 void ImageView::setIncreaseNumberOfCageControlPoints() 
 {
   qCDebug(logEditor) << "ImageView::setIncreaseNumberOfCageControlPoints(): layer =" << (m_selectedLayer ? true : false);
@@ -2067,6 +2070,21 @@ int ImageView::pushEditablePolygon( EditablePolygon* editablePolygon )
     }
     m_editablePolygons.push_back(editablePolygon);
     return m_editablePolygons.size();
+}
+
+int ImageView::getNextFreePolygonIndex( void ) 
+{
+  QSet<int> indices;
+  for ( EditablePolygon* polygon : m_editablePolygons ) {
+    indices.insert(polygon->index());
+  }
+  QSet<int> indexSet(indices.begin(), indices.end());
+  for ( int i=1 ; i<=20 ; ++i ) {
+    if ( !indexSet.contains(i) ) {
+      return i; 
+    }
+  }
+  return 0;
 }
 
 // ---------------------------- --------------- -----------------------------
