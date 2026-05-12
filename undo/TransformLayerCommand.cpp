@@ -180,7 +180,6 @@ void TransformLayerCommand::undo()
     if ( m_trafoType == LayerTransformType::Scale ) {
       m_layer->setCageVisible(LayerItem::OperationMode::Scale,false);
     }
-    // m_totalTransform = QTransform();
     printMessage(true);
   }
 }
@@ -194,7 +193,6 @@ void TransformLayerCommand::redo()
     m_totalTransform *= m_newTransform;
     m_layer->setImageTransform(m_newTransform);
     if ( m_trafoType == LayerTransformType::Scale ) {
-      qDebug() << "TransformLayerCommand::redo(): oldPos = " << m_oldPos << ", shiftTo = " << m_newTransform.dx() << ":" << m_newTransform.dy();
       m_layer->shiftTo(m_oldPos+QPointF(m_newTransform.dx(),m_newTransform.dy()));
     }
     if ( m_trafoType == LayerTransformType::Scale ) {

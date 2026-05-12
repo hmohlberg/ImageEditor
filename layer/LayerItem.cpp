@@ -282,7 +282,7 @@ void LayerItem::updateOriginalImage() {
 // ------------------------ Selected ------------------------
 void LayerItem::setIsSelected( int caller, bool isSelected ) 
 {
-  qDebug() << "LayerItem::setIsSelected(" << caller << "): name =" << name() 
+  qCDebug(logEditor) << "LayerItem::setIsSelected(" << caller << "): name =" << name() 
                   << ", select =" << isSelected << ", operationMode =" << m_operationMode;
   {
     MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
@@ -948,9 +948,9 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
 {
-  qDebug() << "LayerItem::mousePressEvent(): layer =" << name() << ", selected =" 
+  qCDebug(logEditor) << "LayerItem::mousePressEvent(): layer =" << name() << ", selected =" 
                << isSelected() << ", zValue =" << zValue() << ", operationMode =" << m_operationMode 
-               << ", active =" << m_mouseOperationActive;
+               << ", active =" << m_mouseOperationActive << ", event_modifiers =" << event->modifiers();
   {
     if ( event->button() != Qt::LeftButton ) {
       QGraphicsPixmapItem::mousePressEvent(event);
@@ -974,7 +974,13 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
          // m_operationMode = OperationMode::None;
          m_mouseOperationActive = false;
         }
+        // --- updating ---
+        parent->setSelectedLayer(7,QString("Layer %1").arg(m_index));
+        // to ensure that message is shown even layer is already selected
+        parent->showMessage(QString("Select layer %1").arg(m_index));
       }
+    } else if ( event->modifiers() & Qt::ControlModifier  ) {
+     qDebug() << "LayerItem::mousePressEvent(): Pressed control modifier...";
     }
   }
 }

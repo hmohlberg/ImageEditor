@@ -51,6 +51,7 @@ class PerspectiveOverlay : public QObject, public QGraphicsItem
 
  private:
  
+    void adoptWarpCommandFromUndoStack();
     void createHandles();
     void updateHandlePositions();
     void commitTransformation();

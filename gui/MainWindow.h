@@ -57,7 +57,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     int activePolygon( const QString& polygonName );
     void setLayerOperationMode( int mode, bool updateMode = true );
     void setPolygonOperationMode( int mode );
-    void setSelectedLayer( const QString &name );
+    void setSelectedLayer( int caller, const QString &name, bool forcedEnabled = false );
     
     // --- override methods ---
     void updateLayerOperationParameter( int mode, double value1, double value2 = 0.0 ) override;
@@ -70,6 +70,10 @@ class MainWindow : public QMainWindow, public IMainSystem
     void closeEvent( QCloseEvent *event ) override;
     bool eventFilter( QObject *obj, QEvent *event ) override;
     // bool focusNextPrevChild( bool next ) override;
+    
+ public slots:
+    
+    void selectLayerItem( const QString& itemName );
 
  private slots:
 

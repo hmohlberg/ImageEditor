@@ -30,7 +30,7 @@
 PerspectiveOverlay::PerspectiveOverlay( LayerItem* layer, QUndoStack* undoStack )
     : m_layer(layer), m_undoStack(undoStack)
 {
-  qDebug() << "PerspectiveOverlay::PerspectiveOverlay(): Processing...";
+  qCDebug(logEditor) << "PerspectiveOverlay::PerspectiveOverlay(): Processing...";
   {
     setZValue(999999);
     QRectF r = m_layer->boundingRect();
@@ -40,10 +40,19 @@ PerspectiveOverlay::PerspectiveOverlay( LayerItem* layer, QUndoStack* undoStack 
         r.bottomRight(),
         r.bottomLeft()
     };
-    qDebug() << "PerspectiveOverlay::PerspectiveOverlay(): startQuad =" << m_startQuad;
     m_currentQuad = m_startQuad;
     m_initialQuad = m_currentQuad;
     m_finalQuad = m_startQuad;
+    adoptWarpCommandFromUndoStack();
+    if ( m_warpCommand ) {
+        QVector<QPointF> displayQuad = m_warpCommand->displayQuad();
+        if ( displayQuad.size() == 4 ) {
+            m_startQuad = displayQuad;
+            m_currentQuad = displayQuad;
+            m_initialQuad = displayQuad;
+            m_finalQuad = displayQuad;
+        }
+    }
     createHandles();
     updateOverlay();
   }
@@ -103,7 +112,7 @@ void PerspectiveOverlay::updateOverlay( bool fromStart )
 
 void PerspectiveOverlay::createHandles()
 {
-  qDebug() << "PerspectiveOverlay::createHandles(): Processing...";
+  qCDebug(logEditor) << "PerspectiveOverlay::createHandles(): Processing...";
   {
     auto add = [&](PerspectiveCorner c)
     {
@@ -120,7 +129,7 @@ void PerspectiveOverlay::createHandles()
 
 void PerspectiveOverlay::updateHandlePositions()
 {
-  qDebug() << "PerspectiveOverlay::updateHandlePositions(): currentQuad =" << m_currentQuad;
+  qCDebug(logEditor) << "PerspectiveOverlay::updateHandlePositions(): currentQuad =" << m_currentQuad;
   {
     if ( m_currentQuad.size() != 4 )
         return;
@@ -131,9 +140,24 @@ void PerspectiveOverlay::updateHandlePositions()
   }
 }
 
+void PerspectiveOverlay::adoptWarpCommandFromUndoStack()
+{
+  if ( m_warpCommand || !m_undoStack || !m_layer ) {
+      return;
+  }
+  const int activeCommandCount = qMin(m_undoStack->index(), m_undoStack->count());
+  for ( int i = activeCommandCount - 1; i >= 0; --i ) {
+      auto* cmd = const_cast<PerspectiveWarpCommand*>(dynamic_cast<const PerspectiveWarpCommand*>(m_undoStack->command(i)));
+      if ( cmd && cmd->layer() == m_layer ) {
+          m_warpCommand = cmd;
+          return;
+      }
+  }
+}
+
 void PerspectiveOverlay::beginWarp()
 {
-  qDebug() << "PerspectiveOverlay::beginWarp(): Processing...";
+  qCDebug(logEditor) << "PerspectiveOverlay::beginWarp(): Processing...";
   {
     if ( !m_layer ) return;
     m_dragging = true;
@@ -145,7 +169,7 @@ void PerspectiveOverlay::beginWarp()
 
 void PerspectiveOverlay::endWarp()
 {
-  qDebug() << "PerspectiveOverlay::endWarp(): Processing...";
+  qCDebug(logEditor) << "PerspectiveOverlay::endWarp(): Processing...";
   {
     if ( !m_layer || !m_dragging ) return;
     m_dragging = false;
@@ -180,20 +204,12 @@ void PerspectiveOverlay::endWarp()
 
 void PerspectiveOverlay::resetWarp()
 {
-  qDebug() << "PerspectiveOverlay::resetWarp(): Processing...";
+  qCDebug(logEditor) << "PerspectiveOverlay::resetWarp(): Processing...";
   {
     if ( !m_layer )
         return;
     m_dragging = false;
-    if ( !m_warpCommand && m_undoStack ) {
-        for ( int i = m_undoStack->count() - 1; i >= 0; --i ) {
-            auto* cmd = const_cast<PerspectiveWarpCommand*>(dynamic_cast<const PerspectiveWarpCommand*>(m_undoStack->command(i)));
-            if ( cmd && cmd->layer() == m_layer ) {
-                m_warpCommand = cmd;
-                break;
-            }
-        }
-    }
+    adoptWarpCommandFromUndoStack();
     if ( m_warpCommand ) {
         m_warpCommand->resetWarp();
         QVector<QPointF> displayQuad = m_warpCommand->displayQuad();
@@ -221,7 +237,7 @@ void PerspectiveOverlay::resetWarp()
 
 void PerspectiveOverlay::commitTransformation()
 {
-  qDebug() << "PerspectiveOverlay::commitTransformation(): Processing...";
+  qCDebug(logEditor) << "PerspectiveOverlay::commitTransformation(): Processing...";
   {
     if ( !m_layer || m_currentQuad == m_initialQuad ) return;
     auto* cmd = new PerspectiveWarpCommand(m_layer, m_startQuad, m_currentQuad); // m_initialQuad -> m_startQuad

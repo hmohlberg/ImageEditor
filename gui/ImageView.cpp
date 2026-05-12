@@ -104,7 +104,24 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
     // --- history control (only stable for step-by-step processing) ---
     connect(m_undoStack, &QUndoStack::indexChanged, this, [this](int currentIndex) {
       // *** have to go to all commands between last and current index ***
-      qDebug() << "ImageView::ImageView(): lastIndex =" << m_lastIndex << ", currentIndex =" << currentIndex;
+      qCDebug(logEditor) << "ImageView::ImageView(): lastIndex =" << m_lastIndex << ", currentIndex =" << currentIndex;
+      bool perspectiveCommandWasUndone = false;
+      if ( currentIndex < m_lastIndex ) {
+        for ( int i = currentIndex; i < m_lastIndex && i < m_undoStack->count(); ++i ) {
+          const QUndoCommand* undoneCommand = m_undoStack->command(i);
+          if ( undoneCommand != nullptr && undoneCommand->text().startsWith("Perspective Warp") ) {
+            perspectiveCommandWasUndone = true;
+            break;
+          }
+        }
+      }
+      if ( perspectiveCommandWasUndone ) {
+        disablePerspectiveWarp();
+        if ( MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent) ) {
+          mainWindow->setLayerOperationMode(LayerItem::OperationMode::Translate);
+        }
+        setLayerOperationMode(LayerItem::OperationMode::Translate);
+      }
       if ( currentIndex == 0 ) {
         if ( auto *ms = IMainSystem::instance() ) {
           IMainSystem::instance()->showMessage(QString("Initial state"));
@@ -143,7 +160,9 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
                    // LayerItem *layer = getSelectedItem(true);
                    // if ( layer != nullptr ) layer->setCageVisible(false);
                 } else if ( previousActiveCommand->text().startsWith("Perspective Warp") ) {
-                   qDebug() << " *** cleaning perspective warp mesh here ***";
+                   if ( !justFinishedCommand->text().startsWith("Perspective") ) {
+                     disablePerspectiveWarp();
+                   }
                 } else if ( previousActiveCommand->text().startsWith("Editable Polygon") ) {
                    EditablePolygonCommand *polyCommand = const_cast<EditablePolygonCommand*>(
                                             dynamic_cast<const EditablePolygonCommand*>(previousActiveCommand));
@@ -207,6 +226,8 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
           } else if ( justFinishedCommand->text().startsWith("Perspective") ) {
             mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::Perspective);
+            setLayerOperationMode(LayerItem::OperationMode::Perspective);
+            setOverlayVisibility(2,true);
           } else if ( justFinishedCommand->text().startsWith("Cage") ) {
             // qDebug() << "Just finished Cage command: " << justFinishedCommand->text();
             mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
@@ -643,7 +664,7 @@ void ImageView::setSelectedLayer( int caller, const QString &name )
   {
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow == nullptr ) return;
-    mainWindow->setSelectedLayer(name);
+    mainWindow->setSelectedLayer(3,name);
     for ( auto* item : m_scene->items() ) {
       auto* layer = dynamic_cast<LayerItem*>(item);
       if ( layer && !layer->name().startsWith("Main") ) {
@@ -666,7 +687,7 @@ void ImageView::setActiveLayer( const QString &name, bool initialize )
         if ( isSelected ) {
           MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
           if ( mainWindow != nullptr ) {
-            mainWindow->setSelectedLayer(QString("Layer %1").arg(layer->id()));
+            mainWindow->setSelectedLayer(6,QString("Layer %1").arg(layer->id()),initialize);
             mainWindow->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,layer->getRotationAngle());
             if ( initialize ) {
               mainWindow->setLayerOperationMode(LayerItem::OperationMode::Translate);
@@ -731,7 +752,7 @@ void ImageView::keyPressEvent( QKeyEvent* event )
           QRegularExpressionMatch match = re.match(selectedLayer->name());
           if ( match.hasMatch() ) {
             QString numberStr = match.captured(0);
-            mainWindow->setSelectedLayer(QString("Layer %1").arg(numberStr.toInt()));
+            mainWindow->setSelectedLayer(4,QString("Layer %1").arg(numberStr.toInt()));
             QString geometryString = GeometryUtils::getGeometryString(selectedLayer);
             IMainSystem::instance()->showMessage(QString("Selected layer %1 with geometry %2").arg(selectedLayer->name()).arg(geometryString));
           }
@@ -842,9 +863,25 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         setCursor(Qt::ClosedHandCursor);
         return; // kein weiteres Event behandeln
     }
+    
+    // --- Main window processing ---
+    if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::ImageLayer && event->button() == Qt::LeftButton ) {
+        LayerItem* clickedLayer = nullptr;
+        for ( auto* item : scene()->items(scenePos) ) {
+           clickedLayer = dynamic_cast<LayerItem*>(item);
+           if ( clickedLayer )
+             break;
+        }
+        if ( clickedLayer && clickedLayer->getType() == LayerItem::MainImage ) {
+          mainWindow->showMessage("Deselected layer");
+          mainWindow->setSelectedLayer(5,"");
+          event->accept();
+        }
+    }
 
     // --- Pipette ---
     if ( m_pipette ) {
+        qCDebug(logEditor) << "ImageView::mousePressEvent(): Pipette processing...";
         auto itemsUnderCursor = scene()->items(scenePos);
         for ( auto* item : itemsUnderCursor ) {
             auto* layer = dynamic_cast<LayerItem*>(item);
@@ -858,67 +895,9 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         }
     }
 
-#ifdef AAA
-    // --- Picking Image Layer ---
-    if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::ImageLayer ) {
-      LayerItem* clickedItem = nullptr;
-      auto itemsUnderCursor = m_scene->items(scenePos);
-      qreal minarea = std::numeric_limits<qreal>::max();
-      for ( auto* item : itemsUnderCursor ) {
-        auto* layer = dynamic_cast<LayerItem*>(item);
-        if ( layer ) {
-            QRectF rect = layer->sceneBoundingRect();
-            double areaInScene = rect.width() * rect.height();
-            if ( areaInScene < minarea ) {
-              minarea = areaInScene;
-              clickedItem = layer;
-            } 
-        }
-      }
-      if ( clickedItem ) {
-        QString geometryString = GeometryUtils::getGeometryString(clickedItem);
-        if ( auto *ms = IMainSystem::instance() ) {
-          IMainSystem::instance()->showMessage(QString("Selected layer %1 with geometry %2").arg(clickedItem->name()).arg(geometryString));
-        }
-        clickedItem->setOperationMode(m_layerOperationMode);
-        mainWindow->setSelectedLayer(QString("Layer %1").arg(clickedItem->id()));
-        if ( clickedItem->isSelected() == true ) {
-          // toggle active surface off if it's clicked again -- too confusing, remove this action
-          if( !( m_selectedLayer && m_selectedLayer == clickedItem ) ) {
-            m_selectedLayer = clickedItem;
-          }
-        } else {
-          // make this new layer the active one
-          for ( auto* item : m_scene->items() ) {
-            auto* layer = dynamic_cast<LayerItem*>(item);
-            if ( layer && layer != clickedItem )
-                layer->setIsSelected(4,false);
-          }
-          clickedItem->setIsSelected(5,true);
-          m_selectedLayer = clickedItem;
-        }
-        if( m_selectedCageLayer && m_selectedCageLayer != clickedItem ) {
-          m_selectedCageLayer->setCageVisible(7,false);
-        }
-        if( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
-          if ( clickedItem->hasActiveCage() ) {
-            m_selectedCageLayer = clickedItem;
-            m_selectedCageLayer->setCageEditing( true );
-            m_selectedCageLayer->setCageVisible( 8, true );
-            // this one actually makes the control points visible.
-            m_selectedCageLayer->setCageVisible( LayerItem::OperationMode::CageWarp, true );
-            m_cageBefore = clickedItem->cageMesh().points();
-          } else {
-            m_selectedCageLayer = nullptr;
-            m_cageBefore.clear();
-          }
-        }
-      }
-    }
-#endif
-
     // --- Painting ---
     if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::Paint ) {
+      qCDebug(logEditor) << "ImageView::mousePressEvent(): Paint processing...";
       if ( m_paintToolEnabled ) {
         auto itemsUnderCursor = scene()->items(scenePos);
         for ( auto* item : itemsUnderCursor ) {
@@ -941,6 +920,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
     
     // --- Mask Painting ---
     if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::Mask ) {
+      qCDebug(logEditor) << "ImageView::mousePressEvent(): Mask processing...";
       if ( m_maskTool != MaskTool::None && (event->button() == Qt::LeftButton || event->button() == Qt::RightButton) ) {
         // NEW: m_maskStrokeActive = true;
         // NEW: m_currentMaskStroke.clear();
@@ -952,6 +932,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
     }
     // --- Free selection event ---
     if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::FreeSelection ) {
+      qCDebug(logEditor) << "ImageView::mousePressEvent(): FreeSelection processing...";
       if ( m_lassoEnabled ) {
         m_lassoPolygon.clear();
         m_lassoPolygon << scenePos.toPoint();
@@ -978,6 +959,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
     
     // --- polygon events ---
     if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::Polygon ) {
+      qCDebug(logEditor) << "ImageView::mousePressEvent(): Polygon processing...";
       // --- Add a new point to polygon ---
       if ( m_polygonEnabled && event->button() == Qt::LeftButton ) {
          if ( m_activePolygon != nullptr ) {
@@ -1180,7 +1162,7 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
 
 void ImageView::mouseReleaseEvent( QMouseEvent* event )
 {
-  qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): panning = " << m_panning << ", selectedCageLayer =" << ( m_selectedCageLayer == nullptr ? "null" : "ok" );
+  qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): panning =" << m_panning << ", selectedCageLayer =" << ( m_selectedCageLayer == nullptr ? "null" : "ok" );
   {
     if ( !scene() )
       return;
@@ -1512,11 +1494,16 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
 {
   qCDebug(logEditor) << "ImageView::setLayerOperationMode(): mode =" << mode << ", m_polygonEnabled =" << m_polygonEnabled;
   {
+    const bool modeChanged = ( m_layerOperationMode != mode );
     // --- handle old mode ---
-    if ( m_layerOperationMode == LayerItem::OperationMode::Scale ) {
-      disableTransformMode();
-    } else if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
-      m_selectedCageLayer = nullptr;
+    if ( modeChanged ) {
+      if ( m_layerOperationMode == LayerItem::OperationMode::Scale ) {
+        disableTransformMode();
+      } else if ( m_layerOperationMode == LayerItem::OperationMode::Perspective ) {
+        disablePerspectiveWarp();
+      } else if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
+        m_selectedCageLayer = nullptr;
+      }
     }
     // --- handle new mode ---
     m_layerOperationMode = mode; 
@@ -1526,11 +1513,17 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
     LayerItem *layer = getSelectedItem();
     if ( layer != nullptr ) {
       if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
-         initCageWarpForLayer(layer);
+         if ( modeChanged ) {
+           initCageWarpForLayer(layer);
+         }
       } else if ( m_layerOperationMode == LayerItem::OperationMode::Scale ) {
-         setEnableTransformMode(layer);
+         if ( modeChanged || !m_transformOverlay ) {
+           setEnableTransformMode(layer);
+         }
       } else if ( m_layerOperationMode == LayerItem::OperationMode::Perspective ) {
-         setEnablePerspectiveWarp(layer);
+         if ( modeChanged || !m_perspectiveOverlay ) {
+           setEnablePerspectiveWarp(layer);
+         }
       } 
       layer->setOperationMode(mode);
     } else {
@@ -2072,7 +2065,7 @@ int ImageView::pushEditablePolygon( EditablePolygon* editablePolygon )
     return m_editablePolygons.size();
 }
 
-int ImageView::getNextFreePolygonIndex( void ) 
+int ImageView::getNextFreePolygonIndex( void )
 {
   QSet<int> indices;
   for ( EditablePolygon* polygon : m_editablePolygons ) {
@@ -2081,7 +2074,7 @@ int ImageView::getNextFreePolygonIndex( void )
   QSet<int> indexSet(indices.begin(), indices.end());
   for ( int i=1 ; i<=20 ; ++i ) {
     if ( !indexSet.contains(i) ) {
-      return i; 
+      return i;
     }
   }
   return 0;
@@ -2196,7 +2189,7 @@ void ImageView::setOverlayVisibility( int overlayType, bool isVisible )
   {
     if ( overlayType == 1 && m_transformOverlay != nullptr ) {
       m_transformOverlay->setVisible(isVisible);
-    } else if ( overlayType == 1 && m_perspectiveOverlay != nullptr ) {
+    } else if ( overlayType == 2 && m_perspectiveOverlay != nullptr ) {
      m_perspectiveOverlay->setVisible(isVisible);
     }
   }

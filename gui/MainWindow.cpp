@@ -903,6 +903,54 @@ void MainWindow::toggleDocks()
 }
 
 // --------------------------------- Layer tools ---------------------------------
+void MainWindow::selectLayerItem( const QString &itemName )
+{
+  qCDebug(logEditor) << "MainWindow::selectLayerItem(): name =" << itemName;
+  {
+    if ( !itemName.isEmpty() ) {
+      qDebug() << "MainWindow::createToolbars(): Callback call for " << itemName;
+      // select active layer
+      m_selectedLayerItemName = itemName;
+      // update layer list
+      QList<QListWidgetItem*> items = m_layerList->findItems(itemName, Qt::MatchExactly);
+      if ( !items.isEmpty() ) {
+        QListWidgetItem* item = items.first();
+        {
+         const QSignalBlocker blocker(m_layerList);
+         m_layerList->setCurrentItem(item);
+         item->setSelected(true);
+        }
+      }
+      // update active layer
+      for ( Layer* l : m_imageView->layers() ) {
+         if ( l->m_item ) {
+          LayerItem *layerItem = dynamic_cast<LayerItem*>(l->m_item);
+          if ( layerItem != nullptr ) {
+            QString name = l->name().section(' ', -2, -1);
+            if ( name == itemName ) {
+              layerItem->setIsSelected(6,true);
+              layerItem->setZValue(3);
+            } else {
+              layerItem->setIsSelected(7,false);
+              layerItem->setZValue(2);
+            }
+          }
+         }
+      }
+      // misc
+      showMessage(QString("Select %1").arg(itemName));
+      // info
+      #ifdef AAA
+         for ( Layer* l : m_imageView->layers() ) {
+          if ( l->m_item ) {
+            qDebug() << " name =" << l->name() << ": selected =" << l->m_item->isSelected();
+          }
+         }
+      #endif
+    }
+  }
+}
+
 void MainWindow::toggleLayerVisibility(  QListWidgetItem* item )
 {
   qCDebug(logEditor) << "MainWindow::toggleLayerVisibility(): Processing...";
@@ -928,8 +976,7 @@ void MainWindow::toggleLayerVisibility(  QListWidgetItem* item )
   }   
 }
 
-void MainWindow::updateLayerList()
-{
+void MainWindow::updateLayerList() {
    rebuildLayerList();
 }
 
@@ -980,21 +1027,35 @@ void MainWindow::rebuildLayerList()
   }
 }
 
-void MainWindow::setSelectedLayer( const QString &name )
+// HINT: Is called frequently
+void MainWindow::setSelectedLayer( int caller, const QString &name, bool forcedEnabled )
 {
-  qDebug() << "MainWindow::setSelectedLayer(): name =" << name;
+  qCDebug(logEditor) << "MainWindow::setSelectedLayer(): caller =" << caller << ", name =" << name;
   {
-    // set layer index
-    int index = m_selectLayerItem->findText(name);
-    if ( index != -1 ) {
-      m_selectLayerItem->setCurrentIndex(index);
+    int index = -1;
+    if ( !name.isEmpty() ) {
+      // set layer index
+      index = m_selectLayerItem->findText(name);
+      if ( index != m_selectLayerItem->currentIndex() ) {
+        m_selectLayerItem->setCurrentIndex(index);
+      }
     }
+    qCDebug(logEditor) << "MainWindow::setSelectedLayer(): index =" << index;
+    bool isEnabled = index == -1 ? false : true;
+    isEnabled = forcedEnabled ? true : isEnabled;
+    m_translateLayerToolbar->setEnabled(isEnabled);
+    m_canvasWarpLayerToolbar->setEnabled(isEnabled);
+    m_rotateLayerToolbar->setEnabled(isEnabled);
+    m_scaleLayerToolbar->setEnabled(isEnabled);
+    m_mirrorLayerToolbar->setEnabled(isEnabled);
+    m_perspectiveLayerToolbar->setEnabled(isEnabled);
+    m_transformLayerItem->setEnabled(isEnabled);
   }
 }
 
 void MainWindow::layerItemClicked( QListWidgetItem* item )
 {
-  qDebug() << "MainWindow::layerItemClicked(): Processing...";
+  qCDebug(logEditor) << "MainWindow::layerItemClicked(): Processing...";
   {
     if ( !item ) return;
     toggleLayerVisibility(item);  // Auge/CheckState
@@ -1013,7 +1074,7 @@ void MainWindow::layerItemClicked( QListWidgetItem* item )
 void MainWindow::onLayerItemClicked( QListWidgetItem* item )
 {
   if ( !item ) return;
-  qDebug() << "MainWindow::onLayerItemClicked(): name =" << item->text();
+  qCDebug(logEditor) << "MainWindow::onLayerItemClicked(): name =" << item->text();
   {
     void* ptr = item->data(Qt::UserRole).value<void*>();
     Layer* layer = static_cast<Layer*>(ptr);
@@ -1025,9 +1086,10 @@ void MainWindow::onLayerItemClicked( QListWidgetItem* item )
            if ( l == layer ) {
              l->m_item->setSelected(!l->m_item->isSelected());  // toggle
              if( l->m_item->isSelected() ) {
-               setSelectedLayer(item->text());
+               setSelectedLayer(1,item->text());
                l->m_item->setZValue(3);
              } else {
+               setSelectedLayer(2,"");
                l->m_item->setZValue(2);
              }
              m_selectedLayerItemName = l->name();
@@ -1602,47 +1664,7 @@ void MainWindow::createToolbars()
     m_selectLayerItem->addItems({"None yet defined"});
     m_selectLayerItem->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_layerToolbar->addWidget(m_selectLayerItem);
-    connect(m_selectLayerItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
-      if ( !text.isEmpty() ) {
-        qDebug() << "MainWindow::createToolbars(): Callback call for " << text;
-        // select active layer
-        m_selectedLayerItemName = text;
-        // update layer list
-        QList<QListWidgetItem*> items = m_layerList->findItems(text, Qt::MatchExactly);
-        if ( !items.isEmpty() ) {
-          QListWidgetItem* item = items.first();
-          {
-            const QSignalBlocker blocker(m_layerList);
-            m_layerList->setCurrentItem(item);
-            item->setSelected(true);
-          }
-        }
-        // update active layer
-        for ( Layer* l : m_imageView->layers() ) {
-         if ( l->m_item ) {
-          LayerItem *layerItem = dynamic_cast<LayerItem*>(l->m_item);
-          if ( layerItem != nullptr ) {
-            QString name = l->name().section(' ', -2, -1);
-            if ( name == text ) {
-              layerItem->setIsSelected(6,true);
-              layerItem->setZValue(3);
-            } else {
-              layerItem->setIsSelected(7,false);
-              layerItem->setZValue(2);
-            }
-          }
-         }
-        }
-        // info
-        #ifdef AAA
-         for ( Layer* l : m_imageView->layers() ) {
-          if ( l->m_item ) {
-            qDebug() << " name =" << l->name() << ": selected =" << l->m_item->isSelected();
-          }
-         }
-        #endif
-      }
-    });
+    connect(m_selectLayerItem,&QComboBox::currentTextChanged,this,&MainWindow::selectLayerItem);
     // --- operation modus ---
     m_transformLayerItem = new QComboBox();
     auto *view = new QListView(m_transformLayerItem);
@@ -2164,7 +2186,7 @@ void MainWindow::setLayerOperationMode( int mode, bool updateMode )
 
 void MainWindow::setPolygonOperationMode( int mode ) 
 {
-  qDebug() << "MainWindow::setPolygonOperationMode(): mode =" << mode;
+  qCDebug(logEditor) << "MainWindow::setPolygonOperationMode(): mode =" << mode;
   {
     if ( mode == -1 ) {
      m_polygonCreateLayerAction->setEnabled(false);
@@ -2180,7 +2202,7 @@ void MainWindow::setPolygonOperationMode( int mode )
 
 void MainWindow::setMainOperationMode( MainOperationMode mode )
 {
-  qDebug() << "MainWindow::setMainOperationMode(): mode =" << mode;
+  qCDebug(logEditor) << "MainWindow::setMainOperationMode(): mode =" << mode;
   {
     if ( mode == MainOperationMode::ImageLayer ) {
       m_layerControlAction->setChecked(true);
@@ -2200,7 +2222,7 @@ void MainWindow::setMainOperationMode( MainOperationMode mode )
 
 int MainWindow::activePolygon( const QString& polygonName )
 {
-  qDebug() << "MainWindow::activePolygon(): polygonName =" << polygonName;
+  qCDebug(logEditor) << "MainWindow::activePolygon(): polygonName =" << polygonName;
   {
    if ( polygonName.isEmpty() ) {
      return m_polygonIndexBox->currentText().section(' ',1).toInt();;
