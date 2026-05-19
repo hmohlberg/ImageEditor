@@ -43,6 +43,7 @@
 #include <QCloseEvent>
 #include <QMessageBox>
 #include <QWidgetAction>
+#include <QRegularExpression>
 #include <QStyledItemDelegate>
 #include <QStandardItemModel>
 #include <QJsonDocument>
@@ -908,7 +909,6 @@ void MainWindow::selectLayerItem( const QString &itemName )
   qCDebug(logEditor) << "MainWindow::selectLayerItem(): name =" << itemName;
   {
     if ( !itemName.isEmpty() ) {
-      qDebug() << "MainWindow::createToolbars(): Callback call for " << itemName;
       // select active layer
       m_selectedLayerItemName = itemName;
       // update layer list
@@ -938,15 +938,10 @@ void MainWindow::selectLayerItem( const QString &itemName )
          }
       }
       // misc
+      QString numberString = itemName; 
+      numberString.remove(QRegularExpression("\\D"));
+      m_imageView->setOnlyCageVisible(numberString.toInt());
       showMessage(QString("Select %1").arg(itemName));
-      // info
-      #ifdef AAA
-         for ( Layer* l : m_imageView->layers() ) {
-          if ( l->m_item ) {
-            qDebug() << " name =" << l->name() << ": selected =" << l->m_item->isSelected();
-          }
-         }
-      #endif
     }
   }
 }

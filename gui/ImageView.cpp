@@ -873,9 +873,11 @@ void ImageView::mousePressEvent( QMouseEvent* event )
              break;
         }
         if ( clickedLayer && clickedLayer->getType() == LayerItem::MainImage ) {
-          mainWindow->showMessage("Deselected layer");
-          mainWindow->setSelectedLayer(5,"");
-          event->accept();
+          // THIS WILL DESELECT ANY LAYER AND CAUSED A COUPLE OF PROBLEMS:
+          //   mainWindow->showMessage("Deselected layer");
+          //   mainWindow->setSelectedLayer(5,"");
+          //   event->accept();
+          return;
         }
     }
 
