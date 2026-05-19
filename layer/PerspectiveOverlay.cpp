@@ -65,7 +65,6 @@ QRectF PerspectiveOverlay::boundingRect() const
 
 void PerspectiveOverlay::paint( QPainter* p, const QStyleOptionGraphicsItem*, QWidget* )
 {
-  {
     p->setRenderHint(QPainter::Antialiasing);
     QPen pen(Qt::cyan);
     pen.setStyle(Qt::DashLine);
@@ -80,7 +79,6 @@ void PerspectiveOverlay::paint( QPainter* p, const QStyleOptionGraphicsItem*, QW
                 << m_handles[PerspectiveCorner::BL]->pos();
         p->drawPolygon(polygon);
     }
-  }
 }
 
 void PerspectiveOverlay::updateOverlay( bool fromStart )
@@ -199,8 +197,8 @@ void PerspectiveOverlay::endWarp()
     m_initialQuad = displayQuad;
     m_finalQuad = displayQuad;
     updateOverlay();
-	  }
-	}
+  }
+}
 
 void PerspectiveOverlay::resetWarp()
 {

@@ -866,17 +866,14 @@ void ImageView::mousePressEvent( QMouseEvent* event )
     
     // --- Main window processing ---
     if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::ImageLayer && event->button() == Qt::LeftButton ) {
-        LayerItem* clickedLayer = nullptr;
-        for ( auto* item : scene()->items(scenePos) ) {
-           clickedLayer = dynamic_cast<LayerItem*>(item);
-           if ( clickedLayer )
-             break;
-        }
+        const QList<QGraphicsItem*> itemsUnderCursor = scene()->items(scenePos);
+        LayerItem* clickedLayer = itemsUnderCursor.isEmpty() ? nullptr : dynamic_cast<LayerItem*>(itemsUnderCursor.first());
         if ( clickedLayer && clickedLayer->getType() == LayerItem::MainImage ) {
+          // qDebug() << "ImageView::mousePressEvent(): Processing MainImage click...";
           // THIS WILL DESELECT ANY LAYER AND CAUSED A COUPLE OF PROBLEMS:
           //   mainWindow->showMessage("Deselected layer");
           //   mainWindow->setSelectedLayer(5,"");
-          //   event->accept();
+          event->accept();
           return;
         }
     }
