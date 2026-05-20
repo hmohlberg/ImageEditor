@@ -67,7 +67,7 @@
       } else {
         QLoggingCategory::setFilterRules("editor.graphics.debug=false");
       }
-      m_hasPerspective = settings.value("Main/perspective", false).toBool();
+      m_hasPerspective = settings.value("Main/perspective", true).toBool();
       m_binaryMasking = settings.value("Main/binaryMasking", false).toBool();
       
       // Cage quads
@@ -136,7 +136,7 @@
           m_rotationSingleStep(0.5),
           m_loggingIsEnabled(false), 
           m_useCageQuads(true), 
-          m_hasPerspective(false),
+          m_hasPerspective(true),
           m_binaryMasking(false),
           m_windowSize("default"),
           m_version("public"),
