@@ -1509,6 +1509,25 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
     if ( m_polygonEnabled ) {
       setPolygonEnabled(false);
     }
+    
+    // update message info
+    if ( m_layerOperationMode == LayerItem::OperationMode::Translate ) {
+     IMainSystem::instance()->showMessage("Enabled translate. Press and move left mouse button on active layer to translate layer");
+    } else if ( m_layerOperationMode == LayerItem::OperationMode::Perspective ) {
+     IMainSystem::instance()->showMessage("Enabled perspective warp. Double click on active layer to activate control grid");
+    } else if ( m_layerOperationMode == LayerItem::OperationMode::Scale ) {
+     IMainSystem::instance()->showMessage("Enabled scale. Double click on active layer to activate control grid");
+    } else if ( m_layerOperationMode == LayerItem::OperationMode::Flip || m_layerOperationMode == LayerItem::OperationMode::Flop ) {
+     IMainSystem::instance()->showMessage("Enabled mirror. Double click on active layer to mirror layer");
+    } else if ( m_layerOperationMode == LayerItem::OperationMode::Rotate ) {
+     IMainSystem::instance()->showMessage("Enabled rotation. Press and move left mouse button on active layer to rotate layer");
+    } else if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
+     IMainSystem::instance()->showMessage("Enabled cage warp. Select and move a control grid point to warp layer");
+    } else {
+      IMainSystem::instance()->showMessage("");
+    }
+    
+    // handle layer
     LayerItem *layer = getSelectedItem();
     if ( layer != nullptr ) {
       if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {

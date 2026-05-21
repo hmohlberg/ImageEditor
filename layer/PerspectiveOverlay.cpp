@@ -246,7 +246,7 @@ void PerspectiveOverlay::commitTransformation()
 
 void PerspectiveOverlay::moveCorner( PerspectiveCorner corner, const QPointF& scenePos )
 {
-  qCDebug(logEditor) << "PerspectiveOverlay::moveCorner(): corner =" << int(corner) << ", pos =" << scenePos;
+  qDebug() << "PerspectiveOverlay::moveCorner(): corner =" << int(corner) << ", pos =" << scenePos;
   {
     if ( !m_layer || !m_dragging ) return;
     QPointF localPos = m_sceneToLocalSnapshot.map(scenePos);

@@ -51,6 +51,8 @@
  class EditorStyle {
  
    public:
+   
+    enum InterpolationMode { Nearest, Linear, Bicubic, System };
 
     static EditorStyle& instance() {
       static EditorStyle inst;
@@ -101,11 +103,20 @@
       // ImageLayer rotation angle
       m_rotationSingleStep = settings.value("ImageLayer/rotationSingleStep", 1.0).toDouble();
       // ImageLayer transformationMode
-      QString transformMode = settings.value("ImageLayer/transformationMode", "fast").toString().trimmed().toLower();
+      QString transformMode = settings.value("ImageLayer/transformationMode", "smooth").toString().trimmed().toLower();
       if ( transformMode == "fast" || transformMode == "fasttransformation" ) {
         m_transformationMode = Qt::FastTransformation;
       } else if ( transformMode == "smooth" || transformMode == "smoothtransformation" ) {
         m_transformationMode = Qt::SmoothTransformation;
+      }
+      // ImageLayer interpolationMode
+      QString interpolationMode = settings.value("ImageLayer/interpolationMode", "linear").toString().trimmed().toLower();
+      if ( interpolationMode == "nearest" ) {
+        m_interpolationMode = InterpolationMode::Nearest;
+      } else if ( interpolationMode == "bicubic" ) {
+        m_interpolationMode = InterpolationMode::Bicubic;
+      } else {
+        m_interpolationMode = InterpolationMode::Linear;
       }
       
     }
@@ -124,6 +135,7 @@
     bool binaryMasking() const { return m_binaryMasking; }
     double rotationSingleStep() const { return m_rotationSingleStep; }
     Qt::TransformationMode transformationMode() const { return m_transformationMode; }
+    InterpolationMode interpolationMode() const { return m_interpolationMode; }
 
    private:
    
@@ -141,7 +153,8 @@
           m_windowSize("default"),
           m_version("public"),
           m_cageWarpColor(Qt::green), 
-          m_transformationMode(Qt::FastTransformation) 
+          m_transformationMode(Qt::SmoothTransformation),
+          m_interpolationMode(InterpolationMode::Linear) 
     { 
       if ( m_loggingIsEnabled ) {
         QLoggingCategory::setFilterRules("editor.graphics.debug=true");
@@ -157,6 +170,7 @@
     QString m_version;
     
     Qt::TransformationMode m_transformationMode;
+    InterpolationMode m_interpolationMode;
     
     int m_lassoWidth;
     int m_controlPointRadius;

@@ -128,7 +128,7 @@ void LayerItem::init()
              QGraphicsItem::ItemIsMovable |
              QGraphicsItem::ItemSendsGeometryChanges |
              QGraphicsItem::ItemIsFocusable);
-  setTransformationMode(EditorStyle::instance().transformationMode());
+  setTransformationMode(EditorStyle::instance().transformationMode()); // for on screen visualization
   setAcceptedMouseButtons(Qt::LeftButton);
   setShapeMode(QGraphicsPixmapItem::BoundingRectShape);
   // setShapeMode(QGraphicsPixmapItem::MaskShape); // the better choice but complex
@@ -382,8 +382,8 @@ void LayerItem::resetImageState( const QImage& image, const QPointF& position, c
 	}
 
 void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
-  qDebug() << "LayerItem::setImageTransform(): position =" << pos() << ", combine =" 
-                        << combine << ", originalImageType =" << m_originalImageType << ", transform =" << transform;
+  qDebug() << "LayerItem::setImageTransform(): nonGUI =" << m_nogui << ", position =" << pos() << ", combine =" 
+                        << combine << ", originalImageType =" << m_originalImageType;
   {
     // *** DO NOT USE INTERNAL TRANSFORMATIONS ***
     if ( 1 == 2 && !m_nogui && qobject_cast<QApplication*>(qApp) ) {
@@ -421,7 +421,21 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
       m_totalTransform *= transform;
       m_totalTransform.translate(-imageCenter.x(), -imageCenter.y());
     }
-    m_image = m_originalImage.transformed(m_totalTransform,Qt::SmoothTransformation);
+    // the interpolation step (Qt only supports nearest neighbor und linear interpolation)
+    if ( !m_nogui && EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::System ) {
+      // !!! only in gui mode !!!
+      m_image = Interpolation::transformWithHighQuality(m_originalImage, m_totalTransform);
+    } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Bicubic ) {
+      // this use external bicubic interpolation
+      m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
+    } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Nearest ) {
+      // this use internal nearest transformation
+      m_image = m_originalImage.transformed(m_totalTransform,Qt::FastTransformation);
+    } else { 
+      // this use internal linear transformation
+      m_image = m_originalImage.transformed(m_totalTransform,Qt::SmoothTransformation);
+    }
+    // end
     QPointF newImageCenter(m_image.width() / 2.0, m_image.height() / 2.0);
     setPos(sceneCenter - newImageCenter);
     // reset transform
