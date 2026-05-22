@@ -499,7 +499,7 @@ bool MainWindow::saveProject( const QString& filePath )
 
 bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
 {
-  qCDebug(logEditor) << "MainWindow::loadProject(): filename=" << filePath << ", skipMainImage=" << skipMainImage;
+  qDebug() << "MainWindow::loadProject(): filename=" << filePath << ", skipMainImage=" << skipMainImage;
   {
     QFile f(filePath);
     if ( !f.open(QIODevice::ReadOnly) ) return false;
@@ -587,7 +587,6 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
          rect = QRect(x,y,mask.width(), mask.height());
          // binary masking
          if ( isBinaryMask ) {
-           qDebug() << " * process binary mask at position " << x << " : " << y;
            QImage mainImage = m_layerItem->image();
            QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
            subImage = subImage.convertToFormat(QImage::Format_ARGB32);
@@ -601,6 +600,25 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
             }
            }
            newLayer = new LayerItem(subImage);
+         } else if ( EditorStyle::instance().binaryMasking() ) {
+            if ( mask.format() != QImage::Format_ARGB32 && mask.format() != QImage::Format_ARGB32_Premultiplied ) {
+              mask = mask.convertToFormat(QImage::Format_ARGB32);
+            }
+            QImage mainImage = m_layerItem->image();
+            QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
+            subImage = subImage.convertToFormat(QImage::Format_ARGB32);
+            for (int y = 0; y < subImage.height(); ++y) {
+             QRgb *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
+             const QRgb *maskRowData = reinterpret_cast<const QRgb*>(mask.constScanLine(y));
+             for ( int x = 0; x < subImage.width(); ++x ) {
+              int alpha = qAlpha(maskRowData[x]);
+              if ( alpha != 255 ) {
+               rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
+              }
+             }
+            }
+            newLayer = new LayerItem(subImage);
+            isBinaryMask = false;
          } else {
            newLayer = new LayerItem(mask);
            isBinaryMask = false;

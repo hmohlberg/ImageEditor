@@ -294,7 +294,7 @@ void EditablePolygonItem::updateGeometry()
 
 void EditablePolygonItem::visibilityChangedTo( bool isVisible )
 {
-  qDebug() << "EditablePolygonItem::visibilityChangedTo(): isVisible =" << isVisible;
+  qCDebug(logEditor) << "EditablePolygonItem::visibilityChangedTo(): isVisible =" << isVisible;
   {
     m_poly->setVisible(isVisible);
     setVisible(isVisible);
@@ -305,7 +305,7 @@ void EditablePolygonItem::visibilityChangedTo( bool isVisible )
 
 void EditablePolygonItem::onVisibilityChanged()
 {
-  qDebug() << "EditablePolygonItem::onVisibilityChanged(): Processing...";
+  qCDebug(logEditor) << "EditablePolygonItem::onVisibilityChanged(): Processing...";
   {
     // Polygon
     setVisible(m_poly->polygonVisible());

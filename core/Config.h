@@ -70,7 +70,7 @@
         QLoggingCategory::setFilterRules("editor.graphics.debug=false");
       }
       m_hasPerspective = settings.value("Main/perspective", true).toBool();
-      m_binaryMasking = settings.value("Main/binaryMasking", false).toBool();
+      m_binaryMasking = settings.value("Main/binaryMasking", true).toBool();
       
       // Cage quads
       m_useCageQuads = settings.value("Cage/quads", true).toBool();
@@ -149,7 +149,7 @@
           m_loggingIsEnabled(false), 
           m_useCageQuads(true), 
           m_hasPerspective(true),
-          m_binaryMasking(false),
+          m_binaryMasking(true),
           m_windowSize("default"),
           m_version("public"),
           m_cageWarpColor(Qt::green), 
