@@ -71,29 +71,12 @@ class ImageView : public QGraphicsView
     void deleteLayer( Layer* layer );
     void enablePipette( bool enabled );
     void enableCageLayer( LayerItem* layer, bool enabled );
-    void setCrosshairVisible( bool visible ) { 
-      m_crosshairVisible = visible; 
-      viewport()->update(); 
-    }
-    void setLassoEnabled( bool enabled ) { 
-      m_lassoEnabled = enabled; 
-      if ( !enabled && m_lassoPreview ) {
-        m_scene->removeItem(m_lassoPreview);
-        delete m_lassoPreview;
-        m_lassoPreview = nullptr;
-        m_lassoPolygon.clear();
-      }
-      viewport()->update(); 
-    }
+    void setCrosshairVisible( bool visible );
+    void setLassoEnabled( bool enabled );
     void finishPolygonDrawing( LayerItem* layer );
     void setPolygonEnabled( bool enabled );
     void setColorTable( const QVector<QRgb>& lut );
-    void setImage( const QImage& img ) {
-      m_image = img.convertToFormat(QImage::Format_ARGB32);
-      QVector<QRgb> lut(256);
-      for( int i=0;i<256;i++ ) lut[i] = qRgb(i,i,i);
-      setColorTable(lut);
-    }
+    void setImage( const QImage& img );
     
     LayerItem::OperationMode getPolygonOperationMode() const { return m_polygonOperationMode; }
     LayerItem::OperationMode getLayerOperationMode() const { return m_layerOperationMode; }

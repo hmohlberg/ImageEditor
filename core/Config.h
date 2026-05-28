@@ -71,6 +71,7 @@
       }
       m_hasPerspective = settings.value("Main/perspective", true).toBool();
       m_binaryMasking = settings.value("Main/binaryMasking", true).toBool();
+      m_crosshair = settings.value("Main/crosshair", true).toBool();
       
       // Cage quads
       m_useCageQuads = settings.value("Cage/quads", true).toBool();
@@ -103,7 +104,7 @@
       // ImageLayer rotation angle
       m_rotationSingleStep = settings.value("ImageLayer/rotationSingleStep", 1.0).toDouble();
       // ImageLayer transformationMode
-      QString transformMode = settings.value("ImageLayer/transformationMode", "smooth").toString().trimmed().toLower();
+      QString transformMode = settings.value("ImageLayer/transformationMode", "fast").toString().trimmed().toLower();
       if ( transformMode == "fast" || transformMode == "fasttransformation" ) {
         m_transformationMode = Qt::FastTransformation;
       } else if ( transformMode == "smooth" || transformMode == "smoothtransformation" ) {
@@ -129,6 +130,7 @@
     QString version() const { return m_version; }
     int lassoWidth() const { return m_lassoWidth; }
     int controlPointRadius() const { return m_controlPointRadius; }
+    bool crosshair() const { return m_crosshair; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
     bool hasPerspective() const { return m_hasPerspective; }
@@ -150,10 +152,11 @@
           m_useCageQuads(true), 
           m_hasPerspective(true),
           m_binaryMasking(true),
+          m_crosshair(true),
           m_windowSize("default"),
           m_version("public"),
           m_cageWarpColor(Qt::green), 
-          m_transformationMode(Qt::SmoothTransformation),
+          m_transformationMode(Qt::FastTransformation),
           m_interpolationMode(InterpolationMode::Linear) 
     { 
       if ( m_loggingIsEnabled ) {
@@ -175,6 +178,7 @@
     int m_lassoWidth;
     int m_controlPointRadius;
     int m_handleSize;
+    bool m_crosshair;
     bool m_loggingIsEnabled;
     bool m_useCageQuads;
     bool m_hasPerspective;

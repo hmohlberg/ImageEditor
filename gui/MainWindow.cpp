@@ -1233,9 +1233,6 @@ void MainWindow::duplicateLayer()
 void MainWindow::mergeLayer()
 {
   qDebug() << "MainWindow::mergeLayer() NOT YET CODED";
-  {
-  
-  }
 }
 
 void MainWindow::renameLayer()

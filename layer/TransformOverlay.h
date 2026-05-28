@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <QObject>
 #include <QGraphicsItem>
 #include <QGraphicsRectItem>
 #include <QPointer>
@@ -42,6 +43,7 @@ enum class HandleType {
 class TransformOverlay : public QObject, public QGraphicsItem
 {
     Q_OBJECT
+    Q_INTERFACES(QGraphicsItem)
 
  public:
  

@@ -53,9 +53,7 @@
 /* ============================================================
  * Helper
  * ============================================================ */
-static qreal pointToSegmentDist(const QPointF& p,
-                                const QPointF& a,
-                                const QPointF& b)
+static qreal pointToSegmentDist( const QPointF& p, const QPointF& a, const QPointF& b )
 {
     const QPointF ab = b - a;
     const qreal t = std::clamp(
@@ -66,7 +64,7 @@ static qreal pointToSegmentDist(const QPointF& p,
     return QLineF(p, proj).length();
 }
 
-static qreal distanceToPolygon(const QPointF& p, const QPolygonF& poly)
+static qreal distanceToPolygon( const QPointF& p, const QPolygonF& poly )
 {
     qreal minDist = std::numeric_limits<qreal>::max();
     for (int i = 0; i < poly.size(); ++i) {
@@ -85,10 +83,11 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
 {   
   qCDebug(logEditor) << "ImageView::ImageView(): Processing...";
   {
-
+    m_crosshairVisible = EditorStyle::instance().crosshair(); 
+    
     m_selectedLayer = nullptr;
     m_selectedCageLayer = nullptr;
-
+    
     m_scene = new QGraphicsScene(this);
     m_scene->setItemIndexMethod(QGraphicsScene::NoIndex); // Hack to prevent crash
     // setup 
@@ -308,6 +307,34 @@ void ImageView::forcedUpdate()
      qInfo() << " - no selected layer found";
     }
   }
+}
+
+// ------------------------ Setter -------------------------------------
+
+void ImageView::setCrosshairVisible( bool visible ) 
+{ 
+  m_crosshairVisible = visible; 
+  viewport()->update(); 
+}
+
+void ImageView::setLassoEnabled( bool enabled ) 
+{ 
+  m_lassoEnabled = enabled; 
+  if ( !enabled && m_lassoPreview ) {
+    m_scene->removeItem(m_lassoPreview);
+    delete m_lassoPreview;
+    m_lassoPreview = nullptr;
+    m_lassoPolygon.clear();  
+  }
+  viewport()->update(); 
+}
+
+void ImageView::setImage( const QImage& img ) 
+{
+  m_image = img.convertToFormat(QImage::Format_ARGB32);
+  QVector<QRgb> lut(256);
+  for ( int i=0 ; i<256 ; i++ ) lut[i] = qRgb(i,i,i);
+  setColorTable(lut);
 }
 
 // ------------------------ UndoStack -------------------------------------
