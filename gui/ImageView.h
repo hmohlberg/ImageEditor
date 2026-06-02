@@ -87,6 +87,8 @@ class ImageView : public QGraphicsView
     LayerItem* currentLayer() const;
     LayerItem* baseLayer();
     
+    void setLayerVisible( int layerVisibleOp );
+    
     EditablePolygonCommand* getPolygonUndoCommand( const QString& name = "", bool isSelected = false );
     QImage& getImage() { return m_image; };
     QGraphicsScene* getScene() const { return m_scene; }

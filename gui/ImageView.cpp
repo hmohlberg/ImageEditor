@@ -745,20 +745,21 @@ void ImageView::enablePipette( bool enabled ) {
 
 void ImageView::keyPressEvent( QKeyEvent* event )
 {
-  qCDebug(logEditor) << "ImageView::keyPressEvent(): key =" << event->key();
+  qDebug() << "ImageView::keyPressEvent(): key =" << event->key();
   {
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow != nullptr ) {
       MainWindow::MainOperationMode opMode = mainWindow->getOperationMode();
       // general
       if ( event->key() == Qt::Key_Tab ) {
+         qDebug() << " + processing tab event...";
          int isSelected = -1;
          int i = 0;
          QVector<LayerItem*> layers;
          for ( auto* item : m_scene->items() ) {
            auto* layer = dynamic_cast<LayerItem*>(item);
            if ( layer ) {
-            if ( !layer->name().startsWith("Main") ) {
+            if ( !layer->name().startsWith("Main") && layer->isVisible() ) {
               layers.push_back(layer);
               if ( layer->isSelected() ) {
                isSelected = i;
@@ -817,7 +818,13 @@ void ImageView::keyPressEvent( QKeyEvent* event )
            setPolygonOperationMode(polygonTransformMode);
         }
       } else if ( opMode == MainWindow::MainOperationMode::ImageLayer ) {
-        if ( event->modifiers() & Qt::ControlModifier ) {
+        if ( event->modifiers() & Qt::AltModifier ) {
+           if ( event->key() == Qt::Key_V ) {
+             setLayerVisible(1);
+           } else if ( event->key() == Qt::Key_I ) {
+             setLayerVisible(2);
+           }
+        } else if ( event->modifiers() & Qt::ControlModifier ) {
           LayerItem::OperationMode transformMode = LayerItem::OperationMode::None;
           if ( event->key() == Qt::Key_T ) {
              transformMode = LayerItem::OperationMode::Translate;  
@@ -831,6 +838,10 @@ void ImageView::keyPressEvent( QKeyEvent* event )
              transformMode = LayerItem::OperationMode::CageWarp; 
           } else if ( event->key() == Qt::Key_P ) {
              transformMode = LayerItem::OperationMode::Perspective; 
+          } else if ( event->key() == Qt::Key_V ) {
+             setLayerVisible(1);
+          } else if ( event->key() == Qt::Key_I ) {
+             setLayerVisible(2);
           } else {
              QGraphicsView::keyPressEvent(event);
              return;
@@ -1390,6 +1401,38 @@ void ImageView::clearSelection()
 }
 
 // ---------------------------- Layer methods -----------------------------
+void ImageView::setLayerVisible( int layerVisibleOp )
+{
+  qDebug() << "ImageView::setLayerVisible(): layerVisibleOp=" << layerVisibleOp;
+  {
+    MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+    if ( mainWindow != nullptr ) {
+     if ( layerVisibleOp == 1 ) { // make all layers visible
+      for ( int i=0 ; i<m_layers.size() ; i++ ) {
+        if ( m_layers[i]->m_item ) {
+         m_layers[i]->m_visible = true;
+         m_layers[i]->m_item->setVisible(true);
+        }
+      }
+      mainWindow->updateLayerList();
+      IMainSystem::instance()->showMessage(QString("Made all %1 layers visible").arg(m_layers.size()));
+     } else if ( layerVisibleOp == 2 ) { // hide selected layer
+      for ( int i=0 ; i<m_layers.size() ; i++ ) {
+        if ( m_layers[i]->m_item && m_layers[i]->m_item->isSelected() ) {
+          bool isVisible = m_layers[i]->m_visible;
+          m_layers[i]->m_visible = !isVisible;
+          m_layers[i]->m_item->setVisible(!isVisible);
+          mainWindow->updateLayerList();
+          IMainSystem::instance()->showMessage(QString("%1 layer %2").arg(isVisible?"Hide":"Show").arg(m_layers[i]->name()));
+          return;
+        }
+      }
+     }
+     IMainSystem::instance()->showMessage("No layer selected");
+    }
+  }
+}
+
 LayerItem* ImageView::getLayerItem( const QString& name )
 {
   qCDebug(logEditor) << "ImageView::getLayerItem(): name =" << name;
@@ -1550,8 +1593,6 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
      IMainSystem::instance()->showMessage("Enabled rotation. Press and move left mouse button on active layer to rotate layer");
     } else if ( m_layerOperationMode == LayerItem::OperationMode::CageWarp ) {
      IMainSystem::instance()->showMessage("Enabled cage warp. Select and move a control grid point to warp layer");
-    } else {
-      IMainSystem::instance()->showMessage("");
     }
     
     // handle layer

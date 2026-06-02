@@ -43,6 +43,8 @@
   public:
   
     static bool verbose;
+    static bool forcedAlphaMasking;
+    static bool skipValidation;
     static bool isWhiteBackgroundImage;
     
  };

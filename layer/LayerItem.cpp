@@ -519,7 +519,7 @@ QImage LayerItem::applyCageWarp( const QString &caller )
     #if 0
      // removed by CLAUDE
      if ( !m_cageEditing ) {
-      return m_cageMesh.image(); // muss das original image sein vor jedem warp !!!
+      return m_cageMesh.image();
      }
     #endif
     if ( !m_cageMesh.isInitialized(true) ) {

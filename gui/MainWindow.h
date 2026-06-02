@@ -190,6 +190,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     
     QString m_selectedLayerItemName;
     QString m_mainImageName;
+    QString m_projectFileName;
     
     bool m_updatingLayerList = false;
     bool m_saveImageDataInProjectFile = false;

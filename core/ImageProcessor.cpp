@@ -91,13 +91,13 @@ void ImageProcessor::setIntermediatePath( const QString& path, const QString& ou
     m_saveIntermediate = path.length() > 0 ? true : false;
 }
 
-bool ImageProcessor::process( const QString& filePath ) 
+bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking ) 
 {
- qDebug() << "ImageProcessor::load(): filePath='" << filePath << "'";
+ qDebug() << "ImageProcessor::process(): filePath='" << filePath << "', forcedAlphaMasking =" << forcedAlphaMasking;
  { 
     QFile f(filePath);
     if ( !f.open(QIODevice::ReadOnly) ) {
-     qDebug() << LogColor::Red << "ImageProcessor::load(): Cannot open '" << filePath << "'!" << LogColor::Reset;
+     qDebug() << LogColor::Red << "ImageProcessor::process(): Cannot open '" << filePath << "'!" << LogColor::Reset;
      return false;
     }
     QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
@@ -122,7 +122,7 @@ bool ImageProcessor::process( const QString& filePath )
            Config::isWhiteBackgroundImage = loader.hasWhiteBackground();
            buildMainImageLayer();
           } else {
-            qDebug() << LogColor::Red << "ImageProcessor::load(): Cannot find '" << fullfilename << "'!" << LogColor::Reset;
+            qDebug() << LogColor::Red << "ImageProcessor::process(): Cannot find '" << fullfilename << "'!" << LogColor::Reset;
             return false;
           }
         }
@@ -139,17 +139,32 @@ bool ImageProcessor::process( const QString& filePath )
          LayerItem* newLayer = nullptr;
          QString imgBase64 = layerObj["data"].toString();
          QByteArray ba = QByteArray::fromBase64(imgBase64.toUtf8());
-         QImage image;
-         image.loadFromData(ba,"PNG");
+         QImage mask;
+         mask.loadFromData(ba,"PNG");
          bool isBinaryMask = layerObj.value("binaryMask").toBool(false);
          int x = layerObj.value("x").toInt(-1);
          int y = layerObj.value("y").toInt(-1);
+         if ( !(  x > 0 && y > 0 ) ) {
+           QJsonArray undoArray = root["undoStack"].toArray();
+           for ( const QJsonValue& v : undoArray ) {
+             QJsonObject cmdObj = v.toObject();
+             QString type = cmdObj["type"].toString();
+             if ( type == "LassoCut" || type == "LassoCutCommand" ) {
+               if( id == cmdObj["newLayerId"].toInt(-1) ) {
+                 QJsonObject r = cmdObj["rect"].toObject();
+                 x = r["x"].toInt();
+                 y = r["y"].toInt();
+               }
+             }
+           }
+         }
+         QRect rect = QRect(x,y,mask.width(), mask.height());
          if ( isBinaryMask && x >= 0 && y >= 0 ) {
-          QImage subImage = m_image.copy(x, y, image.width(), image.height());
+          QImage subImage = m_image.copy(x, y, mask.width(), mask.height());
           subImage = subImage.convertToFormat(QImage::Format_ARGB32);
           for ( int y = 0; y < subImage.height(); ++y ) {
             QRgb *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
-            const uchar *maskData = image.constScanLine(y);
+            const uchar *maskData = mask.constScanLine(y);
             for ( int x = 0; x < subImage.width(); ++x ) {
              if ( maskData[x] != 255 ) {
               rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
@@ -157,8 +172,25 @@ bool ImageProcessor::process( const QString& filePath )
             }
           }
           newLayer = new LayerItem(subImage);
+         } else if ( forcedAlphaMasking ) {
+          if ( mask.format() != QImage::Format_ARGB32 && mask.format() != QImage::Format_ARGB32_Premultiplied ) {
+            mask = mask.convertToFormat(QImage::Format_ARGB32);
+          }
+          QImage subImage = m_image.copy(x, y, mask.width(), mask.height());
+          subImage = subImage.convertToFormat(QImage::Format_ARGB32);
+          for ( int y = 0; y < subImage.height(); ++y ) {
+            QRgb *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
+            const QRgb *maskRowData = reinterpret_cast<const QRgb*>(mask.constScanLine(y));
+            for ( int x = 0; x < subImage.width(); ++x ) {
+              int alpha = qAlpha(maskRowData[x]);
+              if ( alpha != 255 ) {
+               rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
+              }
+            }
+          }
+          newLayer = new LayerItem(subImage);
          } else {
-          newLayer = new LayerItem(image);
+          newLayer = new LayerItem(mask);
          }
          newLayer->setName(name);
          newLayer->setIndex(id);
@@ -178,7 +210,7 @@ bool ImageProcessor::process( const QString& filePath )
         QJsonObject cmdObj = v.toObject();
         QString type = cmdObj["type"].toString();
         QString text = cmdObj["text"].toString();
-        qDebug() << "ImageProcessor::load(): Processing undo call: type=" << type << ", text=" << text;
+        qDebug() << "ImageProcessor::process(): Processing undo call: type=" << type << ", text=" << text;
         AbstractCommand* cmd = nullptr;
         if ( type == "PaintStroke" || type == "PaintStrokeCommand" ) {
            cmd = PaintStrokeCommand::fromJson(cmdObj, m_layers);
@@ -197,14 +229,14 @@ bool ImageProcessor::process( const QString& filePath )
         } else if ( type == "DeleteUndoEntry" || type == "DeleteUndoEntryCommand" ) {
            cmd = DeleteUndoEntryCommand::fromJson(m_undoStack, cmdObj, m_layers);
         } else {
-           qDebug() << LogColor::Red << "ImageProcessor::load(): Command " << type << " not yet processed." << LogColor::Reset;
+           qDebug() << LogColor::Red << "ImageProcessor::process(): Command " << type << " not yet processed." << LogColor::Reset;
         }
         // ggf. weitere Command-Typen hier hinzufügen
         if ( cmd ) {
             m_undoStack->push(cmd);
             infoTextLines += saveIntermediate(cmd,type,nStep);
         } else {
-            qDebug() << LogColor::Red << "ImageProcessor::load(): Invalid command." << LogColor::Reset;
+            qDebug() << LogColor::Red << "ImageProcessor::process(): Invalid command." << LogColor::Reset;
         }
         nStep += 1;
     }

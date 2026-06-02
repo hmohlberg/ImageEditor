@@ -1,4 +1,22 @@
-inline QVector<QColor> defaultMaskColors()
+//
+
+inline QVector<QColor> defaultMaskColors( int n = 50 )
+{
+    QVector<QColor> colors;
+    colors.reserve(n + 1);
+    colors.append(Qt::transparent); // 0: Background
+    // Deterministische Farberzeugung über den Farbkreis.
+    // 137 ist nahe am goldenen Winkel und verteilt die Farben gut.
+    for (int i = 0; i < n; ++i) {
+        const int hue = (i * 137) % 360;
+        const int saturation = 180 + ((i * 47) % 76); // 180..255
+        const int value      = 190 + ((i * 61) % 66); // 190..255
+        colors.append(QColor::fromHsv(hue, saturation, value));
+    } 
+    return colors;
+}
+
+inline QVector<QColor> defaultMaskColors_predefined()
 {
     return {
         Qt::transparent,           // 0: Hintergrund

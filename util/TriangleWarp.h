@@ -78,7 +78,7 @@ namespace TriangleWarp
 
   WarpResult warp( const QImage& originalImage, const CageMesh& cageMesh )
   {
-   qCDebug(logEditor) << "TriangleWarp:warp(): useQuads =" << EditorStyle::instance().useCageQuads();
+   qDebug() << "TriangleWarp:warp(): useQuads =" << EditorStyle::instance().useCageQuads() << ", pointId =" << cageMesh.activeCagePointId();
    {
     if ( cageMesh.pointCount() < 4 ) {
       return { QImage(), QPointF(0,0) }; 
@@ -96,6 +96,8 @@ namespace TriangleWarp
     // compute new target image (transparent background)
     int rows = cageMesh.rows();
     int cols = cageMesh.cols();
+    int gx = cageMesh.activeCagePointId() % cols;
+    int gy = cageMesh.activeCagePointId() / rows;
 
     if ( EditorStyle::instance().useCageQuads() == true ) {
 
@@ -135,15 +137,7 @@ namespace TriangleWarp
       }
       
      #else
-     
-      // *** new code ***
-      // int xc = cageMesh.activeCagePointId() % cols;
-      // int yc = cageMesh.activeCagePointId() / cols;
-      // transformQuad(xc - 1, yc - 1, cols, rows, originalImage, warped, cageMesh, dstBounds);
-      // transformQuad(xc,     yc - 1, cols, rows, originalImage, warped, cageMesh, dstBounds);
-      // transformQuad(xc - 1, yc,     cols, rows, originalImage, warped, cageMesh, dstBounds);
-      // transformQuad(xc,     yc,     cols, rows, originalImage, warped, cageMesh, dstBounds);
-      
+        
       for ( int y = 0; y + 1 < rows; ++y ) {
        for ( int x = 0; x + 1 < cols; ++x ) {
         int i00 = y * cols + x;

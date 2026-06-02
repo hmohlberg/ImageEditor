@@ -89,6 +89,8 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     QString outputPath = options.value("outputPath").toString("");
     QString classPath = options.value("classPath").toString("");
     bool useVulkan = options.value("vulkan").toBool();
+    
+    Config::skipValidation = options.value("skipValidation").toBool();
     Config::verbose = options.value("verbose").toBool();
     
     // setup Gimp style
@@ -260,7 +262,7 @@ bool MainWindow::focusNextPrevChild( bool next )
 // -> m_imageView->getScene()->addItem(m_layerItem);
 bool MainWindow::loadImage( const QString& filePath, bool askForNewLoad )
 {
-  qCDebug(logEditor) << "MainWindow::loadImage(): filePath =" << filePath << ", askForNewLoad =" << askForNewLoad;
+  qDebug() << "MainWindow::loadImage(): filePath =" << filePath << ", askForNewLoad =" << askForNewLoad;
   {
     ImageLoader loader;
     if ( !loader.load(filePath) ) {
@@ -355,12 +357,12 @@ void MainWindow::saveAsImage()
          // get layers != 0 
          for ( auto* item : m_imageView->getScene()->items(Qt::AscendingOrder) ) {
           auto* layer = dynamic_cast<LayerItem*>(item);
-          if ( layer && layer->id() != 0 ) {
+          if ( layer && layer->id() != 0 && !layer->isDeleted() ) {
             QImage overlayImage = layer->image();
             if ( !overlayImage.isNull() ) {
              int x = layer->pos().x();
              int y = layer->pos().y();
-             qCDebug(logEditor) << " + layer=" << layer->name() << ", id=" << layer->id( )<< ", pos=" << layer->pos();
+             qDebug() << " + layer=" << layer->name() << ", id=" << layer->id( )<< ", pos=" << layer->pos();
              QPainter painter(&mainImage);
               painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
               painter.drawImage(x,y,overlayImage);
@@ -387,7 +389,7 @@ void MainWindow::saveHistory()
 {
     QString fileName = QFileDialog::getSaveFileName(this,
                           tr("Save JSON History File As..."),
-                          QString(),tr("JSON Files (*.json);;All Files (*)"));
+                          m_projectFileName,tr("JSON Files (*.json);;All Files (*)"));
     if ( !fileName.isEmpty() ) {
      saveProject(fileName);
     }
@@ -492,6 +494,7 @@ bool MainWindow::saveProject( const QString& filePath )
     m_imageView->undoStack()->setClean();
     
     // --- Misc ---
+    m_projectFileName = filePath;
     showMessage(QString("Saved project history file '%1'").arg(filePath));
     
     return true;
@@ -503,6 +506,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
   {
     QFile f(filePath);
     if ( !f.open(QIODevice::ReadOnly) ) return false;
+    m_projectFileName = filePath;
     QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
     f.close();
     if ( !doc.isObject() ) return false;
@@ -532,7 +536,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
        QJsonObject layerObj = v.toObject();
        QString name = layerObj["name"].toString();
        int id = layerObj["id"].toInt();
-       if ( id == 0 ) {
+       if ( id == 0 && !Config::skipValidation ) {
           QString filename = layerObj["filename"].toString();
           if ( filename != m_mainImageName ) {
             if ( QWidgetUtils::showImageMismatchError(m_mainImageName,filename) ) {
@@ -542,7 +546,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
              return loadProject(filePath,false);
             } else {
              showMessage(QString("Abort loading '%1'").arg(filePath),1);
-             return false;
+             // return false;
             }
           }
        }
@@ -570,7 +574,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
          int x = layerObj.value("x").toInt(-1);
          int y = layerObj.value("y").toInt(-1);
          // fix by Claude to ensure that m_bounds is always defined correctly
-         if( !(  x > 0 && y > 0 ) ) {
+         if ( !(  x > 0 && y > 0 ) ) {
            QJsonArray undoArray = root["undoStack"].toArray();
            for ( const QJsonValue& v : undoArray ) {
              QJsonObject cmdObj = v.toObject();
@@ -966,7 +970,7 @@ void MainWindow::selectLayerItem( const QString &itemName )
 
 void MainWindow::toggleLayerVisibility(  QListWidgetItem* item )
 {
-  qCDebug(logEditor) << "MainWindow::toggleLayerVisibility(): Processing...";
+  qDebug() << "MainWindow::toggleLayerVisibility(): Processing...";
   {
     if ( !item ) return;
     if ( m_updatingLayerList ) return; // ⚡ verhindert Rekursion
@@ -1271,7 +1275,7 @@ void MainWindow::createActions()
     m_openAction = new QAction(tr("Open"), this);
     connect(m_openAction, &QAction::triggered, this, &MainWindow::openImage);
 
-    m_saveAsAction = new QAction(tr("Save As..."), this);
+    m_saveAsAction = new QAction(tr("Save Image As..."), this);
     connect(m_saveAsAction, &QAction::triggered, this, &MainWindow::saveAsImage);
     
     m_pipetteAction = new QAction("Pipette", this);

@@ -100,6 +100,7 @@ class LayerItem : public QGraphicsPixmapItem
     void setCageWarpCommand( CageWarpCommand * cmd ) { m_cageWarpCommand = cmd; }
 
     int id() const { return m_index; }
+    bool isDeleted() const { return m_isDeleted; }
     bool isEditing() const { return m_cageEditing; }
     bool isCageWarp() const { return m_operationMode == OperationMode::CageWarp ? true : false; }
     
@@ -200,6 +201,7 @@ class LayerItem : public QGraphicsPixmapItem
 	bool m_cageEditing = false;
 	bool m_cageApplied = false;
 	bool m_mouseOperationActive = false;
+	bool m_isDeleted = false;
 	
 	QPen m_lassoPen;
 	QPen m_selectedPen;

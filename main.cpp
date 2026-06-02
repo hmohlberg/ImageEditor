@@ -46,6 +46,8 @@
 // ---------------------- Init ----------------------
 IMainSystem* IMainSystem::m_instance = nullptr;
 bool Config::verbose = false;
+bool Config::forcedAlphaMasking = false;
+bool Config::skipValidation = false;
 bool Config::isWhiteBackgroundImage = true;
 
 Q_LOGGING_CATEGORY(logEditor, "editor.graphics")
@@ -166,6 +168,10 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(guiOption);
   QCommandLineOption configFileOption(QStringList() << "config", "Path to config file.", "file");
   parser.addOption(configFileOption);
+  QCommandLineOption alphaMaskingOption("alpha-masking", "Forced alpha channel mask processing.");
+  parser.addOption(alphaMaskingOption);
+  QCommandLineOption skipValidationOption("skip-validation", "Skip all validation checks and force the loading of the input image.");
+  parser.addOption(skipValidationOption);
   QCommandLineOption intermediateOption(QStringList() << "save-intermediate", "In batch mode, path to output an image after each step in the history.", "file");
   parser.addOption(intermediateOption);
   QCommandLineOption concatOption("concatenate", "Concatenate image transformations in batch mode.");
@@ -224,6 +230,8 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   }
   obj["concatenate"] = parser.isSet(concatOption);
   obj["vulkan"] = parser.isSet(vulkanOption);
+  obj["alphaMasking"] = parser.isSet(alphaMaskingOption);
+  obj["skipValidation"] = parser.isSet(skipValidationOption);
   obj["force"] = parser.isSet(forceOption);
   obj["debug"] = parser.isSet(debugOption);
   obj["verbose"] = parser.isSet(verboseOption);
@@ -274,13 +282,14 @@ int main( int argc, char *argv[] )
         return 1; 
       }
       QString saveIntermediatePath = parsedOptions.value("save-intermediate").toString("");
+      bool forcedAlphaMasking = parsedOptions.value("alphaMasking").toBool();
       ImageLoader loader;
       QImage image;
       if ( imagePath.isEmpty() ) {
        saveCurrentCall(argc, argv);
        ImageProcessor proc;
        proc.setIntermediatePath(saveIntermediatePath,outputPath);
-       if ( !proc.process(historyPath) ) {
+       if ( !proc.process(historyPath,forcedAlphaMasking) ) {
         printError(QString("Malfunction in ImageProcessor::process(%1).").arg(historyPath));
         return 1;
        }
@@ -291,7 +300,7 @@ int main( int argc, char *argv[] )
         Config::isWhiteBackgroundImage = loader.hasWhiteBackground();
         ImageProcessor proc(loader.getImage());
         proc.setIntermediatePath(saveIntermediatePath,outputPath);
-        if ( !proc.process(historyPath) ) {
+        if ( !proc.process(historyPath,forcedAlphaMasking) ) {
          printError(QString("Malfunction in ImageProcessor::process(%1).").arg(historyPath));
          return 1;
         }

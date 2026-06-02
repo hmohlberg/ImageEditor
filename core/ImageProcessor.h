@@ -29,7 +29,7 @@ class LayerItem;
 // -------------------------- ImageProcessor --------------------------
 class ImageProcessor {
 
-public:
+ public:
 
     ImageProcessor();
     ImageProcessor( const QImage& image );
@@ -39,11 +39,11 @@ public:
     // --------------------------  --------------------------
     void setIntermediatePath( const QString& path = "", const QString& outname = "" );
     bool setOutputImage( int ident );
-    bool process( const QString& filePath );
+    bool process( const QString& filePath, bool forcedAlphaMasking=false );
     void printself();
    
     
-private:
+ private:
 
     QString saveIntermediate( AbstractCommand *cmd, const QString &name, int step );
 
