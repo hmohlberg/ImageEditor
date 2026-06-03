@@ -27,7 +27,7 @@ CageControlPointItem::CageControlPointItem( LayerItem* layer, int index )
     : QGraphicsRectItem(-4, -4, 8, 8),
       m_layer(layer), m_index(index)
 {
-	setBrush(Qt::red);
+	setBrush(EditorStyle::instance().controlPointColor());
     setZValue(10001);
     setFlag(ItemIsMovable);
     setFlag(ItemSendsScenePositionChanges);
@@ -35,7 +35,7 @@ CageControlPointItem::CageControlPointItem( LayerItem* layer, int index )
 
 void CageControlPointItem::mousePressEvent( QGraphicsSceneMouseEvent *e )
 {
-  qDebug() << "CageControlPointItem::mousePressEvent((): index =" << m_index;
+  qCDebug(logEditor) << "CageControlPointItem::mousePressEvent((): index =" << m_index;
   {
     if ( m_layer == nullptr ) return;
     // The purpose of this offset is to account for the small

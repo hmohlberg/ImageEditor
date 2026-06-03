@@ -18,6 +18,8 @@
 #include "CageOverlayItem.h"
 #include "LayerItem.h"
 #include "CageMesh.h"
+#include "../core/Config.h"
+
 #include <QPainter>
 
 CageOverlayItem::CageOverlayItem( LayerItem* layer ) : m_layer(layer)
@@ -38,8 +40,8 @@ void CageOverlayItem::paint( QPainter* p, const QStyleOptionGraphicsItem*, QWidg
     const CageMesh& mesh = m_layer->cageMesh();
     if ( mesh.pointCount() == 0 )
         return;
-    QPen pen(QColor(0, 255, 0)); // cage color
-    pen.setWidth(0); // cosmetic
+    QPen pen(EditorStyle::instance().cageGridColor()); // Cage color
+    pen.setWidth(0);
     p->setPen(pen);
     int cols = mesh.cols();
     int rows = mesh.rows();

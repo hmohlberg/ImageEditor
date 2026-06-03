@@ -75,10 +75,22 @@
       m_binaryMasking = settings.value("Main/binaryMasking", true).toBool();
       m_crosshair = settings.value("Main/crosshair", true).toBool();
       
+      // Claude quads
+      m_useClaudeQuads = settings.value("Cage/claudeQuads", true).toBool();
       // Cage quads
       m_useCageQuads = settings.value("Cage/quads", true).toBool();
       // Cage control point radius
       m_controlPointRadius = settings.value("Cage/controlPointRadius", 4).toInt();
+      // Cage control point color
+      QString controlPointColor = settings.value("Cage/controlPointColor", "red").toString();
+      if ( QColor::isValidColorName(controlPointColor) ) {
+        m_controlPointColor = QColor::fromString(controlPointColor);
+      }
+      // Cage grid color
+      QString cageGridColor = settings.value("Cage/gridColor", "green").toString();
+      if ( QColor::isValidColorName(cageGridColor) ) {
+        m_gridColor = QColor::fromString(cageGridColor);
+      }
       // Cage color
       QString cageWarpColor = settings.value("Cage/color", "green").toString();
       if ( QColor::isValidColorName(cageWarpColor) ) {
@@ -127,7 +139,9 @@
     QColor getHandleColor() const { return m_handleColor; }
     int getHandleSize() const { return m_handleSize; }
     QColor lassoColor() const { return m_lassoColor; }
+    QColor cageGridColor() const { return m_gridColor; }
     QColor cageWarpColor() const { return m_cageWarpColor; }
+    QColor controlPointColor() const { return m_controlPointColor; }
     QString windowSize() const { return m_windowSize; }
     QString version() const { return m_version; }
     int lassoWidth() const { return m_lassoWidth; }
@@ -135,6 +149,7 @@
     bool crosshair() const { return m_crosshair; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
+    bool useClaudeQuads() const { return m_useClaudeQuads; }
     bool hasPerspective() const { return m_hasPerspective; }
     bool binaryMasking() const { return m_binaryMasking; }
     double rotationSingleStep() const { return m_rotationSingleStep; }
@@ -149,9 +164,12 @@
           m_handleSize(10),
           m_lassoWidth(3), 
           m_controlPointRadius(4),
+          m_gridColor(Qt::green),
+          m_controlPointColor(Qt::red),
           m_rotationSingleStep(0.5),
           m_loggingIsEnabled(false), 
           m_useCageQuads(true), 
+          m_useClaudeQuads(true), 
           m_hasPerspective(true),
           m_binaryMasking(true),
           m_crosshair(true),
@@ -171,20 +189,25 @@
     QColor m_handleColor; 
     QColor m_lassoColor;
     QColor m_cageWarpColor;
+    QColor m_gridColor;
+    QColor m_controlPointColor;
     QString m_windowSize;
     QString m_version;
     
     Qt::TransformationMode m_transformationMode;
     InterpolationMode m_interpolationMode;
     
-    int m_lassoWidth;
-    int m_controlPointRadius;
-    int m_handleSize;
     bool m_crosshair;
     bool m_loggingIsEnabled;
     bool m_useCageQuads;
+    bool m_useClaudeQuads;
     bool m_hasPerspective;
     bool m_binaryMasking;
+    
+    int m_lassoWidth;
+    int m_controlPointRadius;
+    int m_handleSize;
+    
     double m_rotationSingleStep;
     
  };

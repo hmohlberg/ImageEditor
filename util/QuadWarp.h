@@ -52,6 +52,7 @@ namespace QuadWarp
     // compute new target image (transparent background)
     int rows = cageMesh.rows();
     int cols = cageMesh.cols();
+    
     int gx = cageMesh.activeCagePointId() % cols;
     int gy = cageMesh.activeCagePointId() / rows;
     

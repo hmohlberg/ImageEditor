@@ -169,7 +169,7 @@ void CageMesh::rebuildSprings()
 }
 
 // ----------------- THE DIAGONAL SPRING MODELL -----------------
-void CageMesh::addNewSpring(int idxA, int idxB)
+void CageMesh::addNewSpring( int idxA, int idxB )
 {
     // 1. Neues Feder-Objekt erstellen
     CageSpring s;
@@ -198,7 +198,7 @@ void CageMesh::setActive( bool active )
 	m_active = active;
 }
 
-void CageMesh::addSpring(int a, int b)
+void CageMesh::addSpring( int a, int b )
 {
     qreal len = QLineF(m_points[a], m_points[b]).length();
     m_springs.push_back({a, b, len});

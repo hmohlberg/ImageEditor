@@ -970,7 +970,7 @@ void MainWindow::selectLayerItem( const QString &itemName )
 
 void MainWindow::toggleLayerVisibility(  QListWidgetItem* item )
 {
-  qDebug() << "MainWindow::toggleLayerVisibility(): Processing...";
+  qCDebug(logEditor) << "MainWindow::toggleLayerVisibility(): Processing...";
   {
     if ( !item ) return;
     if ( m_updatingLayerList ) return; // ⚡ verhindert Rekursion

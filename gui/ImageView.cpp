@@ -745,14 +745,13 @@ void ImageView::enablePipette( bool enabled ) {
 
 void ImageView::keyPressEvent( QKeyEvent* event )
 {
-  qDebug() << "ImageView::keyPressEvent(): key =" << event->key();
+  qCDebug(logEditor) << "ImageView::keyPressEvent(): key =" << event->key();
   {
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow != nullptr ) {
       MainWindow::MainOperationMode opMode = mainWindow->getOperationMode();
       // general
       if ( event->key() == Qt::Key_Tab ) {
-         qDebug() << " + processing tab event...";
          int isSelected = -1;
          int i = 0;
          QVector<LayerItem*> layers;
@@ -769,6 +768,7 @@ void ImageView::keyPressEvent( QKeyEvent* event )
            }
          }
          if ( layers.length() != 0 ) {
+          m_oldVisibleLayerItemNum = -1;
           int index = 0;
           if ( layers.length() > 1 ) {
            index = isSelected == -1 ? 0 : (isSelected+1)%layers.length();
@@ -825,29 +825,35 @@ void ImageView::keyPressEvent( QKeyEvent* event )
              setLayerVisible(2);
            }
         } else if ( event->modifiers() & Qt::ControlModifier ) {
-          LayerItem::OperationMode transformMode = LayerItem::OperationMode::None;
-          if ( event->key() == Qt::Key_T ) {
-             transformMode = LayerItem::OperationMode::Translate;  
-          } else if ( event->key() == Qt::Key_S ) {
-             transformMode = LayerItem::OperationMode::Scale;
-          } else if ( event->key() == Qt::Key_R ) {
-             transformMode = LayerItem::OperationMode::Rotate;
-          } else if ( event->key() == Qt::Key_M ) {
-             transformMode = LayerItem::OperationMode::Flip;
-          } else if ( event->key() == Qt::Key_W ) {
-             transformMode = LayerItem::OperationMode::CageWarp; 
-          } else if ( event->key() == Qt::Key_P ) {
-             transformMode = LayerItem::OperationMode::Perspective; 
-          } else if ( event->key() == Qt::Key_V ) {
+          if ( event->key() == Qt::Key_V ) {
              setLayerVisible(1);
           } else if ( event->key() == Qt::Key_I ) {
              setLayerVisible(2);
           } else {
-             QGraphicsView::keyPressEvent(event);
-             return;
+            LayerItem::OperationMode transformMode = LayerItem::OperationMode::None;
+            if ( event->key() == Qt::Key_T ) {
+              transformMode = LayerItem::OperationMode::Translate;  
+            } else if ( event->key() == Qt::Key_S ) {
+              transformMode = LayerItem::OperationMode::Scale;
+            } else if ( event->key() == Qt::Key_R ) {
+              transformMode = LayerItem::OperationMode::Rotate;
+            } else if ( event->key() == Qt::Key_M ) {
+              transformMode = LayerItem::OperationMode::Flip;
+            } else if ( event->key() == Qt::Key_W ) {
+              transformMode = LayerItem::OperationMode::CageWarp; 
+            } else if ( event->key() == Qt::Key_P ) {
+              transformMode = LayerItem::OperationMode::Perspective; 
+            } else if ( event->key() == Qt::Key_V ) {
+              setLayerVisible(1);
+            } else if ( event->key() == Qt::Key_I ) {
+              setLayerVisible(2);
+            } else {
+              QGraphicsView::keyPressEvent(event);
+              return;
+            }
+            mainWindow->setLayerOperationMode(transformMode);
+            setLayerOperationMode(transformMode);
           }
-          mainWindow->setLayerOperationMode(transformMode);
-          setLayerOperationMode(transformMode);
         } else if ( m_layerOperationMode == LayerItem::OperationMode::Scale && m_transformOverlay != nullptr ) {
           if ( event->key() == Qt::Key_Q ) {
             disableTransformMode();
@@ -1403,11 +1409,12 @@ void ImageView::clearSelection()
 // ---------------------------- Layer methods -----------------------------
 void ImageView::setLayerVisible( int layerVisibleOp )
 {
-  qDebug() << "ImageView::setLayerVisible(): layerVisibleOp=" << layerVisibleOp;
+  qCDebug(logEditor) << "ImageView::setLayerVisible(): layerVisibleOp =" << layerVisibleOp << ", m_oldVisibleLayerItemNum =" << m_oldVisibleLayerItemNum;
   {
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow != nullptr ) {
      if ( layerVisibleOp == 1 ) { // make all layers visible
+      m_oldVisibleLayerItemNum = -1;
       for ( int i=0 ; i<m_layers.size() ; i++ ) {
         if ( m_layers[i]->m_item ) {
          m_layers[i]->m_visible = true;
@@ -1418,13 +1425,27 @@ void ImageView::setLayerVisible( int layerVisibleOp )
       IMainSystem::instance()->showMessage(QString("Made all %1 layers visible").arg(m_layers.size()));
      } else if ( layerVisibleOp == 2 ) { // hide selected layer
       for ( int i=0 ; i<m_layers.size() ; i++ ) {
-        if ( m_layers[i]->m_item && m_layers[i]->m_item->isSelected() ) {
-          bool isVisible = m_layers[i]->m_visible;
-          m_layers[i]->m_visible = !isVisible;
-          m_layers[i]->m_item->setVisible(!isVisible);
-          mainWindow->updateLayerList();
-          IMainSystem::instance()->showMessage(QString("%1 layer %2").arg(isVisible?"Hide":"Show").arg(m_layers[i]->name()));
-          return;
+        if ( m_layers[i]->m_item ) {
+          if ( m_layers[i]->m_item->isSelected() ) {
+            m_oldVisibleLayerItemNum = i;
+            bool isVisible = m_layers[i]->m_visible;
+            m_layers[i]->m_visible = !isVisible;
+            m_layers[i]->m_item->setVisible(!isVisible);
+            mainWindow->updateLayerList();
+            IMainSystem::instance()->showMessage(QString("%1 layer %2").arg(isVisible?"Hide":"Show").arg(m_layers[i]->name()));
+            return;
+          } else if ( i == m_oldVisibleLayerItemNum ) {
+            LayerItem *layerItem = dynamic_cast<LayerItem*>(m_layers[i]->m_item);
+            if ( layerItem != nullptr ) {
+             m_oldVisibleLayerItemNum = -1;
+             m_layers[i]->m_visible = true;
+             layerItem->setVisible(true);
+             layerItem->setIsSelected(9,true);
+             mainWindow->updateLayerList();
+             layerItem->setCageVisible(9,true);
+             IMainSystem::instance()->showMessage(QString("Made layer %1 visible again").arg(i));
+            }
+          }
         }
       }
      }
@@ -1755,7 +1776,11 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
      }
     }
     // --- Neues LayerItem ---
-    int nidx = m_layers.size()+1;
+    int nidx = 0;
+    for ( int i=0 ; i<m_layers.size() ; i++ ) {
+      nidx = m_layers[i]->id() > nidx ? m_layers[i]->id() : nidx;
+    }
+    nidx += 1;
     Layer* layer = new Layer(nidx,cut);
     layer->m_name = QString("%1 %2").arg(name).arg(nidx);
     layer->m_creator = name;

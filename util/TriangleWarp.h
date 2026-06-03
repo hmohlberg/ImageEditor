@@ -102,7 +102,7 @@ namespace TriangleWarp
     if ( EditorStyle::instance().useCageQuads() == true ) {
 
      // --- QUAD WARP (default) ---
-     #ifdef AAA  
+     if ( EditorStyle::instance().useClaudeQuads() == true ) { 
      
       for ( int y = 0; y + 1 < rows; ++y ) {
        for ( int x = 0; x + 1 < cols; ++x ) {
@@ -136,7 +136,7 @@ namespace TriangleWarp
        }
       }
       
-     #else
+     } else {
         
       for ( int y = 0; y + 1 < rows; ++y ) {
        for ( int x = 0; x + 1 < cols; ++x ) {
@@ -173,7 +173,7 @@ namespace TriangleWarp
        }
       }
      
-     #endif
+     }
     
     } else {
     

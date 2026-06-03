@@ -282,7 +282,7 @@ void LayerItem::updateOriginalImage() {
 // ------------------------ Selected ------------------------
 void LayerItem::setIsSelected( int caller, bool isSelected ) 
 {
-  qCDebug(logEditor) << "LayerItem::setIsSelected(" << caller << "): name =" << name() 
+ qCDebug(logEditor) << "LayerItem::setIsSelected(" << caller << "): name =" << name() 
                   << ", select =" << isSelected << ", operationMode =" << m_operationMode;
   {
     MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
@@ -525,7 +525,10 @@ QImage LayerItem::applyCageWarp( const QString &caller )
     if ( !m_cageMesh.isInitialized(true) ) {
       m_cageMesh.setImage(m_image);
     }
+    // --- ---- ---
+    // NOT YET WORKING: QuadWarp::WarpResult warped = QuadWarp::warp(m_cageMesh.image(),m_cageMesh);
     TriangleWarp::WarpResult warped = TriangleWarp::warp(m_cageMesh.image(),m_cageMesh);
+    // --- ---- ---
     if ( !warped.image.isNull() ) {
      setPixmap(QPixmap::fromImage(warped.image));
      m_image = warped.image;
@@ -891,8 +894,9 @@ void LayerItem::setOperationMode( OperationMode mode )
    qCDebug(logEditor) << "LayerItem::setOperationMode(): name =" << name() << ", index =" 
                              << m_index << ", mode =" << m_operationMode << "|" << mode;
    {
-     if ( m_operationMode == mode )
+     if ( m_operationMode == mode ) {
       return;
+     }
      if ( m_operationMode == OperationMode::CageWarp ) {
       setCageVisible(2,false);
       // setOriginalImage(m_image);
