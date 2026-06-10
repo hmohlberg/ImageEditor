@@ -168,6 +168,8 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(guiOption);
   QCommandLineOption configFileOption(QStringList() << "config", "Path to config file.", "file");
   parser.addOption(configFileOption);
+  // QCommandLineOption updateLayerOption("update-layer", "Update layer mask generated from a polygon.");
+  // parser.addOption(updateLayerOption);
   QCommandLineOption alphaMaskingOption("alpha-masking", "Forced alpha channel mask processing.");
   parser.addOption(alphaMaskingOption);
   QCommandLineOption skipValidationOption("skip-validation", "Skip all validation checks and force the loading of the input image.");

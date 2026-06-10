@@ -502,7 +502,7 @@ bool MainWindow::saveProject( const QString& filePath )
 
 bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
 {
-  qDebug() << "MainWindow::loadProject(): filename=" << filePath << ", skipMainImage=" << skipMainImage;
+  qDebug() << "MainWindow::loadProject(): filename=" << filePath << ", skipMainImage =" << skipMainImage;
   {
     QFile f(filePath);
     if ( !f.open(QIODevice::ReadOnly) ) return false;
@@ -556,7 +556,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
     QUndoStack* undoStack = m_imageView->undoStack();
     if ( undoStack != nullptr ) undoStack->clear();
     
-    // --- Parsing layers (does not contain layer postions) ---
+    // --- Parsing layers (does not contain layer positions) ---
     int nCreatedLayers = 0;
     for ( const QJsonValue& v : layerArray ) {
       QJsonObject layerObj = v.toObject();
@@ -591,6 +591,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
          rect = QRect(x,y,mask.width(), mask.height());
          // binary masking
          if ( isBinaryMask ) {
+           qDebug() << "MainWindow::loadProject():  + binary mask processing...";
            QImage mainImage = m_layerItem->image();
            QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
            subImage = subImage.convertToFormat(QImage::Format_ARGB32);
@@ -605,27 +606,28 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
            }
            newLayer = new LayerItem(subImage);
          } else if ( EditorStyle::instance().binaryMasking() ) {
+            qDebug() << "MainWindow::loadProject():  + binary masking processing...";  
             if ( mask.format() != QImage::Format_ARGB32 && mask.format() != QImage::Format_ARGB32_Premultiplied ) {
               mask = mask.convertToFormat(QImage::Format_ARGB32);
             }
             QImage mainImage = m_layerItem->image();
             QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
             subImage = subImage.convertToFormat(QImage::Format_ARGB32);
-            for (int y = 0; y < subImage.height(); ++y) {
-             QRgb *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
-             const QRgb *maskRowData = reinterpret_cast<const QRgb*>(mask.constScanLine(y));
+            for ( int y = 0; y < subImage.height(); ++y ) {
+             auto *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
+             const auto *maskRowData = reinterpret_cast<const QRgb*>(mask.constScanLine(y));  
              for ( int x = 0; x < subImage.width(); ++x ) {
-              int alpha = qAlpha(maskRowData[x]);
-              if ( alpha != 255 ) {
-               rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
+              if ( qRed(rowData[x]) == 0 || qAlpha(maskRowData[x]) != 255 ) {
+               rowData[x] = 0; 
               }
              }
             }
             newLayer = new LayerItem(subImage);
             isBinaryMask = false;
          } else {
-           newLayer = new LayerItem(mask);
-           isBinaryMask = false;
+            qDebug() << "MainWindow::loadProject(): + default mask processing...";
+            newLayer = new LayerItem(mask);
+            isBinaryMask = false;
          }
          newLayer->setIndex(id);
          newLayer->setParent(this);
@@ -1130,6 +1132,13 @@ void MainWindow::showLayerContextMenu( const QPoint& pos )
     QListWidgetItem* item = m_layerList->itemAt(pos);
     if ( !item ) return;
     QMenu menu(this);
+    #ifdef _HAS_LAYER_MASKING
+     menu.addAction("Mask Layer", this, [this, item]() {
+      Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
+      if ( !layer ) return;
+      qDebug() << "MainWindow::showLayerContextMenu(): Masking layer " << layer->name();
+     });
+    #endif
     menu.addAction("Save Layer as...",  [this, item]() {
         Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
         if ( !layer ) return;
