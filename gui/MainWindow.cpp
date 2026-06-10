@@ -613,11 +613,12 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
             QImage mainImage = m_layerItem->image();
             QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
             subImage = subImage.convertToFormat(QImage::Format_ARGB32);
+            int backgroundPixelColor = Config::isWhiteBackgroundImage ? 255 : 0;
             for ( int y = 0; y < subImage.height(); ++y ) {
              auto *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
              const auto *maskRowData = reinterpret_cast<const QRgb*>(mask.constScanLine(y));  
              for ( int x = 0; x < subImage.width(); ++x ) {
-              if ( qRed(rowData[x]) == 0 || qAlpha(maskRowData[x]) != 255 ) {
+              if ( qRed(rowData[x]) == backgroundPixelColor || qAlpha(maskRowData[x]) != 255 ) {
                rowData[x] = 0; 
               }
              }
