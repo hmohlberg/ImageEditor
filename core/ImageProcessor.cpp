@@ -178,17 +178,17 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking )
           }
           QImage subImage = m_image.copy(x, y, mask.width(), mask.height());
           subImage = subImage.convertToFormat(QImage::Format_ARGB32);
+          int backgroundPixelColor = Config::isWhiteBackgroundImage ? 255 : 0;
           for ( int y = 0; y < subImage.height(); ++y ) {
-            QRgb *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
-            const QRgb *maskRowData = reinterpret_cast<const QRgb*>(mask.constScanLine(y));
+            auto *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
+            const auto *maskRowData = reinterpret_cast<const QRgb*>(mask.constScanLine(y));  
             for ( int x = 0; x < subImage.width(); ++x ) {
-              int alpha = qAlpha(maskRowData[x]);
-              if ( alpha != 255 ) {
-               rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
+              if ( qRed(rowData[x]) == backgroundPixelColor || qAlpha(maskRowData[x]) != 255 ) {
+               rowData[x] = 0; 
               }
             }
           }
-          newLayer = new LayerItem(subImage);
+          newLayer = new LayerItem(subImage); 
          } else {
           newLayer = new LayerItem(mask);
          }
