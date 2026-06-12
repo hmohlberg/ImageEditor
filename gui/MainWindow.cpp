@@ -595,12 +595,16 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
            QImage mainImage = m_layerItem->image();
            QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
            subImage = subImage.convertToFormat(QImage::Format_ARGB32);
+           int backgroundPixelColor = Config::isWhiteBackgroundImage ? 255 : 0;
            for ( int y = 0; y < subImage.height(); ++y ) {
             QRgb *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
             const uchar *maskData = mask.constScanLine(y);
             for ( int x = 0; x < subImage.width(); ++x ) {
-             if ( maskData[x] != 255 ) {
-              rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
+             // if ( maskData[x] != 255 ) {
+             //  rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
+             // }
+             if (maskData[x] != 255 || qRed(rowData[x]) == backgroundPixelColor) {
+               rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
              }
             }
            }
@@ -618,7 +622,8 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
              auto *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
              const auto *maskRowData = reinterpret_cast<const QRgb*>(mask.constScanLine(y));  
              for ( int x = 0; x < subImage.width(); ++x ) {
-              if ( qRed(rowData[x]) == backgroundPixelColor || qAlpha(maskRowData[x]) != 255 ) {
+              // OLD: if ( qRed(rowData[x]) == backgroundPixelColor || qAlpha(maskRowData[x]) != 255 ) {
+              if ( qRed(rowData[x]) == backgroundPixelColor && qAlpha(maskRowData[x]) == 255 ) {
                rowData[x] = 0; 
               }
              }
