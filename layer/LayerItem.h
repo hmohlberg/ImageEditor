@@ -59,6 +59,7 @@ class LayerItem : public QGraphicsPixmapItem
     void paintStrokeSegment( const QPoint& p0, const QPoint &p1, const QColor &color, int radius, float hardness );
 
     QImage& image( int id=0 );
+    QString getAlphaMaskData( bool base64Encoding = true );
     void setOriginalImage( const QImage& originalImage, ImageType imageType = ImageType::Original );
     const QImage& originalImage();
     void updatePixmap();

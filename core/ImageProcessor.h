@@ -20,6 +20,7 @@
 #include <QObject>
 #include <QImage>
 #include <QPixmap>
+#include <QJsonDocument>
 #include <QUndoStack>
 
 // --- ---
@@ -35,11 +36,12 @@ class ImageProcessor {
     ImageProcessor( const QImage& image );
     
     QImage getOutputImage() const { return m_outImage; }
+    QJsonDocument document() const { return m_jsonDocument; }
     
     // --------------------------  --------------------------
     void setIntermediatePath( const QString& path = "", const QString& outname = "" );
     bool setOutputImage( int ident );
-    bool process( const QString& filePath, bool forcedAlphaMasking=false );
+    bool process( const QString& filePath, bool forcedAlphaMasking=false, bool processHistory=true );
     void printself();
    
     
@@ -52,6 +54,8 @@ class ImageProcessor {
    
     QImage m_image;
     QImage m_outImage;
+    
+    QJsonDocument m_jsonDocument;
     
     QString m_intermediatePath = "";
     QString m_basename = "";

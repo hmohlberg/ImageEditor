@@ -41,6 +41,7 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsScene>
 #include <QPainter>
+#include <QBuffer>
 #include <iostream>
 
 // ------------------------ LayerItem ------------------------
@@ -175,6 +176,35 @@ ImageView* LayerItem::getParentImageView() {
 
 QImage& LayerItem::image( int id ) {
     return id == 1 ? m_originalImage : m_image;
+}
+
+QString LayerItem::getAlphaMaskData( bool base64Encoding )
+{
+  QByteArray ba;
+  QBuffer buffer(&ba);
+  buffer.open(QIODevice::WriteOnly);
+  if ( 1 == 1 ) {
+   QImage alphaImage = m_image.convertToFormat(QImage::Format_Alpha8);
+   QImage indexedImage = alphaImage.convertToFormat(QImage::Format_Indexed8);
+   QList<QRgb> palette;
+   for ( int i = 0; i < 256; ++i ) {
+     if ( i == 0 ) 
+       palette.append(qRgba(0, 0, 0, 255));
+     else 
+       palette.append(qRgba(255, 255, 255, 255));
+   }
+   indexedImage.setColorTable(palette);
+   for ( int y = 0; y < indexedImage.height(); ++y ) {
+     uchar *pixels = indexedImage.scanLine(y);
+     for ( int x = 0; x < indexedImage.width(); ++x ) {
+       pixels[x] = (pixels[x] > 0) ? 255 : 0;
+     }
+   }
+   indexedImage.save(&buffer, "PNG");
+  } else {
+   m_image.save(&buffer, "PNG");
+  }
+  return QString::fromUtf8(ba.toBase64());
 }
 
 void LayerItem::setInActive( bool isInActive )

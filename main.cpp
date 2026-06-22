@@ -137,11 +137,9 @@ static bool validateFile( const QString &filePath, const QString &optionName, co
 static bool isPathWritable( const QString &path ) {
     QFileInfo checkInfo(path);
     if ( !checkInfo.exists() ) {
-        // qDebug() << "Error: Path does not exists: " << path;
         return false;
     }
     if ( !checkInfo.isWritable() ) {
-        // qDebug() << "Error: Path is write-protected or no permission: " << path;
         return false;
     }
     return true;
@@ -174,6 +172,8 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(alphaMaskingOption);
   QCommandLineOption skipValidationOption("skip-validation", "Skip all validation checks and force the loading of the input image.");
   parser.addOption(skipValidationOption);
+  QCommandLineOption saveJSONOption(QStringList() << "save-json", "In batch mode, save a loaded project file in the latest version.", "file");
+  parser.addOption(saveJSONOption);
   QCommandLineOption intermediateOption(QStringList() << "save-intermediate", "In batch mode, path to output an image after each step in the history.", "file");
   parser.addOption(intermediateOption);
   QCommandLineOption concatOption("concatenate", "Concatenate image transformations in batch mode.");
@@ -225,6 +225,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   if ( !validateFile(obj["historyPath"].toString(),"project",{"json"}) ) {
    exit(1);
   }
+  obj["saveJSONPath"] = parser.value(saveJSONOption);
   obj["configPath"] = parser.value(configFileOption);
   obj["save-intermediate"] = parser.value(intermediateOption);
   if ( parser.isSet(intermediateOption) && !isPathWritable(obj["save-intermediate"].toString()) ) {
@@ -257,7 +258,7 @@ int main( int argc, char *argv[] )
      if ( QString(argv[i]) == "--debug" ) {
        qputenv("QT_LOGGING_RULES", "editor.graphics.debug=true");
      }
-     if ( QString(argv[i]) == "--batch" || QString(argv[i]) == "--output" ) batchProcessing = true;
+     if ( QString(argv[i]) == "--batch" || QString(argv[i]) == "--output" || QString(argv[i]) == "--save-json" ) batchProcessing = true;
      if ( QString(argv[i]) == "--gui" ) guiProcessing = true;
     }
     
@@ -274,6 +275,32 @@ int main( int argc, char *argv[] )
        printError("Invalid input. Missing required option '--project <filename>' in batch mode.");
        return 1;
       }
+      bool forcedAlphaMasking = parsedOptions.value("alphaMasking").toBool();
+      QString saveJSONPath = parsedOptions.value("saveJSONPath").toString("");
+      if ( !saveJSONPath.isEmpty() ) {
+        if ( QFile::exists(saveJSONPath) && parsedOptions.value("force").toBool() == false ) {
+          printError(QString("Output JSON file '%1' already exists. Use command line option --force to overwrite.").arg(saveJSONPath));
+          return 1; 
+        }
+        QImage image;
+        if ( !imagePath.isEmpty() ) {
+         ImageLoader loader;
+         loader.load(imagePath,true);
+         image = loader.getImage();
+        }
+        ImageProcessor proc(image);
+        proc.process(historyPath,forcedAlphaMasking,false);
+        QJsonDocument document = proc.document();
+        QFile file(saveJSONPath); 
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text) ) {
+          qWarning() << "FATAL ERROR: Could not create new JSON file" << file.errorString();
+          return 0;
+        }
+        QByteArray bytes = document.toJson(QJsonDocument::Indented);
+         file.write(bytes);
+        file.close();
+        return 0;
+      }
       QString outputPath = parsedOptions.value("outputPath").toString("");
       if ( outputPath.isEmpty() ) {
        printError("Invalid input. Missing required option '--output <filename>' in batch mode.");
@@ -284,14 +311,13 @@ int main( int argc, char *argv[] )
         return 1; 
       }
       QString saveIntermediatePath = parsedOptions.value("save-intermediate").toString("");
-      bool forcedAlphaMasking = parsedOptions.value("alphaMasking").toBool();
       ImageLoader loader;
       QImage image;
       if ( imagePath.isEmpty() ) {
        saveCurrentCall(argc, argv);
        ImageProcessor proc;
        proc.setIntermediatePath(saveIntermediatePath,outputPath);
-       if ( !proc.process(historyPath,forcedAlphaMasking) ) {
+       if ( !proc.process(historyPath,forcedAlphaMasking,true) ) {
         printError(QString("Malfunction in ImageProcessor::process(%1).").arg(historyPath));
         return 1;
        }
@@ -302,7 +328,7 @@ int main( int argc, char *argv[] )
         Config::isWhiteBackgroundImage = loader.hasWhiteBackground();
         ImageProcessor proc(loader.getImage());
         proc.setIntermediatePath(saveIntermediatePath,outputPath);
-        if ( !proc.process(historyPath,forcedAlphaMasking) ) {
+        if ( !proc.process(historyPath,forcedAlphaMasking,true) ) {
          printError(QString("Malfunction in ImageProcessor::process(%1).").arg(historyPath));
          return 1;
         }
@@ -312,7 +338,7 @@ int main( int argc, char *argv[] )
         return 1;
        }
       }
-      image.setColorSpace(QColorSpace(QColorSpace::SRgb)); // no change
+      image.setColorSpace(QColorSpace(QColorSpace::SRgb));
       if ( loader.saveAs(image,outputPath) ) {
        qInfo() << "Saved image file " << outputPath << ".";
        return 0;

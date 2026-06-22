@@ -17,7 +17,6 @@
 
 #include <QFile>
 #include <QFileInfo>
-#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
 
@@ -91,21 +90,22 @@ void ImageProcessor::setIntermediatePath( const QString& path, const QString& ou
     m_saveIntermediate = path.length() > 0 ? true : false;
 }
 
-bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking ) 
+bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, bool processHistory ) 
 {
- qDebug() << "ImageProcessor::process(): filePath='" << filePath << "', forcedAlphaMasking =" << forcedAlphaMasking;
+ qDebug() << "ImageProcessor::process(): filePath='" << filePath << "', forcedAlphaMasking =" << forcedAlphaMasking << ", processHistory =" << processHistory;
  { 
     QFile f(filePath);
     if ( !f.open(QIODevice::ReadOnly) ) {
      qDebug() << LogColor::Red << "ImageProcessor::process(): Cannot open '" << filePath << "'!" << LogColor::Reset;
      return false;
     }
-    QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    m_jsonDocument = QJsonDocument::fromJson(f.readAll());
     f.close();
-    if ( !doc.isObject() ) return false;
-    QJsonObject root = doc.object();
+    if ( !m_jsonDocument.isObject() ) return false;
+    QJsonObject root = m_jsonDocument.object();
     
     // layers
+    QJsonArray updatedLayers;
     QJsonArray layerArray = root["layers"].toArray();
     if ( !m_skipMainImage ) {
       for ( const QJsonValue& v : layerArray ) {
@@ -131,6 +131,7 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking )
     // loading sublayers
     int nCreatedLayers = m_layers.size();
     for ( const QJsonValue& v : layerArray ) {
+     if ( v.isObject() ) {
       QJsonObject layerObj = v.toObject();
       int id = layerObj["id"].toInt();
       if ( id != 0 ) {
@@ -170,7 +171,7 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking )
              // if ( maskData[x] != 255 ) {
              //  rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
              // }
-             if (maskData[x] != 255 || qRed(rowData[x]) == backgroundPixelColor) {
+             if ( maskData[x] != 255 || qRed(rowData[x]) == backgroundPixelColor ) {
                rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
              }
             }
@@ -203,8 +204,24 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking )
          newLayer->setUndoStack(m_undoStack);
          m_layers << newLayer;
          nCreatedLayers += 1;
+         // build new json stack
+         if ( !isBinaryMask ) {
+          layerObj["data"] = newLayer->getAlphaMaskData();
+          layerObj["binaryMask"] = true;
+          layerObj["x"] = x;
+          layerObj["y"] = y;
+         }
+         updatedLayers.append(layerObj);  
         }
       }
+     } else {
+      updatedLayers.append(v);
+     }
+    }
+    if ( !processHistory ) {
+      root["layers"] = updatedLayers;
+      m_jsonDocument.setObject(root);
+      return true;
     }
   
     // --- Restore Undo/Redo Stack ---
@@ -212,10 +229,11 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking )
     QString infoTextLines = "";
     QJsonArray undoArray = root["undoStack"].toArray();
     for ( const QJsonValue& v : undoArray ) {
-        QJsonObject cmdObj = v.toObject();
-        QString type = cmdObj["type"].toString();
-        QString text = cmdObj["text"].toString();
-        qDebug() << "ImageProcessor::process(): Processing undo call: type=" << type << ", text=" << text;
+      QJsonObject cmdObj = v.toObject();
+      QString type = cmdObj["type"].toString();
+      QString text = cmdObj["text"].toString();
+      qDebug() << "ImageProcessor::process(): Processing undo call: type=" << type << ", text=" << text;
+      if ( processHistory ) { 
         AbstractCommand* cmd = nullptr;
         if ( type == "PaintStroke" || type == "PaintStrokeCommand" ) {
            cmd = PaintStrokeCommand::fromJson(cmdObj, m_layers);
@@ -243,7 +261,8 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking )
         } else {
             qDebug() << LogColor::Red << "ImageProcessor::process(): Invalid command." << LogColor::Reset;
         }
-        nStep += 1;
+      }
+      nStep += 1;
     }
     if ( m_saveIntermediate && infoTextLines != "" ) {
       QString outfilename = QString("%1/%2.info").arg(m_intermediatePath).arg(m_basename);
