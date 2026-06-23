@@ -46,6 +46,7 @@
 // ---------------------- Init ----------------------
 IMainSystem* IMainSystem::m_instance = nullptr;
 bool Config::verbose = false;
+bool Config::force = false;
 bool Config::forcedAlphaMasking = false;
 bool Config::skipValidation = false;
 bool Config::isWhiteBackgroundImage = true;

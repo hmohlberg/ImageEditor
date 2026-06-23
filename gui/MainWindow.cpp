@@ -91,6 +91,7 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     bool useVulkan = options.value("vulkan").toBool();
     
     Config::skipValidation = options.value("skipValidation").toBool();
+    Config::force = options.value("force").toBool();
     Config::verbose = options.value("verbose").toBool();
     
     // setup Gimp style
@@ -342,9 +343,9 @@ void MainWindow::saveAsImage()
   {
     bool isMaskImage = sender() == m_saveMaskImageAction ? true : false;
     QString title = isMaskImage ? QString("Save Mask Image As...") : QString("Save Image As...");
-    QString fileName = QFileDialog::getSaveFileName(this,
-                        title, QString(),
-                        tr("PNG Image (*.png)"));
+    QString fileName = QFileDialog::getSaveFileName(this,title, QString(),
+                        tr("PNG Image Files (*.png);;All Files (*)"),
+                        nullptr, QFileDialog::DontUseNativeDialog);
     if ( fileName.isEmpty() )
         return;
     // save first main image layer
@@ -387,9 +388,14 @@ void MainWindow::saveAsImage()
 
 void MainWindow::saveHistory()
 {
-    QString fileName = QFileDialog::getSaveFileName(this,
-                          tr("Save JSON History File As..."),
-                          m_projectFileName,tr("JSON Files (*.json);;All Files (*)"));
+    QFileDialog::Options options;
+    options |= QFileDialog::DontUseNativeDialog;
+    if ( Config::force ) {
+     options |= QFileDialog::DontConfirmOverwrite;
+    }
+    QString fileName = QFileDialog::getSaveFileName(this,tr("Save JSON History File As..."),
+                          m_projectFileName,tr("JSON Files (*.json);;All Files (*)"),
+                          nullptr,options);
     if ( !fileName.isEmpty() ) {
      saveProject(fileName);
     }
@@ -1149,7 +1155,8 @@ void MainWindow::showLayerContextMenu( const QPoint& pos )
         Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
         if ( !layer ) return;
         QString fileName = QFileDialog::getSaveFileName(this,
-                        tr("Save Layer Image As"),QString(),tr("PNG image file (*.png)"));
+                        tr("Save Layer Image As"),QString(),tr("PNG Image Files (*.png);All Files (*)"),
+                        nullptr, QFileDialog::DontUseNativeDialog);
         if ( !fileName.isEmpty() ) {
           layer->image().save(fileName, "PNG", 80);
           qDebug() << "Saved layer " << layer->name() << " image as " << fileName;
