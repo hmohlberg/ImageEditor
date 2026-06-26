@@ -28,6 +28,7 @@
 #include <QDateTime>
 #include <QString>
 #include <QtGlobal>
+#include <QPainter>
 #include <QFile>
 #include <QDir>
 
@@ -136,14 +137,50 @@ static bool validateFile( const QString &filePath, const QString &optionName, co
 }
 
 static bool isPathWritable( const QString &path ) {
-    QFileInfo checkInfo(path);
-    if ( !checkInfo.exists() ) {
-        return false;
+  QFileInfo checkInfo(path);
+  if ( !checkInfo.exists() ) {
+    return false;
+  }
+  if ( !checkInfo.isWritable() ) {
+    return false;
+  }
+  return true;
+}
+
+static void setEnlargedStandardCursor( int targetSize, const QColor &fillColor = Qt::white, const QColor &borderColor = Qt::black ) {
+  if ( targetSize != 0 ) {
+    QIcon arrowIcon = QIcon::fromTheme("cursor-arrow");
+    if ( arrowIcon.isNull() ) {
+        arrowIcon = QIcon::fromTheme("arrow");
     }
-    if ( !checkInfo.isWritable() ) {
-        return false;
+    if ( !arrowIcon.isNull() ) {
+        QPixmap pixmap = arrowIcon.pixmap(targetSize, targetSize);
+        if ( !pixmap.isNull() ) {
+            QApplication::setOverrideCursor(QCursor(pixmap.scaled(targetSize, targetSize, 
+                                         Qt::KeepAspectRatio, 
+                                         Qt::SmoothTransformation), 0, 0));
+            return;
+        }
     }
-    return true;
+    QPixmap fallbackPixmap(targetSize, targetSize);
+    fallbackPixmap.fill(Qt::transparent);
+    QPainter painter(&fallbackPixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    QPolygon pfeil;
+    pfeil << QPoint(0, 0)
+          << QPoint(0, targetSize * 0.75)
+          << QPoint(targetSize * 0.22, targetSize * 0.53)
+          << QPoint(targetSize * 0.47, targetSize * 0.95)
+          << QPoint(targetSize * 0.58, targetSize * 0.89)
+          << QPoint(targetSize * 0.33, targetSize * 0.48)
+          << QPoint(targetSize * 0.55, targetSize * 0.48);
+    painter.setPen(QPen(borderColor, 2));
+    painter.setBrush(fillColor);  
+    painter.drawPolygon(pfeil);
+    painter.end();
+    QCursor enlargedCursor(fallbackPixmap, 0, 0);
+    QApplication::setOverrideCursor(enlargedCursor);
+  }
 }
 
 // ---------------------- Command Line Options ----------------------
@@ -360,6 +397,8 @@ int main( int argc, char *argv[] )
     if ( !configPath.isEmpty() ) {
       EditorStyle::instance().load(configPath);
     }
+    setEnlargedStandardCursor(EditorStyle::instance().cursorSize(),
+               EditorStyle::instance().cursorFillColor(),EditorStyle::instance().cursorBorderColor());
     int result = 0;
     {
       // --- call main programm ---

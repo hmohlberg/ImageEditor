@@ -76,6 +76,17 @@
       m_binaryMasking = settings.value("Main/binaryMasking", true).toBool();
       m_crosshair = settings.value("Main/crosshair", true).toBool();
       
+      // cursor stuff
+      m_cursorSize = settings.value("Main/cursorSize",0).toInt();
+      QString cursorFillColor = settings.value("Main/cursorFillColor", "black").toString();
+      if ( QColor::isValidColorName(cursorFillColor) ) {
+        m_cursorFillColor = QColor::fromString(cursorFillColor);
+      }
+      QString cursorBorderColor = settings.value("Main/cursorBorderColor", "white").toString();
+      if ( QColor::isValidColorName(cursorBorderColor) ) {
+        m_cursorBorderColor = QColor::fromString(cursorBorderColor);
+      }
+      
       // Claude quads
       m_useClaudeQuads = settings.value("Cage/claudeQuads", true).toBool();
       // Cage quads
@@ -145,6 +156,9 @@
     QColor controlPointColor() const { return m_controlPointColor; }
     QString windowSize() const { return m_windowSize; }
     QString version() const { return m_version; }
+    int cursorSize() const { return m_cursorSize; }
+    QColor cursorFillColor() const { return m_cursorFillColor; }
+    QColor cursorBorderColor() const { return m_cursorBorderColor; }
     int lassoWidth() const { return m_lassoWidth; }
     int controlPointRadius() const { return m_controlPointRadius; }
     bool crosshair() const { return m_crosshair; }
@@ -164,9 +178,12 @@
           m_handleColor(Qt::cyan),
           m_handleSize(10),
           m_lassoWidth(3), 
+          m_cursorSize(0),
           m_controlPointRadius(4),
           m_gridColor(Qt::green),
           m_controlPointColor(Qt::red),
+          m_cursorFillColor(Qt::black),
+          m_cursorBorderColor(Qt::white),
           m_rotationSingleStep(0.5),
           m_loggingIsEnabled(false), 
           m_useCageQuads(true), 
@@ -192,6 +209,8 @@
     QColor m_cageWarpColor;
     QColor m_gridColor;
     QColor m_controlPointColor;
+    QColor m_cursorFillColor;
+    QColor m_cursorBorderColor;
     QString m_windowSize;
     QString m_version;
     
@@ -208,6 +227,7 @@
     int m_lassoWidth;
     int m_controlPointRadius;
     int m_handleSize;
+    int m_cursorSize;
     
     double m_rotationSingleStep;
     
