@@ -441,58 +441,96 @@ void ImageView::rebuildUndoStack()
   }
 }
 
+// ------------------------ --- -------------------------------------
 // need a re-build of the undostack stack if only the commands of layer N are involved
-void ImageView::removeOperationsByIndexUndoStack( const QString &name, int index )
+// ------------------------ --- -------------------------------------
+
+void ImageView::removeOperationsByIndexUndoStack(const QString& name, int index)
 {
   qCDebug(logEditor) << "ImageView::removeOperationsByIndexUndoStack(): name =" << name << ", index =" << index;
   {
-    if ( index < 0 || index >= m_undoStack->count() ) {
+   if ( !m_undoStack ) {
+    return;
+   }
+   if ( index < 0 || index > m_undoStack->count() ) {
+    return;
+   }
+   std::vector<std::unique_ptr<AbstractCommand>> commandsToReplay;
+   commandsToReplay.reserve(index);
+   for ( int i = 0; i < index; ++i ) {
+    const auto* cmd =
+      dynamic_cast<const AbstractCommand*>(m_undoStack->command(i));
+    if (!cmd) {
+      qWarning() << "ImageView::removeOperationsByIdUndoStack(): Cannot rebuild undo stack: command is not AbstractCommand at index" << i;
       return;
     }
-    QList<QUndoCommand*> keep;
-    // undo commands
-    m_undoStack->setIndex(index);
-    // restore
-    for ( int i=0 ; i<index ; ++i ) {
-      auto* cmd = const_cast<QUndoCommand*>(m_undoStack->command(i));
-      keep.append(static_cast<AbstractCommand*>(cmd)->clone());
+    auto* clone = cmd->clone();
+    if ( !clone ) {
+      qWarning() << "ImageView::removeOperationsByIdUndoStack(): Cannot rebuild undo stack: clone failed at index" << i;
+      return;
     }
-    // clear
-    m_undoStack->clear();
-    // rebuild
-    for ( auto* cmd : keep ) {
-      m_undoStack->push(cmd);
-    }
+    commandsToReplay.emplace_back(clone);
+   }
+   // Roll document state back to the base state through QUndoStack.
+   m_undoStack->setIndex(0);
+   m_undoStack->clear();
+   // Reconstruct document state and history up to index.
+   // push() calls redo(); that is intended here because we start from index 0.
+   for ( auto& command : commandsToReplay ) {
+    m_undoStack->push(command.release());
+   }
   }
 }
 
-void ImageView::removeOperationsByIdUndoStack( int id )
+// ------------------------ Revoke delete layer -------------------------------------
+
+void ImageView::removeOperationsByIdUndoStack( int layerId )
 {
-  qCDebug(logEditor) << "ImageView::removeOperationsByIdUndoStack(): id =" << id;
+  qCDebug(logEditor) << "ImageView::removeOperationsByIdUndoStack(): layerId =" << layerId;
   {
-    QList<QUndoCommand*> allCommands;
-    for ( int i = 0; i < m_undoStack->count(); ++i ) {
-        allCommands.append(const_cast<QUndoCommand*>(m_undoStack->command(i)));
+   if ( !m_undoStack ) {
+    return;
+   }
+   const int oldIndex = m_undoStack->index();
+   std::vector<std::unique_ptr<AbstractCommand>> commandsToReplay;
+   commandsToReplay.reserve(oldIndex);
+   // Clone only commands that are currently applied.
+   // Commands after oldIndex are redo history and are intentionally discarded.
+   for ( int i = 0; i < oldIndex; ++i ) {
+    const auto* cmd = dynamic_cast<const AbstractCommand*>(m_undoStack->command(i));
+    if ( !cmd ) {
+      qWarning() << "ImageView::removeOperationsByIdUndoStack(): Cannot rebuild undo stack: command is not AbstractCommand at index" << i;
+      return;
     }
-    for ( int i = allCommands.size() - 1; i >= 0; --i ) {
-        auto* cmd = dynamic_cast<AbstractCommand*>(allCommands[i]);
-        if ( cmd && cmd->layer() && cmd->layer()->id() == id ) {
-            cmd->undo();
-        }
+    const auto* layer = cmd->layer();
+    if ( layer && layer->id() == layerId ) {
+      continue;
     }
-    QList<AbstractCommand*> remainingCommands;
-    for ( auto* base : allCommands ) {
-        auto* cmd = dynamic_cast<AbstractCommand*>(base);
-        if ( cmd && (!cmd->layer() || cmd->layer()->id() != id) ) {
-            remainingCommands.append(cmd->clone());
-        }
+    auto* cloned = cmd->clone();
+    if ( !cloned ) {
+      qWarning() << "ImageView::removeOperationsByIdUndoStack(): Cannot rebuild undo stack: clone failed at index" << i;
+      return;
     }
-    m_undoStack->clear();
-    for ( auto* clone : remainingCommands ) {
-        // clone->setSilent(true);
-        m_undoStack->push(clone);
-        // clone->setSilent(false);
+    qDebug() << cloned->type();
+    commandsToReplay.emplace_back(cloned);
+   }
+   // Undo through QUndoStack, not by calling QUndoCommand::undo() directly.
+   // This keeps the stack index and Qt's internal state consistent.
+   m_undoStack->setIndex(0);
+   // Now it is safe to delete the old command objects.
+   m_undoStack->clear();
+   // Mark layer as deleted before replaying remaining commands.
+   for ( auto* layer : m_layers ) {
+    if ( layer && layer->id() == layerId ) {
+      layer->m_deleted = true;
+      break;
     }
+   }
+   // Rebuild the stack. push() calls redo(), which is intended here:
+   // we are reconstructing the current document state from the base state.
+   for ( auto& command : commandsToReplay ) {
+     m_undoStack->push(command.release());
+   }
   }
 }
 

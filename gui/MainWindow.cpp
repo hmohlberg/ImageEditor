@@ -432,7 +432,8 @@ bool MainWindow::saveProject( const QString& filePath )
     const auto& layers = m_imageView->layers();
     for ( int i = layers.size()-1; i >= 0; --i ) {
         Layer* layer = layers[i];
-        if ( !layer || !layer->m_item ) continue;
+        if ( !layer || !layer->m_item || layer->m_deleted ) continue;
+        layer->printself();
         QJsonObject layerObj;
         layerObj["id"] = layer->id();
         layerObj["name"] = layer->name();
@@ -1211,7 +1212,6 @@ void MainWindow::deleteLayer()
 {
   qCDebug(logEditor) << "MainWindow::deleteLayer(): Processing...";
   {
-    
     QListWidgetItem* item = m_layerList->currentItem();
     if ( !item ) return;
     Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());

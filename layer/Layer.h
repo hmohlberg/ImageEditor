@@ -25,6 +25,10 @@ class Layer {
   public:
   
     Layer( int index = -1, const QImage& image = QImage() ) : m_id(index), m_image(image) {}
+    
+    void printself() const {
+      qDebug() << "Layer::printself(): id =" << m_id << ", name =" << m_name << ", creator =" << m_creator << ", visible =" << m_visible;
+    }
   
     int id() const { return m_id; }
     float opacity() const { return m_opacity; }
@@ -44,6 +48,7 @@ class Layer {
     bool m_visible = true;
     bool m_active = true;
     bool m_binaryMask = false;
+    bool m_deleted = false;
     
     QRect m_bounds;
     QGraphicsItem* m_item = nullptr;
