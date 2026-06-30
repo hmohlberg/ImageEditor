@@ -47,6 +47,7 @@
     static bool forcedAlphaMasking;
     static bool skipValidation;
     static bool isWhiteBackgroundImage;
+    static bool gpuCageWarpProcessing;
     
  };
  
@@ -91,6 +92,7 @@
       m_useClaudeQuads = settings.value("Cage/claudeQuads", true).toBool();
       // Cage quads
       m_useCageQuads = settings.value("Cage/quads", true).toBool();
+      m_usegpu = settings.value("Cage/gpu", false).toBool();
       // Cage control point radius
       m_controlPointRadius = settings.value("Cage/controlPointRadius", 4).toInt();
       // Cage control point color
@@ -164,6 +166,7 @@
     bool crosshair() const { return m_crosshair; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
+    bool useGPU() const { return m_usegpu; }
     bool useClaudeQuads() const { return m_useClaudeQuads; }
     bool hasPerspective() const { return m_hasPerspective; }
     bool binaryMasking() const { return m_binaryMasking; }
@@ -187,6 +190,7 @@
           m_rotationSingleStep(0.5),
           m_loggingIsEnabled(false), 
           m_useCageQuads(true), 
+          m_usegpu(false),
           m_useClaudeQuads(true), 
           m_hasPerspective(true),
           m_binaryMasking(true),
@@ -223,6 +227,7 @@
     bool m_useClaudeQuads;
     bool m_hasPerspective;
     bool m_binaryMasking;
+    bool m_usegpu;
     
     int m_lassoWidth;
     int m_controlPointRadius;

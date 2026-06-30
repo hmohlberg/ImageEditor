@@ -32,6 +32,7 @@
 class Layer;
 class CageOverlayItem;
 class CageControlPointItem;
+class CageWarpRenderer;
 class TransformHandleItem;
 class TransformOverlay;
 class PerspectiveOverlay;
@@ -190,7 +191,8 @@ class LayerItem : public QGraphicsPixmapItem
     CageMesh m_cageMesh;
     CageOverlayItem* m_cageOverlay = nullptr;
     PerspectiveTransform m_perspective;
-    CageWarpCommand * m_cageWarpCommand = nullptr;
+    CageWarpCommand* m_cageWarpCommand = nullptr;
+    CageWarpRenderer* m_cageWarpRenderer = nullptr;
 
 	Layer* m_layer = nullptr;
 	

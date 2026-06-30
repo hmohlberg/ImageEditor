@@ -20,7 +20,7 @@ if(APPLE)
   set(Qt6Svg_DIR "/opt/homebrew/opt/qtsvg/lib/cmake/Qt6Svg")
   set(CMAKE_PREFIX_PATH "/opt/homebrew/opt/qtbase")
 endif()
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets Svg)
 
 # itk find
 if(APPLE)
@@ -126,7 +126,7 @@ set(HEADERS
 qt_standard_project_setup()
 qt_add_executable(${PROJECT_NAME} ${SOURCES})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Svg)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets Qt6::Svg)
 if(ITK_FOUND)
     include(${ITK_USE_FILE})
     target_include_directories(ImageEditor PRIVATE ${ITK_INCLUDE_DIRS})

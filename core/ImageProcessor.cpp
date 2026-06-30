@@ -108,6 +108,7 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
     QJsonArray updatedLayers;
     QJsonArray layerArray = root["layers"].toArray();
     if ( !m_skipMainImage ) {
+      bool haveMainImage = false;
       for ( const QJsonValue& v : layerArray ) {
         QJsonObject layerObj = v.toObject();
         QString name = layerObj["name"].toString();
@@ -125,7 +126,12 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
             qDebug() << LogColor::Red << "ImageProcessor::process(): Cannot find '" << fullfilename << "'!" << LogColor::Reset;
             return false;
           }
+          haveMainImage = true;
         }
+      }
+      if ( haveMainImage == false ) {
+        qDebug() << LogColor::Red << "ImageProcessor::process(): The main image is missing from the project file. Use the --file option to specify it.";
+        return false;
       }
     }
     // loading sublayers

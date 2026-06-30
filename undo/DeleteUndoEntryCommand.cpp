@@ -25,7 +25,7 @@
 DeleteUndoEntryCommand::DeleteUndoEntryCommand( QUndoStack* stack, const QString& name, int layerId, QUndoCommand* parent ) 
         : AbstractCommand(parent), m_stack(stack), m_name(name), m_layerId(layerId)
 {
-  qCDebug(logEditor) << "DeleteUndoEntryCommand::DeleteUndoEntryCommand(): Processing...";
+  qCDebug(logEditor) << "DeleteUndoEntryCommand::DeleteUndoEntryCommand(): name =" << name << ", layerId =" << layerId;
   {
     setText(QString("Delete command %1").arg(name));
     QByteArray deleteCommandSvg = 
@@ -35,9 +35,9 @@ DeleteUndoEntryCommand::DeleteUndoEntryCommand( QUndoStack* stack, const QString
       "</svg>";
     setIcon(AbstractCommand::getIconFromSvg(deleteCommandSvg));
     if ( m_stack && m_stack->count() > 0 ) {
-        m_target = dynamic_cast<AbstractCommand*>(
-            const_cast<QUndoCommand*>(m_stack->command(m_stack->count() - 1))
-        );
+      AbstractCommand *target = dynamic_cast<AbstractCommand*>(const_cast<QUndoCommand*>(m_stack->command(m_stack->count() - 1)));
+      if ( target != nullptr ) m_targetLayerId = target->id();
+      m_target = nullptr;
     }
     printMessage();
   }
@@ -57,22 +57,22 @@ void DeleteUndoEntryCommand::printMessage( bool isUndo )
 //-------------- Undo / redo  -------------- 
 void DeleteUndoEntryCommand::redo()
 {
-  qCDebug(logEditor) << "DeleteUndoEntryCommand::redo(): Processing...";
+  qDebug() << "DeleteUndoEntryCommand::redo(): name =" << m_name;
   {
     if ( m_target ) {
-        m_target->undo();
-        m_target->markDeleted(true);
+      m_target->undo();
+      m_target->markDeleted(true);
     }
   }
 }
 
 void DeleteUndoEntryCommand::undo()
 {
-  qCDebug(logEditor) << "DeleteUndoEntryCommand::undo(): Processing...";
+  qDebug() << "DeleteUndoEntryCommand::undo(): name =" << m_name;
   {
     if ( m_target ) {
-        m_target->markDeleted(false);
-        m_target->redo();
+      m_target->markDeleted(false);
+      m_target->redo();
     }
   }
 }

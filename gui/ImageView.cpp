@@ -67,7 +67,7 @@ static qreal pointToSegmentDist( const QPointF& p, const QPointF& a, const QPoin
 static qreal distanceToPolygon( const QPointF& p, const QPolygonF& poly )
 {
     qreal minDist = std::numeric_limits<qreal>::max();
-    for (int i = 0; i < poly.size(); ++i) {
+    for ( int i = 0; i < poly.size(); ++i ) {
         QPointF a = poly[i];
         QPointF b = poly[(i + 1) % poly.size()];
         minDist = std::min(minDist, pointToSegmentDist(p, a, b));
@@ -447,7 +447,7 @@ void ImageView::rebuildUndoStack()
 
 void ImageView::removeOperationsByIndexUndoStack(const QString& name, int index)
 {
-  qCDebug(logEditor) << "ImageView::removeOperationsByIndexUndoStack(): name =" << name << ", index =" << index;
+  qDebug() << "ImageView::removeOperationsByIndexUndoStack(): name =" << name << ", index =" << index;
   {
    if ( !m_undoStack ) {
     return;
@@ -486,7 +486,7 @@ void ImageView::removeOperationsByIndexUndoStack(const QString& name, int index)
 
 void ImageView::removeOperationsByIdUndoStack( int layerId )
 {
-  qCDebug(logEditor) << "ImageView::removeOperationsByIdUndoStack(): layerId =" << layerId;
+  qDebug() << "ImageView::removeOperationsByIdUndoStack(): layerId =" << layerId;
   {
    if ( !m_undoStack ) {
     return;
@@ -713,9 +713,12 @@ LayerItem* ImageView::currentLayer() const
 
 void ImageView::deleteLayer( Layer* layer )
 {
+  qDebug() << "ImageView::deleteLayer(): Processing...";
+  {
    if ( layer == nullptr || layer->m_item == nullptr ) return;
    LayerItem *imageLayer = dynamic_cast<LayerItem*>(layer->m_item);
    m_undoStack->push(new DeleteLayerCommand(imageLayer,imageLayer->pos(),layer->id()));
+  }
 }
 
 void ImageView::setSelectedLayer( int caller, LayerItem* layer  )
@@ -1997,7 +2000,7 @@ void ImageView::setPolygonIndex( quint8 index, bool doUpdate )
      for ( auto* item : m_scene->items() ) {
       auto* editablePolygon = dynamic_cast<EditablePolygonItem*>(item);
       if ( editablePolygon && !editablePolygon->polygon()->layer() ) {
-        qDebug() << " + polygon_name: " << editablePolygon->name() << ", hasLayer =" << editablePolygon->polygon()->layer();
+        // qDebug() << " + polygon_name: " << editablePolygon->name() << ", hasLayer =" << editablePolygon->polygon()->layer();
         if ( editablePolygon->name() == polyName == true ) {
          m_activePolygonItem = editablePolygon;
          editablePolygon->visibilityChangedTo(true);
@@ -2008,7 +2011,6 @@ void ImageView::setPolygonIndex( quint8 index, bool doUpdate )
      }
      
     // end test
-    
   }
 }
 

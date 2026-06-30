@@ -90,6 +90,7 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     QString classPath = options.value("classPath").toString("");
     bool useVulkan = options.value("vulkan").toBool();
     
+    Config::gpuCageWarpProcessing = options.value("gpu").toBool();
     Config::skipValidation = options.value("skipValidation").toBool();
     Config::force = options.value("force").toBool();
     Config::verbose = options.value("verbose").toBool();
@@ -522,6 +523,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
     // --- Loading and verify main image ---
     QJsonArray layerArray = root["layers"].toArray();
     if ( !skipMainImage ) {
+      bool foundMainImage = false;
       for ( const QJsonValue& v : layerArray ) {
         QJsonObject layerObj = v.toObject();
         QString name = layerObj["name"].toString();
@@ -534,7 +536,12 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
            showMessage(QString("Cannot find '%1'").arg(fullfilename),1);
            return false;
           }
+          foundMainImage = true;
         }
+      }
+      if ( foundMainImage == false ) {
+        showMessage(QString("The main image is missing from the project file. Use the --file option to specify it."),1);
+        return false;
       }
     }
     
@@ -598,7 +605,6 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
          rect = QRect(x,y,mask.width(), mask.height());
          // binary masking
          if ( isBinaryMask ) {
-           qDebug() << "MainWindow::loadProject():  + binary mask processing...";
            QImage mainImage = m_layerItem->image();
            QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
            subImage = subImage.convertToFormat(QImage::Format_ARGB32);
@@ -617,7 +623,6 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
            }
            newLayer = new LayerItem(subImage);
          } else if ( EditorStyle::instance().binaryMasking() ) {
-            qDebug() << "MainWindow::loadProject():  + binary masking processing...";  
             if ( mask.format() != QImage::Format_ARGB32 && mask.format() != QImage::Format_ARGB32_Premultiplied ) {
               mask = mask.convertToFormat(QImage::Format_ARGB32);
             }
@@ -638,7 +643,6 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
             newLayer = new LayerItem(subImage);
             isBinaryMask = false;
          } else {
-            qDebug() << "MainWindow::loadProject(): + default mask processing...";
             newLayer = new LayerItem(mask);
             isBinaryMask = false;
          }
@@ -1181,7 +1185,7 @@ void MainWindow::showLayerContextMenu( const QPoint& pos )
     });
     menu.addAction("Center Layer", [this, item]() {
         Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
-        if (!layer) return;
+        if ( !layer ) return;
         m_imageView->centerOnLayer(layer);
     });
     menu.addAction("Layer Info", [this, item]() {
@@ -1216,22 +1220,30 @@ void MainWindow::deleteLayer()
     if ( !item ) return;
     Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
     if ( !layer ) return;
-    
-    QString labelText = QString("Do you really want to delete the layer? Press the Revoke button to undo all operations "
-                    "(all entries will be permanently deleted from the history list) or press Delete to remove "
-                    "the layer with the option of restoring it.");
+    QString labelText = QString("Do you really want to delete layer %1? Press the Revoke button to undo all operations "
+                    "(all entries will be permanently deleted from the history list), press Delete to remove "
+                    "the layer with the option of restoring it or press Destroy to remove the layer image").arg(layer->id());
     int result = QWidgetUtils::showIconDialog(this,QString("Delete %1").arg(layer->name()),labelText);
-
-    if ( result == 1 ) {
+    if ( result == 1 ) { // Revoke
       // Undo all operations from the stack. Preserve original state
       m_imageView->removeOperationsByIdUndoStack(layer->id());
-    } else if ( result == 2 ) {
+    } else if ( result == 2 ) { // Delete layer
       m_imageView->deleteLayer(layer);
       // if ( layer->m_item ) 
       //   m_imageView->getScene()->removeItem(layer->m_item);
       // m_imageView->layers().removeOne(layer);
       rebuildLayerList();
       m_imageView->rebuildUndoStack();
+    } else if ( result == 3 ) { // Destroy layer
+      if ( layer->m_item != nullptr ) {
+        layer->m_deleted = true;
+        LayerItem* m_item = dynamic_cast<LayerItem*>(layer->m_item);
+        if ( m_item != nullptr ) {
+          m_item->setVisible(false);
+          m_item->setInActive(true);
+        } 
+        rebuildLayerList();
+      }
     }
   }
 }

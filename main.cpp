@@ -51,6 +51,7 @@ bool Config::force = false;
 bool Config::forcedAlphaMasking = false;
 bool Config::skipValidation = false;
 bool Config::isWhiteBackgroundImage = true;
+bool Config::gpuCageWarpProcessing = false;
 
 Q_LOGGING_CATEGORY(logEditor, "editor.graphics")
 
@@ -216,8 +217,10 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(intermediateOption);
   QCommandLineOption concatOption("concatenate", "Concatenate image transformations in batch mode.");
   parser.addOption(concatOption);
-  QCommandLineOption vulkanOption("vulkan", "If available enable hardware accelerated Vulkan rendering.");
-  parser.addOption(vulkanOption);
+  QCommandLineOption gpuOption("gpu", "Use gpu accelerated cage warp processing.");
+  parser.addOption(gpuOption);
+  // QCommandLineOption vulkanOption("vulkan", "If available enable hardware accelerated Vulkan rendering.");
+  // parser.addOption(vulkanOption);
   QCommandLineOption historyOption("history", "Print history of last calls to stdout. Optional: last <n> entries.");
   parser.addOption(historyOption);
   QCommandLineOption forceOption("force", "Overwrite an existing output file.");
@@ -270,7 +273,8 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
    exit(1);
   }
   obj["concatenate"] = parser.isSet(concatOption);
-  obj["vulkan"] = parser.isSet(vulkanOption);
+  obj["vulkan"] = false; // parser.isSet(vulkanOption);
+  obj["gpu"] = parser.isSet(gpuOption);
   obj["alphaMasking"] = parser.isSet(alphaMaskingOption);
   obj["skipValidation"] = parser.isSet(skipValidationOption);
   obj["force"] = parser.isSet(forceOption);

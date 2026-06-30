@@ -46,6 +46,7 @@ class DeleteUndoEntryCommand : public AbstractCommand
  private:
  
     int m_layerId = 0;
+    int m_targetLayerId = 0;
     LayerItem* m_layer = nullptr;
     QString m_name;
     

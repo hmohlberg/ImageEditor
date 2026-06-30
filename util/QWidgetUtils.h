@@ -99,10 +99,12 @@ namespace QWidgetUtils
 
     QPushButton *btnOk = new QPushButton("Revoke", &dialog);
     QPushButton *btnIgnore = new QPushButton("Delete", &dialog);
+    QPushButton *btnDestroy = new QPushButton("Destroy", &dialog);
     QPushButton *btnCancel = new QPushButton("Cancel", &dialog);
 
     buttonLayout->addWidget(btnOk);
     buttonLayout->addWidget(btnIgnore);
+    buttonLayout->addWidget(btnDestroy);
     buttonLayout->addWidget(btnCancel);
 
     mainLayout->addLayout(buttonLayout);
@@ -111,7 +113,8 @@ namespace QWidgetUtils
     int result = 0;
     QObject::connect(btnOk, &QPushButton::clicked, [&]() { result = 1; dialog.accept(); });
     QObject::connect(btnIgnore, &QPushButton::clicked, [&]() { result = 2; dialog.accept(); });
-    QObject::connect(btnCancel, &QPushButton::clicked, [&]() { result = 3; dialog.reject(); });
+    QObject::connect(btnDestroy, &QPushButton::clicked, [&]() { result = 3; dialog.accept(); });
+    QObject::connect(btnCancel, &QPushButton::clicked, [&]() { result = 4; dialog.reject(); });
 
     dialog.exec();
     return result;

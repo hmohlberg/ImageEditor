@@ -32,6 +32,7 @@
 #include "../util/Interpolation.h"
 #include "../util/GeometryUtils.h"
 #include "../util/TriangleWarp.h"
+#include "../util/CageWarp.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -555,18 +556,35 @@ QImage LayerItem::applyCageWarp( const QString &caller )
     if ( !m_cageMesh.isInitialized(true) ) {
       m_cageMesh.setImage(m_image);
     }
-    // --- ---- ---
-    // NOT YET WORKING: QuadWarp::WarpResult warped = QuadWarp::warp(m_cageMesh.image(),m_cageMesh);
-    TriangleWarp::WarpResult warped = TriangleWarp::warp(m_cageMesh.image(),m_cageMesh);
-    // --- ---- ---
-    if ( !warped.image.isNull() ) {
-     setPixmap(QPixmap::fromImage(warped.image));
-     m_image = warped.image;
-     QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
-     m_cageApplied = true;
-     return m_image.copy();
+    if ( Config::gpuCageWarpProcessing || EditorStyle::instance().useGPU() ) {
+      qDebug() << "LayerItem::applyCageWarp(): GPU cage warp processing...";
+      if  ( m_cageWarpRenderer == nullptr ) {
+        m_cageWarpRenderer = new CageWarpRenderer();
+        m_cageWarpRenderer->setSourceImage(m_cageMesh.image());
+      }
+      m_cageWarpRenderer->setGridSize(m_cageMesh.cols(), m_cageMesh.rows());
+      CageWarpRenderer::WarpOptions options;
+      options.cageInterpolation = CageWarpRenderer::CageInterpolation::CatmullRom;
+      options.inverseMapping = CageWarpRenderer::InverseMapping::Newton;
+      options.inverseIterations = 10;
+      QImage warped = m_cageWarpRenderer->warp(m_cageMesh.points(),nullptr,options);
+      setPixmap(QPixmap::fromImage(warped));
+      m_image = warped;
+      QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
+      m_cageApplied = true;
+      return m_image.copy();
     } else {
-     qCritical() << "CRITICAL - LayerItem::applyCageWarp(): WARNING: Image isNull.";
+      // NOT YET WORKING: QuadWarp::WarpResult warped = QuadWarp::warp(m_cageMesh.image(),m_cageMesh);
+      TriangleWarp::WarpResult warped = TriangleWarp::warp(m_cageMesh.image(),m_cageMesh);
+      if ( !warped.image.isNull() ) {
+       setPixmap(QPixmap::fromImage(warped.image));
+       m_image = warped.image;
+       QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
+       m_cageApplied = true;
+       return m_image.copy();
+      } else {
+       qCritical() << "CRITICAL - LayerItem::applyCageWarp(): WARNING: Image isNull.";
+      }
     }
     return QImage(); 
   }
