@@ -1,5 +1,5 @@
 /* 
-* Copyright 2026 Forschungszentrum Jülich
+* Copyright 2026 Forschungszentrum J�lich
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ namespace GeometryUtils
     
     // >>>
     inline QPointF getBilinearUV( const QPointF& P, const QVector<QPointF>& quad ) {
-       // Implementiere hier die Lösung der quadratischen Gleichung für inverse bilineare Interpolation
+       // Implementiere hier die L�sung der quadratischen Gleichung f�r inverse bilineare Interpolation
        // Alternativ: Nutze QTransform::quadToQuad, um eine lokale Matrix pro Quad zu erstellen.
        if (quad.size() < 4) return QPointF(0, 0);
        // Eckpunkte des Quads:
@@ -42,9 +42,9 @@ namespace GeometryUtils
        QPointF f = D - A;
        QPointF g = A - B + C - D;
        QPointF h = P - A;
-       // Wir lösen die quadratische Gleichung: g.x*u*v + e.x*u + f.x*v - h.x = 0
-       // Und die entsprechende für y.
-       // Koeffizienten für die quadratische Gleichung: k2*v^2 + k1*v + k0 = 0
+       // Wir l�sen die quadratische Gleichung: g.x*u*v + e.x*u + f.x*v - h.x = 0
+       // Und die entsprechende f�r y.
+       // Koeffizienten f�r die quadratische Gleichung: k2*v^2 + k1*v + k0 = 0
        double k2 = g.x() * f.y() - g.y() * f.x();
        double k1 = e.x() * f.y() - e.y() * f.x() + h.x() * g.y() - h.y() * g.x();
        double k0 = h.x() * e.y() - h.y() * e.x();
@@ -55,7 +55,7 @@ namespace GeometryUtils
        } else {
          // Quadratische Formel: v = (-k1 +- sqrt(k1^2 - 4*k2*k0)) / (2*k2)
          double delta = k1 * k1 - 4.0 * k2 * k0;
-         if (delta < 0) return QPointF(0, 0); // Punkt außerhalb/Fehler
+         if (delta < 0) return QPointF(0, 0); // Punkt au�erhalb/Fehler
          v = (-k1 + qSqrt(delta)) / (2.0 * k2);
        }
        // u berechnen basierend auf v
@@ -82,12 +82,12 @@ namespace GeometryUtils
        QPointF p10 = dstQuad[1];
        QPointF p11 = dstQuad[2];
        QPointF p01 = dstQuad[3];
-       // Vektoren für die Gleichung
+       // Vektoren f�r die Gleichung
        QPointF e = p10 - p00;
        QPointF f = p01 - p00;
        QPointF g = p11 - p10 - p01 + p00;
        QPointF h = p - p00;
-       // Koeffizienten der quadratischen Gleichung für 'v'
+       // Koeffizienten der quadratischen Gleichung f�r 'v'
        double k2 = g.x() * f.y() - g.y() * f.x();
        double k1 = e.x() * f.y() - e.y() * f.x() + h.x() * g.y() - h.y() * g.x();
        double k0 = h.x() * e.y() - h.y() * e.x();
@@ -180,7 +180,7 @@ namespace GeometryUtils
     }
     
     // Barycentric mapping of a pixel within a triangle
-    inline QPointF barycentric( const QPointF& p, const QVector<QPointF>& triSrc, const QVector<QPointF>& triDst )
+    inline QPointF barycentric( const QPointF& p, const QVector<QPointF>& triSrc, const QVector<QPointF>& triDst, int * count, QPointF & Q )
     {
        // Q_ASSERT(triSrc.size() == 3 && triDst.size() == 3);
        if( triSrc.size() == 3 && triDst.size() == 3 ) {
@@ -201,7 +201,6 @@ namespace GeometryUtils
        }
        if( triSrc.size() == 4 && triDst.size() == 4 ) {  // ok, it's a quad
 
-         QPointF Q(0,0);
          QPointF v0 = triSrc[0] + triSrc[1] + triSrc[2] + triSrc[3];
          QPointF v1 = -triSrc[0] + triSrc[1] + triSrc[2] - triSrc[3];
          QPointF v2 = -triSrc[0] - triSrc[1] + triSrc[2] + triSrc[3];
@@ -221,13 +220,14 @@ namespace GeometryUtils
            QPointF delta = { ( A1.y() * rhs.x() - A1.x() * rhs.y() ) / det,
                              ( A0.x() * rhs.y() - A0.y() * rhs.x() ) / det };
            Q += delta;
+           (*count)++;
          }
-         double weights[4] = { 0.25 * ( 1 - Q.x() ) * ( 1 - Q.y() ),
-                               0.25 * ( 1 + Q.x() ) * ( 1 - Q.y() ),
-                               0.25 * ( 1 + Q.x() ) * ( 1 + Q.y() ),
-                               0.25 * ( 1 - Q.x() ) * ( 1 + Q.y() ) };
-         QPointF mapped = weights[0] * triDst[0] + weights[1] * triDst[1] +
-                          weights[2] * triDst[2] + weights[3] * triDst[3];
+         double weights[4] = { ( 1 - Q.x() ) * ( 1 - Q.y() ),
+                               ( 1 + Q.x() ) * ( 1 - Q.y() ),
+                               ( 1 + Q.x() ) * ( 1 + Q.y() ),
+                               ( 1 - Q.x() ) * ( 1 + Q.y() ) };
+         QPointF mapped = 0.25 * ( weights[0] * triDst[0] + weights[1] * triDst[1] +
+                                   weights[2] * triDst[2] + weights[3] * triDst[3] );
          return mapped;
        }
        return p;

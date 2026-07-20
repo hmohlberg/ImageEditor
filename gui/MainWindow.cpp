@@ -264,7 +264,7 @@ bool MainWindow::focusNextPrevChild( bool next )
 // -> m_imageView->getScene()->addItem(m_layerItem);
 bool MainWindow::loadImage( const QString& filePath, bool askForNewLoad )
 {
-  qDebug() << "MainWindow::loadImage(): filePath =" << filePath << ", askForNewLoad =" << askForNewLoad;
+  qCDebug(logEditor) << "MainWindow::loadImage(): filePath =" << filePath << ", askForNewLoad =" << askForNewLoad;
   {
     ImageLoader loader;
     if ( !loader.load(filePath) ) {
@@ -364,7 +364,7 @@ void MainWindow::saveAsImage()
             if ( !overlayImage.isNull() ) {
              int x = layer->pos().x();
              int y = layer->pos().y();
-             qDebug() << " + layer=" << layer->name() << ", id=" << layer->id( )<< ", pos=" << layer->pos();
+             qCDebug(logEditor) << " + layer=" << layer->name() << ", id=" << layer->id( )<< ", pos=" << layer->pos();
              QPainter painter(&mainImage);
               painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
               painter.drawImage(x,y,overlayImage);
@@ -510,7 +510,7 @@ bool MainWindow::saveProject( const QString& filePath )
 
 bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
 {
-  qDebug() << "MainWindow::loadProject(): filename=" << filePath << ", skipMainImage =" << skipMainImage;
+  qCDebug(logEditor) << "MainWindow::loadProject(): filename=" << filePath << ", skipMainImage =" << skipMainImage;
   {
     QFile f(filePath);
     if ( !f.open(QIODevice::ReadOnly) ) return false;
@@ -1153,7 +1153,7 @@ void MainWindow::showLayerContextMenu( const QPoint& pos )
      menu.addAction("Mask Layer", this, [this, item]() {
       Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
       if ( !layer ) return;
-      qDebug() << "MainWindow::showLayerContextMenu(): Masking layer " << layer->name();
+      qCDebug(logEditor) << "MainWindow::showLayerContextMenu(): Masking layer " << layer->name();
      });
     #endif
     menu.addAction("Save Layer as...",  [this, item]() {
@@ -1164,8 +1164,8 @@ void MainWindow::showLayerContextMenu( const QPoint& pos )
                         nullptr, QFileDialog::DontUseNativeDialog);
         if ( !fileName.isEmpty() ) {
           layer->image().save(fileName, "PNG", 80);
-          qDebug() << "Saved layer " << layer->name() << " image as " << fileName;
-          qDebug() << "  geometry: " << layer->m_item->boundingRect();
+          qCDebug(logEditor) << "Saved layer " << layer->name() << " image as " << fileName;
+          qCDebug(logEditor) << "  geometry: " << layer->m_item->boundingRect();
         }
     });
     menu.addAction("Delete Layer", this, &MainWindow::deleteLayer);
@@ -2029,7 +2029,7 @@ void MainWindow::createToolbars()
     m_polygonToolbar->addWidget(polygonColorLabel);
     m_polygonIndexBox = buildDefaultColorComboBox("Polygon");
     connect(m_polygonIndexBox, &QComboBox::currentTextChanged, this, [this](const QString& text){
-      qDebug() << "MainWindow::createToolbars(): New polygon index name =" << text;
+      qCDebug(logEditor) << "MainWindow::createToolbars(): New polygon index name =" << text;
       QString numOnly;
       for( auto c : text ) {
        if( c.isDigit() ) numOnly.append(c);

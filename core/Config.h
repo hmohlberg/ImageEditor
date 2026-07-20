@@ -131,6 +131,8 @@
       
       // ImageLayer rotation angle
       m_rotationSingleStep = settings.value("ImageLayer/rotationSingleStep", 1.0).toDouble();
+      // ImageLayer handle radius
+      m_handleRadius = settings.value("ImageLayer/handleRadius", 4.0).toDouble();
       // ImageLayer transformationMode
       QString transformMode = settings.value("ImageLayer/transformationMode", "fast").toString().trimmed().toLower();
       if ( transformMode == "fast" || transformMode == "fasttransformation" ) {
@@ -163,6 +165,7 @@
     QColor cursorBorderColor() const { return m_cursorBorderColor; }
     int lassoWidth() const { return m_lassoWidth; }
     int controlPointRadius() const { return m_controlPointRadius; }
+    double handleRadius() const { return m_handleRadius; }
     bool crosshair() const { return m_crosshair; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
@@ -181,6 +184,7 @@
           m_handleColor(Qt::cyan),
           m_handleSize(10),
           m_lassoWidth(3), 
+          m_handleRadius(4.0),
           m_cursorSize(0),
           m_controlPointRadius(4),
           m_gridColor(Qt::green),
@@ -234,6 +238,7 @@
     int m_handleSize;
     int m_cursorSize;
     
+    double m_handleRadius;
     double m_rotationSingleStep;
     
  };

@@ -1,5 +1,5 @@
 /* 
-* Copyright 2026 Forschungszentrum Jülich
+* Copyright 2026 Forschungszentrum J?lich
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -76,23 +76,24 @@ namespace TriangleWarp
     
   }
 
-  WarpResult warp( const QImage& originalImage, const CageMesh& cageMesh )
+  WarpResult warp( QImage & currentImage, const QImage& originalImage, const CageMesh& cageMesh )
   {
-   qDebug() << "TriangleWarp:warp(): useQuads =" << EditorStyle::instance().useCageQuads() << ", pointId =" << cageMesh.activeCagePointId();
+   qCDebug(logEditor) << "TriangleWarp:warp(): useQuads =" << EditorStyle::instance().useCageQuads();
    {
     if ( cageMesh.pointCount() < 4 ) {
       return { QImage(), QPointF(0,0) }; 
     }
+
     // compute bounding box
     QRectF dstBounds;
     for ( int i=0 ; i<cageMesh.pointCount() ; ++i ) {
       dstBounds = dstBounds.united(QRectF(cageMesh.point(i), QSizeF(1,1)));
     }
     // create warped image: QImage warped = m_originalImage; // Ausgangsbild
-    // qDebug() << " oldsize=" << originalImage.width() << "x" << originalImage.height();
-    // qDebug() << " newsize=" << int(dstBounds.width()) << "x" << int(dstBounds.height());
+
     QImage warped(int(dstBounds.width()), int(dstBounds.height()), QImage::Format_ARGB32);
-    warped.fill(Qt::transparent);
+    warped.fill(Qt::transparent);  // this is QColor(0,0,0,0) = transparent black color
+
     // compute new target image (transparent background)
     int rows = cageMesh.rows();
     int cols = cageMesh.cols();
@@ -101,15 +102,32 @@ namespace TriangleWarp
 
     if ( EditorStyle::instance().useCageQuads() == true ) {
 
-     // --- QUAD WARP (default) ---
-     if ( EditorStyle::instance().useClaudeQuads() == true ) { 
-     
+     // --- QUAD WARP (default) 
+     if ( EditorStyle::instance().useClaudeQuads() == true ) {
+
+      int count = 0;
+      int numcalls = 0;
+
+      // -- always use GeometryUtils::barycentric, which uses iterations and is more "exact".
       for ( int y = 0; y + 1 < rows; ++y ) {
        for ( int x = 0; x + 1 < cols; ++x ) {
         int i00 = y * cols + x;
         int i10 = i00 + 1;
         int i01 = i00 + cols;
         int i11 = i01 + 1;
+
+        int updateQuad = true;
+        int pointID = cageMesh.activeCagePointId();
+        if( pointID != -1 ) {
+          updateQuad = false;
+          if( pointID == i00 || pointID == i10 || pointID == i01 || pointID == i11 ) {
+            updateQuad = true;
+            std::cout << "Updating quad " << i00 << ", " << i10 << ", " << i01 << ", " << i11 << std::endl;
+          }
+        } else {
+          std::cout << "Updating quad " << i00 << ", " << i10 << ", " << i01 << ", " << i11 << std::endl;
+        }
+
         QVector<QPointF> srcQuad{
             QPointF(x * originalImage.width() / (cols - 1), y * originalImage.height() / (rows - 1)),
             QPointF((x + 1) * originalImage.width() / (cols - 1), y * originalImage.height() / (rows - 1)),
@@ -123,19 +141,42 @@ namespace TriangleWarp
             cageMesh.point(i01) - dstBounds.topLeft()
         };
         QRectF br = QPolygonF(dstQuad).boundingRect();
+        QPointF start(-1,-1);
+        double firstY = -1.0;
         for ( int py = int(br.top()); py <= int(br.bottom()); ++py ) {
+            start.setX(-1);  // reset at start of row
+            start.setY(firstY);  // reset at start of row
+            int saveY = 1;
             for ( int px = int(br.left()); px <= int(br.right()); ++px ) {
                 QPointF p(px, py);
+
                 if ( !GeometryUtils::pointInQuad(p, dstQuad) ) continue;
-                QPointF srcP = GeometryUtils::barycentric(p, dstQuad, srcQuad);
-                if ( !originalImage.rect().contains(srcP.toPoint()) ) continue;
-                QRgb c = originalImage.pixel(srcP.toPoint());
-                warped.setPixel(px, py, c);
+
+                if( updateQuad ) {
+
+                  numcalls++;
+                  QPointF srcP = GeometryUtils::barycentric(p, dstQuad, srcQuad, &count, start );
+                  if( saveY ) {
+                    firstY = start.y();  // first Y of the row remembered for next row
+                    saveY = 0;
+                  }
+                  if ( originalImage.rect().contains(srcP.toPoint()) ) {
+                    QRgb c = originalImage.pixel(srcP.toPoint());
+                    warped.setPixel(px, py, c);
+                  }
+                } else {
+
+                  QPointF pp(px, py);
+                  pp += cageMesh.getOffset(1);
+                  
+                  QRgb c = currentImage.pixel(pp.toPoint() );
+                  warped.setPixel(px, py, c );
+                }
             }
         }
        }
       }
-      
+
      } else {
         
       for ( int y = 0; y + 1 < rows; ++y ) {
@@ -178,6 +219,7 @@ namespace TriangleWarp
     } else {
     
      // --- TRIANGLE WARP ---
+     int count = 0;
      for ( int y = 0; y + 1 < rows; ++y ) {
         for ( int x = 0; x + 1 < cols; ++x ) {
             int i00 = y*cols + x;
@@ -206,8 +248,9 @@ namespace TriangleWarp
             for ( int py = int(br1.top()); py <= int(br1.bottom()); ++py ) {
                 for ( int px = int(br1.left()); px <= int(br1.right()); ++px ) {
                     QPointF p(px, py);
+                    QPointF start(0,0);
                     if ( !GeometryUtils::pointInTriangle(p, tri1Dst) ) continue;
-                    QPointF srcP = GeometryUtils::barycentric(p, tri1Dst, tri1);
+                    QPointF srcP = GeometryUtils::barycentric(p, tri1Dst, tri1, &count, start );
                     if ( !originalImage.rect().contains(srcP.toPoint()) ) continue;
                     QColor c = originalImage.pixelColor(int(srcP.x()), int(srcP.y()));
                     warped.setPixelColor(px, py, c);
@@ -218,8 +261,9 @@ namespace TriangleWarp
             for ( int py = int(br2.top()); py <= int(br2.bottom()); ++py ) {
                 for ( int px = int(br2.left()); px <= int(br2.right()); ++px ) {
                     QPointF p(px, py);
+                    QPointF start(0,0);
                     if ( !GeometryUtils::pointInTriangle(p, tri2Dst) ) continue;
-                    QPointF srcP = GeometryUtils::barycentric(p, tri2Dst, tri2);
+                    QPointF srcP = GeometryUtils::barycentric(p, tri2Dst, tri2, &count, start );
                     if ( !originalImage.rect().contains(srcP.toPoint()) ) continue;
                     QColor c = originalImage.pixelColor(int(srcP.x()), int(srcP.y()));
                     warped.setPixelColor(px, py, c);
@@ -245,7 +289,7 @@ namespace TriangleWarp
         if (QTransform::quadToQuad(sourcePoly, targetPoly, trans)) {
             painter->save();
             painter->setTransform(trans, true);
-            // Clipping auf das Zieldreieck, um Überlappungen zu vermeiden
+            // Clipping auf das Zieldreieck, um ?berlappungen zu vermeiden
             QPainterPath path;
             path.addPolygon(sourcePoly);
             painter->setClipPath(path);

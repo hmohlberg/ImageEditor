@@ -575,11 +575,14 @@ QImage LayerItem::applyCageWarp( const QString &caller )
       return m_image.copy();
     } else {
       // NOT YET WORKING: QuadWarp::WarpResult warped = QuadWarp::warp(m_cageMesh.image(),m_cageMesh);
-      TriangleWarp::WarpResult warped = TriangleWarp::warp(m_cageMesh.image(),m_cageMesh);
+      TriangleWarp::WarpResult warped = TriangleWarp::warp(m_image, m_cageMesh.image(),m_cageMesh);
+      m_cageMesh.setActiveCagePointId(-1);
+      m_cageMesh.setOffset(0,0);   // CLAUDE reset after each drawing
       if ( !warped.image.isNull() ) {
        setPixmap(QPixmap::fromImage(warped.image));
        m_image = warped.image;
-       QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
+       QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos());
+       // QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
        m_cageApplied = true;
        return m_image.copy();
       } else {

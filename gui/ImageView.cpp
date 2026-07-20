@@ -197,7 +197,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
               mainWindow->updateLayerList();
             }
           } else if ( justFinishedCommand->text().startsWith("Editable Polygon") ) {
-            qDebug() << " *** handle editable polygon operation ***";
+            qCDebug(logEditor) << " *** handle editable polygon operation ***";
             mainWindow->setMainOperationMode(MainWindow::MainOperationMode::Polygon);
             EditablePolygonCommand *polyCommand = const_cast<EditablePolygonCommand*>(
                                             dynamic_cast<const EditablePolygonCommand*>(justFinishedCommand));
@@ -1961,7 +1961,7 @@ void ImageView::setCageWarpFixBoundary( bool isChecked )
 
 void ImageView::setPolygonIndex( quint8 index, bool doUpdate ) 
 { 
-  qDebug() << "ImageView::setPolygonIndex(): index =" << index << ", update =" << doUpdate;
+  qCDebug(logEditor) << "ImageView::setPolygonIndex(): index =" << index << ", update =" << doUpdate;
   {
     m_polygonIndex = index; 
     if ( !doUpdate ) return;
@@ -2016,7 +2016,7 @@ void ImageView::setPolygonIndex( quint8 index, bool doUpdate )
 
 EditablePolygonCommand* ImageView::getPolygonUndoCommand( const QString& name, bool isSelected )
 {
-  qDebug() << "ImageView::getPolygonUndoCommand(): name =" << name << ", isSelected =" << isSelected;
+  qCDebug(logEditor) << "ImageView::getPolygonUndoCommand(): name =" << name << ", isSelected =" << isSelected;
   {
    if ( name == "" ) {
     if ( isSelected == true ) {
@@ -2037,7 +2037,7 @@ EditablePolygonCommand* ImageView::getPolygonUndoCommand( const QString& name, b
    }
    for ( int i = m_undoStack->count() - 1; i >= 0; --i ) {
     const QUndoCommand* cmd = m_undoStack->command(i);
-    qDebug() << cmd->text();
+    qCDebug(logEditor) << cmd->text();
     if ( cmd->text() == name ) {
        return const_cast<EditablePolygonCommand*>(
            dynamic_cast<const EditablePolygonCommand*>(cmd)
@@ -2050,7 +2050,7 @@ EditablePolygonCommand* ImageView::getPolygonUndoCommand( const QString& name, b
 
 void ImageView::undoPolygonOperation()
 {
-  qDebug() << "ImageView::undoPolygonOperation(): polygonIndex =" << m_polygonIndex;
+  qCDebug(logEditor) << "ImageView::undoPolygonOperation(): polygonIndex =" << m_polygonIndex;
   {
     EditablePolygonCommand* polyCmd = ImageView::getPolygonUndoCommand(QString("Editable Polygon %1").arg(m_polygonIndex));
     if ( polyCmd == nullptr )
@@ -2064,7 +2064,7 @@ void ImageView::undoPolygonOperation()
 
 void ImageView::redoPolygonOperation()
 {
-  qDebug() << "ImageView::redoPolygonOperation(): polygonIndex =" << m_polygonIndex;
+  qCDebug(logEditor) << "ImageView::redoPolygonOperation(): polygonIndex =" << m_polygonIndex;
   {
     EditablePolygonCommand* polyCmd = ImageView::getPolygonUndoCommand(QString("Editable Polygon %1").arg(m_polygonIndex));
     if ( polyCmd == nullptr )
@@ -2078,7 +2078,7 @@ void ImageView::redoPolygonOperation()
 
 void ImageView::createPolygonLayer()
 {
-  qDebug() << "ImageView::createPolygonLayer(): polygonIndex =" << m_polygonIndex;
+  qCDebug(logEditor) << "ImageView::createPolygonLayer(): polygonIndex =" << m_polygonIndex;
   {
     // check whether a layer has been already created
     for ( int i=0 ; i<m_editablePolygons.size() ; i++ ) {
@@ -2108,7 +2108,7 @@ void ImageView::createPolygonLayer()
       return;
     }
     // process polygon
-    qDebug() << "ImageView::createPolygonLayer(): polygon name =" << polyCmd->name();
+    qCDebug(logEditor) << "ImageView::createPolygonLayer(): polygon name =" << polyCmd->name();
     EditablePolygon *editablePolygon = polyCmd->model();
     if ( editablePolygon != nullptr ) {
      int index = m_layers.size()+1;
@@ -2126,7 +2126,7 @@ void ImageView::createPolygonLayer()
 // finalize polygon drawing
 void ImageView::finishPolygonDrawing( LayerItem* layer )
 {
-  qDebug() << "ImageView::finishPolygonDrawing(): polygonIndex =" << m_polygonIndex << ", nEditablePolygons =" << m_editablePolygons.size();
+  qCDebug(logEditor) << "ImageView::finishPolygonDrawing(): polygonIndex =" << m_polygonIndex << ", nEditablePolygons =" << m_editablePolygons.size();
   {
     if ( !m_activePolygon || m_activePolygon->pointCount() < 3 )
         return;
@@ -2172,7 +2172,7 @@ void ImageView::setOnlySelectedPolygon( const QString& name )
 
 void ImageView::setPolygonEnabled( bool enabled )
 { 
-  qDebug() << "ImageView::setPolygonEnabled(): npolygons =" << m_editablePolygons.size() << ", enabled =" << enabled;
+  qCDebug(logEditor) << "ImageView::setPolygonEnabled(): npolygons =" << m_editablePolygons.size() << ", enabled =" << enabled;
   {
    LayerItem *layer = baseLayer();
    if ( layer != nullptr ) {
@@ -2223,7 +2223,7 @@ int ImageView::getNextFreePolygonIndex( void )
     indices.insert(polygon->index());
   }
   QSet<int> indexSet(indices.begin(), indices.end());
-  for ( int i=1 ; i<=20 ; ++i ) {
+  for ( int i=1 ; i<=50 ; ++i ) {
     if ( !indexSet.contains(i) ) {
       return i;
     }

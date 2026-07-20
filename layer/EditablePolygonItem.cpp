@@ -39,6 +39,7 @@ EditablePolygonItem::EditablePolygonItem( EditablePolygon* poly, QGraphicsItem* 
   qCDebug(logEditor) << "EditablePolygonItem::EditablePolygonItem(): Processing...";
   {
     Q_ASSERT(m_poly);
+    m_handleRadius = EditorStyle::instance().handleRadius();
     m_layer = dynamic_cast<LayerItem*>(parent);
     Q_ASSERT(m_layer);
     setParentItem(nullptr);
@@ -76,20 +77,21 @@ void EditablePolygonItem::paint( QPainter* p, const QStyleOptionGraphicsItem*, Q
     if ( m_poly->isSelected() ) {
       // Fill
       p->setBrush(m_fillColor);
-      p->setPen(QPen(m_lineColor, 1.5));
+      // p->setPen(QPen(m_lineColor, 1.5));
+      p->setPen(QPen(m_lineColor, 0.375*m_handleRadius));
       p->drawPolygon(poly);
       // Outline
       p->setBrush(Qt::NoBrush);
-      p->setPen(QPen(m_lineColor, 2,Qt::DashLine));
+      p->setPen(QPen(m_lineColor, 0.5*m_handleRadius, Qt::DashLine));  // was 2
       p->drawPolyline(poly);
     } else {
       // Fill
       p->setBrush(m_fillColor);
-      p->setPen(QPen(m_lineColor, 1.5));
+      p->setPen(QPen(m_lineColor, 0.375*m_handleRadius));  // was 1.5
       p->drawPolygon(poly);
       // Outline
       p->setBrush(Qt::NoBrush);
-      p->setPen(QPen(m_lineColor, 2,Qt::SolidLine));
+      p->setPen(QPen(m_lineColor, 0.5*m_handleRadius, Qt::SolidLine));   // was 2
       p->drawPolyline(poly);
     }
   }
