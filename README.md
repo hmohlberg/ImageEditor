@@ -69,7 +69,7 @@ brew install qt cmake
 
 *Note: If CMake fails to find Qt, run: export CMAKE_PREFIX_PATH=$(brew --prefix qt)*
 
-### Windows with WSL
+### Windows with WSL and Debian
 
 * Create a directory where ImageEditor should be installed, open the Powershell there (Open the folder --> Rightclick --> Open in terminal) and enter `wsl --install Debian`
 * Wait for Download and Installation to finish, at the end you will be asked to create a username and password. Can be the same as Windows or different.
@@ -80,6 +80,20 @@ brew install qt cmake
 * Leave the Linux environment by entering `exit`
 * To run ImageEditor open the file in ImageEditor/bin/windows/wsl.bat
  
+### Windows with WSL and Ubuntu 24.04
+
+`wsl --install Ubuntu-24.04`
+`wsl --set-default Ubuntu-24.04`
+
+`sudo apt update
+`sudo apt install qt6-svg-dev qt6-base-dev qt6-declarative-dev`
+`sudo apt install libgles2 libgles2-mesa-dev libegl1-mesa-dev`
+
+These are necessary and can be saved in .bashrc.
+
+`export MESA_LOADER_DRIVER_OVERRIDE=d3d12`
+`export GALLIUM_DRIVER=d3d12`
+
 ---
 
 ## Build Process
