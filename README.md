@@ -85,7 +85,7 @@ brew install qt cmake
 `wsl --install Ubuntu-24.04`
 `wsl --set-default Ubuntu-24.04`
 
-`sudo apt update
+`sudo apt update`
 `sudo apt install qt6-svg-dev qt6-base-dev qt6-declarative-dev`
 `sudo apt install libgles2 libgles2-mesa-dev libegl1-mesa-dev`
 
