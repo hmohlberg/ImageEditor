@@ -71,7 +71,7 @@ QString ImageProcessor::saveIntermediate( AbstractCommand *cmd, const QString &n
 
 void ImageProcessor::buildMainImageLayer() {
   if ( !m_image.isNull() ) {
-     LayerItem* newLayer = new LayerItem(m_image);
+     LayerItem* newLayer = new LayerItem("MainImage",m_image);
      newLayer->setName("MainImage");
      newLayer->setIndex(0);
      newLayer->setParent(nullptr);
@@ -182,7 +182,7 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
              }
             }
           }
-          newLayer = new LayerItem(subImage);
+          newLayer = new LayerItem("SubImage",subImage);
          } else if ( forcedAlphaMasking ) {
           if ( mask.format() != QImage::Format_ARGB32 && mask.format() != QImage::Format_ARGB32_Premultiplied ) {
             mask = mask.convertToFormat(QImage::Format_ARGB32);
@@ -200,9 +200,9 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
               }
             }
           }
-          newLayer = new LayerItem(subImage); 
+          newLayer = new LayerItem("SubImage",subImage); 
          } else {
-          newLayer = new LayerItem(mask);
+          newLayer = new LayerItem("MaskImage",mask);
          }
          newLayer->setName(name);
          newLayer->setIndex(id);

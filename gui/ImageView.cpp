@@ -1826,7 +1826,7 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     layer->m_name = QString("%1 %2").arg(name).arg(nidx);
     layer->m_creator = name;
     layer->m_bounds = bounds;
-    LayerItem* newLayer = new LayerItem(cut);
+    LayerItem* newLayer = new LayerItem(layer->m_name,cut);
     newLayer->setParent(m_parent);
     newLayer->setIndex(nidx);
     newLayer->setLayer(layer);

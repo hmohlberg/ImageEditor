@@ -46,10 +46,11 @@
 #include <iostream>
 
 // ------------------------ LayerItem ------------------------
-LayerItem::LayerItem( const QPixmap& pixmap, QGraphicsItem* parent ) : QGraphicsPixmapItem(pixmap,parent)
+LayerItem::LayerItem( const QString& name, const QPixmap& pixmap, QGraphicsItem* parent ) : QGraphicsPixmapItem(pixmap,parent)
 { 
-  qCDebug(logEditor) << "LayerItem::LayerItem(): Pixmap processing...";
+  qDebug() << "LayerItem::LayerItem(): Pixmap processing of layer " << name << "...";
   {
+    m_name = name;
     m_image = pixmap.toImage();
     m_originalImage = pixmap.toImage();
     m_originalImageType = ImageType::Original; 
@@ -57,12 +58,13 @@ LayerItem::LayerItem( const QPixmap& pixmap, QGraphicsItem* parent ) : QGraphics
   }
 }
 
-LayerItem::LayerItem( const QImage& image, QGraphicsItem* parent ) 
+LayerItem::LayerItem( const QString& name, const QImage& image, QGraphicsItem* parent ) 
       : QGraphicsPixmapItem(parent)
+      , m_name(name)
       , m_originalImage(image)
       , m_image(image)
 {
-  qCDebug(logEditor) << "LayerItem::LayerItem(): Image processing...";
+  qDebug() << "LayerItem::LayerItem(): Image (size =" << image.size() << ") processing of layer " << name << "...";
   {
    m_originalImageType = ImageType::Original; 
    m_nogui = (qobject_cast<QApplication*>(qApp) == nullptr);
@@ -117,7 +119,9 @@ QRectF LayerItem::boundingRect() const
    QRectF pixmapRect(offset(),s);
    if ( m_cageMesh.isActive() ) {
       QRectF cageRect = QPolygonF(m_cageMesh.points()).boundingRect();
-      return pixmapRect.united(cageRect);
+      QRectF united = pixmapRect.united(cageRect);
+      qDebug() << pixmapRect << ": " << cageRect << " - united: " << united;
+      return united;
    }
    return pixmapRect;
 }
@@ -1047,6 +1051,10 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
         parent->setSelectedLayer(7,QString("Layer %1").arg(m_index));
         // to ensure that message is shown even layer is already selected
         parent->showMessage(QString("Select layer %1").arg(m_index));
+        // set opacity if Alt key pressed
+        if ( event->modifiers() & Qt::AltModifier ) {
+          setOpacity(EditorStyle::instance().layerOverlayOpacity());
+        }
       }
     } else if ( event->modifiers() & Qt::ControlModifier  ) {
      qDebug() << "LayerItem::mousePressEvent(): Pressed control modifier...";
@@ -1080,14 +1088,16 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
   qCDebug(logEditor) << "LayerItem::mouseReleaseEvent(): index =" << m_index << ", name =" << name();
   {
     if ( !isSelected() ) return;
+    setOpacity(1.0);
     if ( !m_undoStack ) {
       QGraphicsPixmapItem::mouseReleaseEvent(event);
       return;
     }
     if ( m_operationMode == OperationMode::Translate ) {
         if ( pos() != m_startPos ) {
+            QPointF newPos = EditorStyle::instance().allowIntegerMoveOnly() ? QPointF(qRound(pos().x()),qRound(pos().y())) : pos();
             m_undoStack->push(
-                new MoveLayerCommand(this, m_startPos, pos(), m_index)
+                new MoveLayerCommand(this, m_startPos, newPos, m_index)
             );
         }
     } else if ( m_operationMode == OperationMode::Rotate ) {

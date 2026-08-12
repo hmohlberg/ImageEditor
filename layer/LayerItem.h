@@ -52,8 +52,8 @@ class LayerItem : public QGraphicsPixmapItem
                           
     static QString operationModeName( int mode );
 
-    LayerItem( const QPixmap& pixmap, QGraphicsItem* parent = nullptr );
-    LayerItem( const QImage& image, QGraphicsItem* parent = nullptr );
+    LayerItem( const QString& name, const QPixmap& pixmap, QGraphicsItem* parent = nullptr );
+    LayerItem( const QString& name, const QImage& image, QGraphicsItem* parent = nullptr );
     
     QRectF boundingRect() const override;
     
@@ -194,26 +194,26 @@ class LayerItem : public QGraphicsPixmapItem
     CageWarpCommand* m_cageWarpCommand = nullptr;
     CageWarpRenderer* m_cageWarpRenderer = nullptr;
 
-	Layer* m_layer = nullptr;
+    Layer* m_layer = nullptr;
 	
-	bool m_nogui = false; 
-	bool m_lockToBoundingBox = true;
-	bool m_showBoundingBox = true;
-	bool m_dragging = false;
-	bool m_cageEnabled = false;
-	bool m_cageEditing = false;
-	bool m_cageApplied = false;
-	bool m_mouseOperationActive = false;
-	bool m_isDeleted = false;
+    bool m_nogui = false; 
+    bool m_lockToBoundingBox = true;
+    bool m_showBoundingBox = true;
+    bool m_dragging = false;
+    bool m_cageEnabled = false;
+    bool m_cageEditing = false;
+    bool m_cageApplied = false;
+    bool m_mouseOperationActive = false;
+    bool m_isDeleted = false;
 	
-	QPen m_lassoPen;
-	QPen m_selectedPen;
+    QPen m_lassoPen;
+    QPen m_selectedPen;
 	
-	QPointF m_pressScenePos;
+    QPointF m_pressScenePos;
     QTransform m_startTransform;
     QTransform m_totalTransform;
 	
-	QWidget* m_parent = nullptr;
-	QUndoStack* m_undoStack = nullptr;
+    QWidget* m_parent = nullptr;
+    QUndoStack* m_undoStack = nullptr;
 	
 };

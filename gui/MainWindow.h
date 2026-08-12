@@ -30,6 +30,7 @@
 #include <QSpinBox>
 #include <QToolBar>
 #include <QLabel>
+#include <QIcon>
 
 class ImageView;
 class LayerItem;
@@ -116,6 +117,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     void createActions();
     void createToolbars();
     void createStatusbar();
+    void createIcons();
     
     void hideAllLayerToolbars();
     

@@ -129,6 +129,10 @@
         m_lassoWidth = rawWidth;
       }
       
+      // ImageLayer allowIntegerMoveOnly
+      m_allowIntegerMoveOnly = settings.value("ImageLayer/integerMoveOnly", true).toBool();
+      // ImageLayer overlay opacity
+      m_layerOverlayOpacity = settings.value("ImageLayer/overlayOpacity", 0.0).toDouble();
       // ImageLayer rotation angle
       m_rotationSingleStep = settings.value("ImageLayer/rotationSingleStep", 1.0).toDouble();
       // ImageLayer handle radius
@@ -173,7 +177,9 @@
     bool useClaudeQuads() const { return m_useClaudeQuads; }
     bool hasPerspective() const { return m_hasPerspective; }
     bool binaryMasking() const { return m_binaryMasking; }
+    bool allowIntegerMoveOnly() const { return m_allowIntegerMoveOnly; }
     double rotationSingleStep() const { return m_rotationSingleStep; }
+    double layerOverlayOpacity() const { return m_layerOverlayOpacity; }
     Qt::TransformationMode transformationMode() const { return m_transformationMode; }
     InterpolationMode interpolationMode() const { return m_interpolationMode; }
 
@@ -192,9 +198,11 @@
           m_cursorFillColor(Qt::black),
           m_cursorBorderColor(Qt::white),
           m_rotationSingleStep(0.5),
+          m_layerOverlayOpacity(0.8),
           m_loggingIsEnabled(false), 
           m_useCageQuads(true), 
           m_usegpu(false),
+          m_allowIntegerMoveOnly(true),
           m_useClaudeQuads(true), 
           m_hasPerspective(true),
           m_binaryMasking(true),
@@ -231,6 +239,7 @@
     bool m_useClaudeQuads;
     bool m_hasPerspective;
     bool m_binaryMasking;
+    bool m_allowIntegerMoveOnly;
     bool m_usegpu;
     
     int m_lassoWidth;
@@ -240,6 +249,7 @@
     
     double m_handleRadius;
     double m_rotationSingleStep;
+    double m_layerOverlayOpacity;
     
  };
 

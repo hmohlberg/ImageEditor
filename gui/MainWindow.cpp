@@ -46,6 +46,7 @@
 #include <QRegularExpression>
 #include <QStyledItemDelegate>
 #include <QStandardItemModel>
+#include <QSvgRenderer>
 #include <QJsonDocument>
 #include <QApplication>
 #include <QJsonArray>
@@ -117,6 +118,9 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
       QComboBox QAbstractItemView { background-color: #2a2a2a; color: #e0e0e0; border: 
                1px solid #1e1e1e; outline: 0; selection-background-color: #505050; selection-color: #ffffff; }
       QComboBox QAbstractItemView::item { padding: 3px 6px; }
+      QListWidget::indicator { width: 12px; height: 12px; border: 1px solid #888888; border-radius: 3px; background: #222222; }
+      QListWidget::indicator:unchecked:hover { border-color: #cccccc; }
+      QListWidget::indicator:checked { border-color: #888888; background-color: #220000; image: url(":/icons/icons/check.svg"); }
     )");
     if ( imagePath == "" ) {
       setWindowTitle("ImageEditor - "+historyPath); 
@@ -294,7 +298,7 @@ bool MainWindow::loadImage( const QString& filePath, bool askForNewLoad )
     auto* scene = m_imageView->getScene();
     scene->clear();
     // main image = regular layer
-    m_layerItem = new LayerItem(loader.getPixmap());
+    m_layerItem = new LayerItem("MainImage",loader.getPixmap());
     m_layerItem->setFileInfo(filePath);
     m_layerItem->setType(LayerItem::MainImage);
     m_layerItem->setParent(this);
@@ -621,7 +625,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
              }
             }
            }
-           newLayer = new LayerItem(subImage);
+           newLayer = new LayerItem("SubImage",subImage);
          } else if ( EditorStyle::instance().binaryMasking() ) {
             if ( mask.format() != QImage::Format_ARGB32 && mask.format() != QImage::Format_ARGB32_Premultiplied ) {
               mask = mask.convertToFormat(QImage::Format_ARGB32);
@@ -640,10 +644,10 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
               }
              }
             }
-            newLayer = new LayerItem(subImage);
+            newLayer = new LayerItem("SubImage",subImage);
             isBinaryMask = false;
          } else {
-            newLayer = new LayerItem(mask);
+            newLayer = new LayerItem("MaskImage",mask);
             isBinaryMask = false;
          }
          newLayer->setIndex(id);
@@ -1030,9 +1034,10 @@ void MainWindow::rebuildLayerList()
         QListWidgetItem* item = new QListWidgetItem(QString("Layer %1").arg(layer->id())); // layer->name());
         item->setCheckState(layer->m_visible ? Qt::Checked : Qt::Unchecked);
         item->setData(Qt::UserRole, QVariant::fromValue<void*>(layer));
-        item->setIcon(QIcon(layer->m_visible
-            ? ":/icons/eye_open.png"
-            : ":/icons/eye_closed.png"));
+        //item->setIcon(layer->m_visible?m_iconOpen:m_iconClosed);
+        //item->setIcon(QIcon(layer->m_visible
+        //    ? ":/icons/eye_open.png"
+        //    : ":/icons/eye_closed.png"));
         m_layerList->addItem(item);
     }
     m_updatingLayerList = false;
