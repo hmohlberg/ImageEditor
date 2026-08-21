@@ -41,7 +41,7 @@ CageWarpCommand::CageWarpCommand( LayerItem* layer,
     m_layerId = m_layer->id();
     captureInitialState();
     layer->setCageWarpCommand(this);
-    setText(QString("Cage Warp %1").arg(m_layerId));
+    setText(QString("Cage Warp Layer %1").arg(m_layerId));
     QByteArray warpLayerSvg = 
       "<svg viewBox='0 0 64 64'>"
       "<path d='M12 12 C25 18 39 18 52 12 M12 32 C25 38 39 38 52 32 M12 52 C25 58 39 58 52 52 "

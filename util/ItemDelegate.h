@@ -110,6 +110,16 @@ class DarkHistoryDelegate : public QStyledItemDelegate {
   public:
 
     explicit DarkHistoryDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
+    
+    void setHighlightedRows( const QSet<int>& rows ) {
+        m_highlightedRows = rows;
+    }
+    void clearHighlightedRows() {
+        m_highlightedRows.clear();
+    }
+    [[nodiscard]] QSet<int> highlightedRows() const {
+        return m_highlightedRows;
+    }
 
     void paint( QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index ) const override {
     
@@ -192,11 +202,24 @@ class DarkHistoryDelegate : public QStyledItemDelegate {
       painter->setPen(QColor("#2d2d2d"));
       painter->drawLine(opt.rect.bottomLeft(), opt.rect.bottomRight());
       painter->restore();
+      
+      // 7. highlighted
+      if ( m_highlightedRows.contains(index.row()))  {
+        painter->save();
+        painter->setPen(QPen(QColor(220, 160, 0), 3));
+        painter->drawLine(opt.rect.topLeft(), opt.rect.bottomLeft());
+        painter->restore();
+      }
+      
     }
 
     // defined the height of every entry in the list
     QSize sizeHint( const QStyleOptionViewItem &option, const QModelIndex &index ) const override {
         return QSize(QStyledItemDelegate::sizeHint(option, index).width(), 30);
     }
+    
+  private:
+   
+    QSet<int> m_highlightedRows;  
     
 };

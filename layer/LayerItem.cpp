@@ -39,6 +39,7 @@
 #include <QFile>
 #include <QCryptographicHash>
 #include <QByteArray>
+#include <QGraphicsColorizeEffect>
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsScene>
 #include <QPainter>
@@ -48,7 +49,7 @@
 // ------------------------ LayerItem ------------------------
 LayerItem::LayerItem( const QString& name, const QPixmap& pixmap, QGraphicsItem* parent ) : QGraphicsPixmapItem(pixmap,parent)
 { 
-  qDebug() << "LayerItem::LayerItem(): Pixmap processing of layer " << name << "...";
+  qCDebug(logEditor) << "LayerItem::LayerItem(): Pixmap processing of layer " << name << "...";
   {
     m_name = name;
     m_image = pixmap.toImage();
@@ -64,7 +65,7 @@ LayerItem::LayerItem( const QString& name, const QImage& image, QGraphicsItem* p
       , m_originalImage(image)
       , m_image(image)
 {
-  qDebug() << "LayerItem::LayerItem(): Image (size =" << image.size() << ") processing of layer " << name << "...";
+  qCDebug(logEditor) << "LayerItem::LayerItem(): Image (size =" << image.size() << ") processing of layer " << name << "...";
   {
    m_originalImageType = ImageType::Original; 
    m_nogui = (qobject_cast<QApplication*>(qApp) == nullptr);
@@ -120,7 +121,7 @@ QRectF LayerItem::boundingRect() const
    if ( m_cageMesh.isActive() ) {
       QRectF cageRect = QPolygonF(m_cageMesh.points()).boundingRect();
       QRectF united = pixmapRect.united(cageRect);
-      qDebug() << pixmapRect << ": " << cageRect << " - united: " << united;
+      // qDebug() << pixmapRect << ": " << cageRect << " - united: " << united;
       return united;
    }
    return pixmapRect;
@@ -483,9 +484,6 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
 // ------------------------ Paint ------------------------
 void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget )
 {
-#if 0
-  qCDebug(logEditor) << "LayerItem::paint(): Processing " << (m_layer?m_layer->name():"unknown") << ", selected =" << isSelected();
-#endif
   {
     QGraphicsPixmapItem::paint(painter,option,widget);
     if ( m_operationMode == OperationMode::Perspective ) {
@@ -1052,8 +1050,15 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
         // to ensure that message is shown even layer is already selected
         parent->showMessage(QString("Select layer %1").arg(m_index));
         // set opacity if Alt key pressed
-        if ( event->modifiers() & Qt::AltModifier ) {
+        if ( ( event->modifiers() & Qt::AltModifier ) || ( event->modifiers() & Qt::ControlModifier ) ) {
           setOpacity(EditorStyle::instance().layerOverlayOpacity());
+          if ( event->modifiers() & Qt::ControlModifier ) {
+            // color effect
+            QGraphicsColorizeEffect* colorEffect = new QGraphicsColorizeEffect();
+            colorEffect->setColor(Qt::red);
+            colorEffect->setStrength(1.0);
+            setGraphicsEffect(colorEffect);
+          }
         }
       }
     } else if ( event->modifiers() & Qt::ControlModifier  ) {
@@ -1089,6 +1094,7 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
   {
     if ( !isSelected() ) return;
     setOpacity(1.0);
+    setGraphicsEffect(nullptr);
     if ( !m_undoStack ) {
       QGraphicsPixmapItem::mouseReleaseEvent(event);
       return;

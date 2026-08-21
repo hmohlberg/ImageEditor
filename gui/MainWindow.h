@@ -34,6 +34,7 @@
 
 class ImageView;
 class LayerItem;
+class DarkHistoryDelegate;
 
 class MainWindow : public QMainWindow, public IMainSystem
 {
@@ -127,6 +128,8 @@ class MainWindow : public QMainWindow, public IMainSystem
     LayerItem* m_layerItem = nullptr;
     
     QUndoView* m_undoView;
+    DarkHistoryDelegate* m_undoViewDelegate;
+    
     QDockWidget* m_layerDock;
     QDockWidget* m_historyDock;
     QListWidget* m_layerList;

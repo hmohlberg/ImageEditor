@@ -134,14 +134,16 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
         return false;
       }
     }
-    // loading sublayers
+    // loading layers
+    qInfo() << "Processing layer stack...";
     int nCreatedLayers = m_layers.size();
     for ( const QJsonValue& v : layerArray ) {
      if ( v.isObject() ) {
       QJsonObject layerObj = v.toObject();
+      QString name = layerObj["name"].toString();
       int id = layerObj["id"].toInt();
+      qInfo() << " " << name << ": id =" << id;
       if ( id != 0 ) {
-        QString name = layerObj["name"].toString();
         if ( layerObj.contains("data") ) {
          LayerItem* newLayer = nullptr;
          QString imgBase64 = layerObj["data"].toString();
@@ -224,8 +226,43 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
       updatedLayers.append(v);
      }
     }
+    // loading undoStack
+    qInfo() << "Processing undo stack...";
+    QJsonArray updateUndoStack;
+    QJsonArray undoStack = root["undoStack"].toArray();
+    for ( const QJsonValue& v : undoStack ) {
+     if ( v.isObject() ) {
+      QJsonObject layerObj = v.toObject();
+      QString name = layerObj["text"].toString();
+      QString type = layerObj["type"].toString();
+      if ( type == "CageWarp" ) {
+       QJsonObject topLeft = layerObj["topLeft_after"].toObject();
+       double x = topLeft["x"].toDouble();
+       double y = topLeft["y"].toDouble();
+       qInfo() << " " << name << ": type =" << type << ", topLeftPos = (" << x << ":" << y << ")";
+       topLeft["x"] = qRound(x);
+       topLeft["y"] = qRound(y);
+       layerObj["topLeft_after"] = topLeft;
+      } else if ( type == "MoveLayer" ) {
+       double fromX = layerObj["fromX"].toDouble();
+       double fromY = layerObj["fromY"].toDouble();
+       double toX = layerObj["toX"].toDouble();
+       double toY = layerObj["toY"].toDouble();
+       qInfo() << " " << name << ": type =" << type << ", from (" << fromX << ":" << fromY << ") to (" << toX << ":" << toY << ")";
+       layerObj["fromX"] = qRound(fromX);
+       layerObj["fromY"] = qRound(fromY);
+       layerObj["toX"] = qRound(toX);
+       layerObj["toY"] = qRound(toY);
+      } else {
+       qInfo() << " " << name << ": type =" << type;
+      }
+      updateUndoStack.append(layerObj);
+     }
+    }
+    // output
     if ( !processHistory ) {
       root["layers"] = updatedLayers;
+      root["undoStack"] = updateUndoStack;
       m_jsonDocument.setObject(root);
       return true;
     }

@@ -118,9 +118,10 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
       QComboBox QAbstractItemView { background-color: #2a2a2a; color: #e0e0e0; border: 
                1px solid #1e1e1e; outline: 0; selection-background-color: #505050; selection-color: #ffffff; }
       QComboBox QAbstractItemView::item { padding: 3px 6px; }
-      QListWidget::indicator { width: 12px; height: 12px; border: 1px solid #888888; border-radius: 3px; background: #222222; }
-      QListWidget::indicator:unchecked:hover { border-color: #cccccc; }
-      QListWidget::indicator:checked { border-color: #888888; background-color: #220000; image: url(":/icons/icons/check.svg"); }
+      QListWidget::indicator { width: 12px; height: 12px; border: 1px solid #c0c0c0; border-radius: 3px; background: #222222; }
+      QListWidget::indicator:unchecked:hover { border-color: #00cc00; }
+      QListWidget::indicator:checked:hover { border-color: #cccc00; background-color: #220000; }
+      QListWidget::indicator:checked { image: url(":/icons/icons/check.svg"); }
     )");
     if ( imagePath == "" ) {
       setWindowTitle("ImageEditor - "+historyPath); 
@@ -847,7 +848,9 @@ void MainWindow::createDockWidgets()
    m_undoView = new QUndoView(m_imageView->undoStack());
    m_undoView->setFocusPolicy(Qt::NoFocus);
    m_undoView->setContextMenuPolicy(Qt::CustomContextMenu);
-   m_undoView->setItemDelegate(new DarkHistoryDelegate(m_undoView));
+   m_undoViewDelegate = new DarkHistoryDelegate(m_undoView);
+   m_undoView->setItemDelegate(m_undoViewDelegate);
+   //** m_undoViewDelegate->setHighlightedRows({1, 2});
    m_undoView->setWindowTitle("History");
    m_undoView->setStyleSheet("QUndoView { background-color: #1e1e1e; border: none; }");
  
@@ -1112,11 +1115,16 @@ void MainWindow::layerItemClicked( QListWidgetItem* item )
   }
 }
 
+// activated if layer item n is selected
 void MainWindow::onLayerItemClicked( QListWidgetItem* item )
 {
   if ( !item ) return;
-  qCDebug(logEditor) << "MainWindow::onLayerItemClicked(): name =" << item->text();
+  bool ok = false;
+  int layerNumber = item->text().section(' ', 1, 1).toInt(&ok);
+  layerNumber = ok ? layerNumber : -1;
+  qDebug() << "MainWindow::onLayerItemClicked(): name =" << item->text() << ", number =" << layerNumber;
   {
+    int selectedLayerId = -1;
     void* ptr = item->data(Qt::UserRole).value<void*>();
     Layer* layer = static_cast<Layer*>(ptr);
     if ( layer ) {
@@ -1135,6 +1143,7 @@ void MainWindow::onLayerItemClicked( QListWidgetItem* item )
              }
              m_selectedLayerItemName = l->name();
              item->setSelected(l->m_item->isSelected());
+             selectedLayerId = l->m_item->isSelected() ? layerNumber : -1;
              showMessage(QString("%1 layer %2").arg(layer->m_visible?"Select":"De-select").arg(layer->id()));
            } else {
              l->m_item->setSelected(false);
@@ -1144,6 +1153,21 @@ void MainWindow::onLayerItemClicked( QListWidgetItem* item )
        }
      }
     }
+    QSet<int> selectedItemIdents = {};
+    if ( selectedLayerId > 0 ) {
+      // get all undo entries with layer N
+      const QAbstractItemModel* model = m_undoView->model();
+      for ( int row = 0; row < model->rowCount(); ++row ) {
+        const QModelIndex index = model->index(row, 0);
+        const QString text = model->data(index, Qt::DisplayRole).toString();
+        // qDebug().noquote() << QString("%1: %2").arg(row).arg(text);
+        if ( text.contains(QString("Layer %1").arg(selectedLayerId)) ) {
+         selectedItemIdents.insert(row);
+        }
+      }
+    }
+    m_undoViewDelegate->setHighlightedRows(selectedItemIdents);
+    m_undoView->viewport()->update();
   }
 }
 

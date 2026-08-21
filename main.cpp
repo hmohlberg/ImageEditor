@@ -334,13 +334,14 @@ int main( int argc, char *argv[] )
         proc.process(historyPath,forcedAlphaMasking,false);
         QJsonDocument document = proc.document();
         QFile file(saveJSONPath); 
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text) ) {
+        if ( !file.open(QIODevice::WriteOnly | QIODevice::Text ) ) {
           qWarning() << "FATAL ERROR: Could not create new JSON file" << file.errorString();
           return 0;
         }
         QByteArray bytes = document.toJson(QJsonDocument::Indented);
          file.write(bytes);
         file.close();
+        qInfo() << "Saved JSON file" << saveJSONPath << ".";
         return 0;
       }
       QString outputPath = parsedOptions.value("outputPath").toString("");

@@ -39,7 +39,7 @@ EditablePolygonItem::EditablePolygonItem( EditablePolygon* poly, QGraphicsItem* 
   qCDebug(logEditor) << "EditablePolygonItem::EditablePolygonItem(): Processing...";
   {
     Q_ASSERT(m_poly);
-    m_handleRadius = EditorStyle::instance().handleRadius();
+    m_handleRadius = EditorStyle::instance().polygonWidth();
     m_layer = dynamic_cast<LayerItem*>(parent);
     Q_ASSERT(m_layer);
     setParentItem(nullptr);
@@ -66,7 +66,7 @@ QRectF EditablePolygonItem::boundingRect() const
 
 void EditablePolygonItem::paint( QPainter* p, const QStyleOptionGraphicsItem*, QWidget* )
 {
-  qCDebug(logEditor) << "EditablePolygonItem::paint(): Processing...";
+  qCDebug(logEditor) << "EditablePolygonItem::paint(): m_handleRadius =" << m_handleRadius;
   {
     if ( !m_poly->polygonVisible() )
         return;

@@ -125,8 +125,14 @@
       }
       // Lasso width
       int rawWidth = settings.value("Lasso/width", 2).toInt();
-      if ( rawWidth >= 0 && rawWidth < 20 ) {
+      if ( rawWidth >= 0 ) {
         m_lassoWidth = rawWidth;
+      }
+      
+      // Polygon width (control size double of this value)
+      int polygonWidth = settings.value("Polygon/width", 2).toInt();
+      if ( polygonWidth >= 0 ) {
+        m_polygonWidth = polygonWidth;
       }
       
       // ImageLayer allowIntegerMoveOnly
@@ -168,6 +174,7 @@
     QColor cursorFillColor() const { return m_cursorFillColor; }
     QColor cursorBorderColor() const { return m_cursorBorderColor; }
     int lassoWidth() const { return m_lassoWidth; }
+    int polygonWidth() const { return m_polygonWidth; }
     int controlPointRadius() const { return m_controlPointRadius; }
     double handleRadius() const { return m_handleRadius; }
     bool crosshair() const { return m_crosshair; }
@@ -190,6 +197,7 @@
           m_handleColor(Qt::cyan),
           m_handleSize(10),
           m_lassoWidth(3), 
+          m_polygonWidth(10),
           m_handleRadius(4.0),
           m_cursorSize(0),
           m_controlPointRadius(4),
@@ -243,6 +251,7 @@
     bool m_usegpu;
     
     int m_lassoWidth;
+    int m_polygonWidth;
     int m_controlPointRadius;
     int m_handleSize;
     int m_cursorSize;
