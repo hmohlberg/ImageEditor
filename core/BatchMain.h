@@ -32,7 +32,7 @@ class BatchMain : public IMainSystem {
         // printf("%s\n", text.toLocal8Bit().constData()); // Ausgabe in Konsole
         qDebug() << "BATCHMAIN: " << text;
     }
-    void updateLayerOperationParameter( int mode, double value1, double value2 = 0.0 ) override {
+    void updateLayerOperationParameter( const QString &aCaller, const QString &layerName, int mode, double value1, double value2 = 0.0 ) override {
        // nothing to do
     }
     double getLayerOperationParameter( int mode ) override {

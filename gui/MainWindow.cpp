@@ -1156,13 +1156,30 @@ void MainWindow::onLayerItemClicked( QListWidgetItem* item )
     QSet<int> selectedItemIdents = {};
     if ( selectedLayerId > 0 ) {
       // get all undo entries with layer N
+      int polygonIndex = -1;
+      // first run
       const QAbstractItemModel* model = m_undoView->model();
       for ( int row = 0; row < model->rowCount(); ++row ) {
         const QModelIndex index = model->index(row, 0);
         const QString text = model->data(index, Qt::DisplayRole).toString();
         // qDebug().noquote() << QString("%1: %2").arg(row).arg(text);
         if ( text.contains(QString("Layer %1").arg(selectedLayerId)) ) {
+         QRegularExpression re("Polygon (\\d+)");
+         QRegularExpressionMatch match = re.match(text);
+         if ( match.hasMatch()) {
+           polygonIndex = match.captured(1).toInt();
+         }
          selectedItemIdents.insert(row);
+        }
+      }
+      // second run
+      if ( polygonIndex > 0 ) {
+        model = m_undoView->model();
+        for ( int row = 0; row < model->rowCount(); ++row ) {
+          const QString text = model->data(model->index(row, 0), Qt::DisplayRole).toString();
+          if ( text.contains(QString("Polygon %1").arg(polygonIndex)) ) {
+            selectedItemIdents.insert(row);
+          }
         }
       }
     }
@@ -2160,9 +2177,9 @@ void MainWindow::createStatusbar()
 
 /* =================== Misc =================== */
 
-void MainWindow::updateLayerOperationParameter( int mode, double value1, double value2 )
+void MainWindow::updateLayerOperationParameter( const QString &aCaller, const QString &layerName, int mode, double value1, double value2 )
 {
-  qCDebug(logEditor) << "MainWindow::updateLayerOperationParameter(): layerOpMode =" << LayerItem::operationModeName(mode) 
+  qCDebug(logEditor) << "MainWindow::updateLayerOperationParameter(" << aCaller << "): layerName =" << layerName << ", layerOpMode =" << LayerItem::operationModeName(mode) 
                  << ", mainOpMode =" << mainOperationModeName(m_operationMode) << ", value =" << value1;
   {
     if ( m_operationMode == MainOperationMode::ImageLayer ) {

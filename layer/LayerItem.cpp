@@ -326,8 +326,8 @@ void LayerItem::setIsSelected( int caller, bool isSelected )
       if ( isSelected ) {
         parent->getViewer()->setSelectedLayer(1,this);
         parent->setLayerOperationMode(m_operationMode,false);
+        parent->updateLayerOperationParameter("LayerItem::setIsSelected",m_name,LayerItem::OperationMode::Rotate,m_currentRotation);
       }
-      parent->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,m_currentRotation);
     }
     if ( !isSelected ) setCageVisible(1,false);
     QGraphicsItem::setSelected(isSelected);
@@ -390,7 +390,7 @@ void LayerItem::scale( double xscale, double yscale )
           }
         }
       }
-      parent->updateLayerOperationParameter(LayerItem::OperationMode::Scale,xscale,yscale);
+      parent->updateLayerOperationParameter("LayerItem::scale",m_name,LayerItem::OperationMode::Scale,xscale,yscale);
     }
   }
 }
@@ -418,7 +418,7 @@ void LayerItem::resetImageState( const QImage& image, const QPointF& position, c
 	}
 
 void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
-  qDebug() << "LayerItem::setImageTransform(): nonGUI =" << m_nogui << ", position =" << pos() << ", combine =" 
+  qCDebug(logEditor) << "LayerItem::setImageTransform(): nonGUI =" << m_nogui << ", position =" << pos() << ", combine =" 
                         << combine << ", originalImageType =" << m_originalImageType;
   {
     // *** DO NOT USE INTERNAL TRANSFORMATIONS ***
@@ -1019,7 +1019,7 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
 {
-  qCDebug(logEditor) << "LayerItem::mousePressEvent(): layer =" << name() << ", selected =" 
+  qDebug() << "LayerItem::mousePressEvent(): layer =" << name() << ", selected =" 
                << isSelected() << ", zValue =" << zValue() << ", operationMode =" << m_operationMode 
                << ", active =" << m_mouseOperationActive << ", event_modifiers =" << event->modifiers();
   {
@@ -1027,10 +1027,10 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
       QGraphicsPixmapItem::mousePressEvent(event);
       return;
     }
-    if ( isSelected() || event->modifiers() & Qt::AltModifier || event->modifiers() & Qt::MetaModifier ) {
+    if ( isSelected() || event->modifiers() & Qt::AltModifier || event->modifiers() & Qt::MetaModifier || event->modifiers() & Qt::ControlModifier ) {
       MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
       if ( isValidMouseEventOperation() && parent != nullptr ) {
-        parent->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,m_currentRotation);
+        parent->updateLayerOperationParameter("LayerItem::mousePressEvent",m_name,LayerItem::OperationMode::Rotate,m_currentRotation);
         if ( m_operationMode == OperationMode::Translate ) {
           m_startPos = pos();
           m_mouseOperationActive = true;
@@ -1051,14 +1051,18 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
         parent->showMessage(QString("Select layer %1").arg(m_index));
         // set opacity if Alt key pressed
         if ( ( event->modifiers() & Qt::AltModifier ) || ( event->modifiers() & Qt::ControlModifier ) ) {
-          setOpacity(EditorStyle::instance().layerOverlayOpacity());
+         if ( 1 == 1 ) {
+          // setOpacity(EditorStyle::instance().layerOverlayOpacity());
           if ( event->modifiers() & Qt::ControlModifier ) {
             // color effect
+            qDebug() << "setup color effect...";
+            setOpacity(EditorStyle::instance().layerOverlayOpacity());
             QGraphicsColorizeEffect* colorEffect = new QGraphicsColorizeEffect();
             colorEffect->setColor(Qt::red);
             colorEffect->setStrength(1.0);
             setGraphicsEffect(colorEffect);
           }
+         }
         }
       }
     } else if ( event->modifiers() & Qt::ControlModifier  ) {
@@ -1080,7 +1084,7 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
         QPointF delta = event->scenePos() - event->buttonDownScenePos(Qt::LeftButton);
         double angleDelta = m_startLayerRotation + delta.x()/20.0 - m_currentRotation;
         setRotationAngle(angleDelta);
-        parent->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,m_currentRotation); 
+        parent->updateLayerOperationParameter("LayerItem::mouseMoveEvent",m_name,LayerItem::OperationMode::Rotate,m_currentRotation); 
         event->accept();
        }
       }
@@ -1090,11 +1094,15 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
 {
-  qCDebug(logEditor) << "LayerItem::mouseReleaseEvent(): index =" << m_index << ", name =" << name();
+  qDebug() << "LayerItem::mouseReleaseEvent(): index =" << m_index << ", name =" << name();
   {
     if ( !isSelected() ) return;
-    setOpacity(1.0);
-    setGraphicsEffect(nullptr);
+    
+    // if ( event->modifiers() & Qt::ControlModifier ) {
+      setOpacity(1.0);
+      setGraphicsEffect(nullptr);
+    // }
+    
     if ( !m_undoStack ) {
       QGraphicsPixmapItem::mouseReleaseEvent(event);
       return;

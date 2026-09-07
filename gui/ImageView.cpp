@@ -756,7 +756,7 @@ void ImageView::setActiveLayer( const QString &name, bool initialize )
           MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
           if ( mainWindow != nullptr ) {
             mainWindow->setSelectedLayer(6,QString("Layer %1").arg(layer->id()),initialize);
-            mainWindow->updateLayerOperationParameter(LayerItem::OperationMode::Rotate,layer->getRotationAngle());
+            mainWindow->updateLayerOperationParameter("ImageView::setActiveLayer",layer->name(),LayerItem::OperationMode::Rotate,layer->getRotationAngle());
             if ( initialize ) {
               mainWindow->setLayerOperationMode(LayerItem::OperationMode::Translate);
             }

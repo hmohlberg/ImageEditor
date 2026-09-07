@@ -108,7 +108,7 @@ void TransformLayerCommand::printMessage( bool isUndo )
     if ( m_trafoType == LayerTransformType::Scale ) {
       IMainSystem::instance()->showMessage(QString("Scaled layer %1 by (%2:%3)").arg(m_layerId).
                                arg(m_totalTransform.m11()).arg(m_totalTransform.m22()));
-      IMainSystem::instance()->updateLayerOperationParameter(LayerItem::OperationMode::Scale,
+      IMainSystem::instance()->updateLayerOperationParameter("TransformLayerCommand::printMessage",QString("Layer %1").arg(m_layerId),LayerItem::OperationMode::Scale,
                                  m_totalTransform.m11(),m_totalTransform.m22());
     } else if ( m_trafoType == LayerTransformType::Rotate ) {
       IMainSystem::instance()->showMessage(QString("Rotated layer %1 by %2 degrees").arg(m_layerId)
@@ -197,8 +197,8 @@ void TransformLayerCommand::redo()
     }
     if ( m_trafoType == LayerTransformType::Scale ) {
       m_layer->setCageVisible(LayerItem::OperationMode::Scale,true);
-      IMainSystem::instance()->updateLayerOperationParameter(LayerItem::OperationMode::Scale,
-                                 m_totalTransform.m11(),m_totalTransform.m22());
+      IMainSystem::instance()->updateLayerOperationParameter("TransformLayerCommand::redo",QString("Layer %1").arg(m_layerId),
+                                 LayerItem::OperationMode::Scale,m_totalTransform.m11(),m_totalTransform.m22());
     }
     printMessage();
   }

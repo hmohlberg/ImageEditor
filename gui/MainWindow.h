@@ -62,7 +62,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     void setSelectedLayer( int caller, const QString &name, bool forcedEnabled = false );
     
     // --- override methods ---
-    void updateLayerOperationParameter( int mode, double value1, double value2 = 0.0 ) override;
+    void updateLayerOperationParameter( const QString &aCaller, const QString &layerName, int mode, double value1, double value2 = 0.0 ) override;
     void showMessage( const QString& message, int msgType=0 ) override;
     double getLayerOperationParameter( int mode ) override;
     QString getSelectedLayerItemName() override;

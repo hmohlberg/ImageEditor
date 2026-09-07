@@ -26,7 +26,7 @@ class IMainSystem {
     virtual ~IMainSystem() = default;
     
     // Pure virtual
-    virtual void updateLayerOperationParameter( int mode, double value1, double value2 = 0.0 ) = 0;
+    virtual void updateLayerOperationParameter( const QString &aCaller, const QString &layerName, int mode, double value1, double value2 = 0.0 ) = 0;
     virtual void showMessage( const QString &text, int msgType = 0 ) = 0;
     virtual double getLayerOperationParameter( int mode ) = 0;
     virtual QString getSelectedLayerItemName() = 0;
