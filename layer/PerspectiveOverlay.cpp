@@ -24,6 +24,7 @@
 #include "LayerItem.h"
 #include "TransformHandleItem.h"
 #include "../core/Config.h"
+#include "../core/IMainSystem.h"
 #include "../util/GeometryUtils.h"
 #include "../undo/PerspectiveWarpCommand.h"
 
@@ -250,6 +251,8 @@ void PerspectiveOverlay::moveCorner( PerspectiveCorner corner, const QPointF& sc
   {
     if ( !m_layer || !m_dragging ) return;
     QPointF localPos = m_sceneToLocalSnapshot.map(scenePos);
+    if ( EditorStyle::instance().allowIntegerMoveOnly() )
+        localPos = QPointF(qRound(localPos.x()), qRound(localPos.y()));
     m_currentQuad[int(corner)] = localPos;
     m_finalQuad[int(corner)] = localPos;
     QTransform warp;
@@ -261,6 +264,14 @@ void PerspectiveOverlay::moveCorner( PerspectiveCorner corner, const QPointF& sc
     warp = GeometryUtils::quadToQuad( m_startQuad, m_currentQuad );
     m_layer->setTransform(warp * m_startTransform);
 #endif
+    if ( auto* ms = IMainSystem::instance() ) {
+      const QPointF delta = localPos - m_startQuad[int(corner)];
+      static const char* cornerNames[] = { "TopLeft", "TopRight", "BottomRight", "BottomLeft" };
+      ms->showMessage(QString("Layer %1: perspective %2 moved by (%3, %4) px")
+          .arg(m_layer->name())
+          .arg(cornerNames[int(corner)])
+          .arg(qRound(delta.x())).arg(qRound(delta.y())));
+    }
     updateOverlay(true);
   }
 }

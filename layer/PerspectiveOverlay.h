@@ -33,6 +33,7 @@ enum class PerspectiveCorner {
 class PerspectiveOverlay : public QObject, public QGraphicsItem
 {
     Q_OBJECT
+    Q_INTERFACES(QGraphicsItem)
 
  public:
  
@@ -42,6 +43,8 @@ class PerspectiveOverlay : public QObject, public QGraphicsItem
     void paint( QPainter*, const QStyleOptionGraphicsItem*, QWidget* ) override;
 
     void updateOverlay( bool fromStart = false );
+
+    LayerItem* layer() const { return m_layer; }
 
     void beginWarp();
     void endWarp();

@@ -157,6 +157,7 @@ class ImageView : public QGraphicsView
  protected:
 
     void keyPressEvent( QKeyEvent* e ) override;
+    void keyReleaseEvent( QKeyEvent* e ) override;
     void mousePressEvent( QMouseEvent* event ) override;
     void mouseMoveEvent( QMouseEvent* event ) override;
     void mouseReleaseEvent( QMouseEvent* event ) override;
@@ -166,6 +167,7 @@ class ImageView : public QGraphicsView
 
  private:
 
+    void clearLayerColorEffects();
     void initCageWarpForLayer( LayerItem* layerItem );
     LassoCutCommand* createNewLayer( const QPolygonF& polygon, const QString& name );
     void setEnableTransformMode( LayerItem* layer );

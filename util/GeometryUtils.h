@@ -1,5 +1,5 @@
 /* 
-* Copyright 2026 Forschungszentrum J�lich
+* Copyright 2026 Forschungszentrum J?lich
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ namespace GeometryUtils
     
     // >>>
     inline QPointF getBilinearUV( const QPointF& P, const QVector<QPointF>& quad ) {
-       // Implementiere hier die L�sung der quadratischen Gleichung f�r inverse bilineare Interpolation
+       // Implementiere hier die L?sung der quadratischen Gleichung f?r inverse bilineare Interpolation
        // Alternativ: Nutze QTransform::quadToQuad, um eine lokale Matrix pro Quad zu erstellen.
        if (quad.size() < 4) return QPointF(0, 0);
        // Eckpunkte des Quads:
@@ -42,9 +42,9 @@ namespace GeometryUtils
        QPointF f = D - A;
        QPointF g = A - B + C - D;
        QPointF h = P - A;
-       // Wir l�sen die quadratische Gleichung: g.x*u*v + e.x*u + f.x*v - h.x = 0
-       // Und die entsprechende f�r y.
-       // Koeffizienten f�r die quadratische Gleichung: k2*v^2 + k1*v + k0 = 0
+       // Wir l?sen die quadratische Gleichung: g.x*u*v + e.x*u + f.x*v - h.x = 0
+       // Und die entsprechende f?r y.
+       // Koeffizienten f?r die quadratische Gleichung: k2*v^2 + k1*v + k0 = 0
        double k2 = g.x() * f.y() - g.y() * f.x();
        double k1 = e.x() * f.y() - e.y() * f.x() + h.x() * g.y() - h.y() * g.x();
        double k0 = h.x() * e.y() - h.y() * e.x();
@@ -55,7 +55,7 @@ namespace GeometryUtils
        } else {
          // Quadratische Formel: v = (-k1 +- sqrt(k1^2 - 4*k2*k0)) / (2*k2)
          double delta = k1 * k1 - 4.0 * k2 * k0;
-         if (delta < 0) return QPointF(0, 0); // Punkt au�erhalb/Fehler
+         if (delta < 0) return QPointF(0, 0); // Punkt au?erhalb/Fehler
          v = (-k1 + qSqrt(delta)) / (2.0 * k2);
        }
        // u berechnen basierend auf v
@@ -82,12 +82,12 @@ namespace GeometryUtils
        QPointF p10 = dstQuad[1];
        QPointF p11 = dstQuad[2];
        QPointF p01 = dstQuad[3];
-       // Vektoren f�r die Gleichung
+       // Vektoren f?r die Gleichung
        QPointF e = p10 - p00;
        QPointF f = p01 - p00;
        QPointF g = p11 - p10 - p01 + p00;
        QPointF h = p - p00;
-       // Koeffizienten der quadratischen Gleichung f�r 'v'
+       // Koeffizienten der quadratischen Gleichung f?r 'v'
        double k2 = g.x() * f.y() - g.y() * f.x();
        double k1 = e.x() * f.y() - e.y() * f.x() + h.x() * g.y() - h.y() * g.x();
        double k0 = h.x() * e.y() - h.y() * e.x();
@@ -234,15 +234,52 @@ namespace GeometryUtils
 
     }
 
-    // Checks whether a point lies within a triangle
-    inline bool pointInTriangle( const QPointF& p, const QVector<QPointF>& tri )
-    {
+    // Checks whether a voxel lies within a triangle.
+    // Check all four corners of the voxel inside the triangle to include
+    // borders. So we check for p+(0,0), p+(1,0), p+(0,1), p+(1,1) in voxel 
+    // coords.
+
+    inline bool pointInTriangle( const QPointF& p, const QVector<QPointF>& tri ) {
+
        QPointF a = tri[0], b = tri[1], c = tri[2];
-       double s = a.y()*c.x() - a.x()*c.y() + (c.y() - a.y())*p.x() + (a.x() - c.x())*p.y();
-       double t = a.x()*b.y() - a.y()*b.x() + (a.y() - b.y())*p.x() + (b.x() - a.x())*p.y();
-       if ((s < 0) != (t < 0)) return false;
+
+       double s00 = a.y()*c.x() - a.x()*c.y() + (c.y() - a.y())*p.x() + (a.x() - c.x())*p.y();
+       double t00 = a.x()*b.y() - a.y()*b.x() + (a.y() - b.y())*p.x() + (b.x() - a.x())*p.y();
+       double s10 = s00 + (c.y() - a.y());  // + (1,0)
+       double t10 = t00 + (a.y() - b.y());
+       double s01 = s00 + (a.x() - c.x());  // + (0,1)
+       double t01 = t00 + (b.x() - a.x());
+       double s11 = s10 + (a.x() - c.x());  // + (1,1)
+       double t11 = t10 + (b.x() - a.x());
+
        double A = -b.y()*c.x() + a.y()*(c.x() - b.x()) + a.x()*(b.y() - c.y()) + b.x()*c.y();
-       return A < 0 ? (s <= 0 && s+t >= A) : (s >= 0 && s+t <= A);
+
+       // Combine results: we need at least one case to be true.
+
+       if( A < 0 ) {
+         A = -A;
+         s00 = -s00; s10 = -s10; s01 = -s01; s11 = -s11;
+         t00 = -t00; t10 = -t10; t01 = -t01; t11 = -t11;
+       }
+
+       if( s00 >= 0 && t00 >= 0 && s00+t00 <= A ) {
+         // std::cout << "inside (0,0) " << std::endl;
+         return true;
+       }
+       if( s11 >= 0 && t11 >= 0 && s11+t11 <= A ) {
+         // std::cout << "inside (1,1) " << std::endl;
+         return true;
+       }
+       if( s10 >= 0 && t10 >= 0 && s10+t10 <= A ) {
+         // std::cout << "inside (1,0) " << std::endl;
+         return true;
+       }
+       if( s01 >= 0 && t01 >= 0 && s01+t01 <= A ) {
+         // std::cout << "inside (0,1) " << std::endl;
+         return true;
+       }
+
+       return false;
     }
     
     inline bool pointInQuad(const QPointF &p, const QVector<QPointF> &quad) {

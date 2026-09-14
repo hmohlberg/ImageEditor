@@ -19,6 +19,8 @@
 #include "LayerItem.h"
 
 #include "../core/Config.h"
+#include "../core/IMainSystem.h"
+#include <QGraphicsColorizeEffect>
 
 #include <QGraphicsSceneMouseEvent>
 #include <iostream>
@@ -49,7 +51,16 @@ void CageControlPointItem::mousePressEvent( QGraphicsSceneMouseEvent *e )
       std::cout << "CLAUDE: m_index not defined when moving cage control point." << std::endl;
     }
     m_lastPos = e->scenePos();
+    if ( m_index >= 0 && m_index < m_layer->cageMesh().points().size() )
+      m_startPoint = m_layer->cageMesh().points()[m_index];
     m_layer->setCageEditing(true);
+    if ( e->modifiers() & Qt::ControlModifier ) {
+      m_layer->setOpacity(EditorStyle::instance().layerOverlayOpacity());
+      auto* colorEffect = new QGraphicsColorizeEffect();
+      colorEffect->setColor(Qt::red);
+      colorEffect->setStrength(1.0);
+      m_layer->setGraphicsEffect(colorEffect);
+    }
   }
 }
 
@@ -59,6 +70,15 @@ void CageControlPointItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
   {
     if ( m_layer == nullptr ) return;
     m_layer->setCagePoint(m_index, e->scenePos() - m_clickOffset);
+    if ( auto* ms = IMainSystem::instance() ) {
+      QPointF localPos = m_layer->mapFromScene(e->scenePos() - m_clickOffset);
+      if ( EditorStyle::instance().allowIntegerMoveOnly() )
+        localPos = QPointF(qRound(localPos.x()), qRound(localPos.y()));
+      QPointF delta = localPos - m_startPoint;
+      ms->showMessage(QString("Layer %1: cage point %2 moved by (%3, %4) px")
+          .arg(m_layer->name()).arg(m_index)
+          .arg(qRound(delta.x())).arg(qRound(delta.y())));
+    }
     e->accept();
   }
 }
@@ -68,6 +88,10 @@ void CageControlPointItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* e )
   qCDebug(logEditor) << "CageControlPointItem::mouseReleaseEvent((): Processing...";
   {
     if ( m_layer == nullptr ) return;
+    if ( !(e->modifiers() & Qt::ControlModifier) ) {
+      m_layer->setOpacity(1.0);
+      m_layer->setGraphicsEffect(nullptr);
+    }
     m_layer->setCageEditing(false);
     e->accept();
   }

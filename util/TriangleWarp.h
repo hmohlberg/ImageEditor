@@ -97,8 +97,6 @@ namespace TriangleWarp
     // compute new target image (transparent background)
     int rows = cageMesh.rows();
     int cols = cageMesh.cols();
-    int gx = cageMesh.activeCagePointId() % cols;
-    int gy = cageMesh.activeCagePointId() / rows;
 
     if ( EditorStyle::instance().useCageQuads() == true ) {
 
@@ -124,15 +122,13 @@ namespace TriangleWarp
             updateQuad = true;
             std::cout << "Updating quad " << i00 << ", " << i10 << ", " << i01 << ", " << i11 << std::endl;
           }
-        } else {
-          std::cout << "Updating quad " << i00 << ", " << i10 << ", " << i01 << ", " << i11 << std::endl;
         }
-
+// CLAUDE: added qreal cast to avoid truncating to int (cageMesh is done like this).
         QVector<QPointF> srcQuad{
-            QPointF(x * originalImage.width() / (cols - 1), y * originalImage.height() / (rows - 1)),
-            QPointF((x + 1) * originalImage.width() / (cols - 1), y * originalImage.height() / (rows - 1)),
-            QPointF((x + 1) * originalImage.width() / (cols - 1), (y + 1) * originalImage.height() / (rows - 1)),
-            QPointF(x * originalImage.width() / (cols - 1), (y + 1) * originalImage.height() / (rows - 1))
+            QPointF(x * (qreal)originalImage.width() / (cols - 1), y * (qreal)originalImage.height() / (rows - 1)),
+            QPointF((x + 1) * (qreal)originalImage.width() / (cols - 1), y * (qreal)originalImage.height() / (rows - 1)),
+            QPointF((x + 1) * (qreal)originalImage.width() / (cols - 1), (y + 1) * (qreal)originalImage.height() / (rows - 1)),
+            QPointF(x * (qreal)originalImage.width() / (cols - 1), (y + 1) * (qreal)originalImage.height() / (rows - 1))
         };
         QVector<QPointF> dstQuad{
             cageMesh.point(i00) - dstBounds.topLeft(),
@@ -143,6 +139,14 @@ namespace TriangleWarp
         QRectF br = QPolygonF(dstQuad).boundingRect();
         QPointF start(-1,-1);
         double firstY = -1.0;
+
+        // Note for below: QPointF.toPoint() rounds to the nearest integer point,
+        // which can be wrong. For example, if we have x=47.8, this point is in
+        // pixel 47 but after rounding it becomes in pixel 48, which may be outside
+        // the bounding box. While point 47 is valid and inside the bounding box,
+        // it will not be drawn (and left black) if it's been set to belong to
+        // point 48. So we should avoid toPoint() and use std::floor(x) instead.
+
         for ( int py = int(br.top()); py <= int(br.bottom()); ++py ) {
             start.setX(-1);  // reset at start of row
             start.setY(firstY);  // reset at start of row
@@ -160,17 +164,108 @@ namespace TriangleWarp
                     firstY = start.y();  // first Y of the row remembered for next row
                     saveY = 0;
                   }
-                  if ( originalImage.rect().contains(srcP.toPoint()) ) {
-                    QRgb c = originalImage.pixel(srcP.toPoint());
-                    warped.setPixel(px, py, c);
+
+                  // if ( originalImage.rect().contains(srcP.toPoint()) ) {  this is rounding.
+                  if( originalImage.rect().contains( QPoint( std::floor(srcP.x()), std::floor(srcP.y()) ) ) ) {
+
+#if 1
+                    // nearest neighbour. Now this is an issue too. On the original image,
+                    // with no displacement, barycentric() may return a floating point with
+                    // "noise", like 3.0 +/- 1.0e-6. This can cause randomness in selecting
+                    // the "good" voxel. So here use toPoint() for consistent rounding.
+
+                    QRgb c = ( originalImage.rect().contains(srcP.toPoint()) ) ?
+                             originalImage.pixel(srcP.toPoint()) :
+                             originalImage.pixel( QPoint( std::floor(srcP.x()), std::floor(srcP.y()) ) );
+                    warped.setPixel(px, py, c );
+
+#else
+                    // bilinear interpolation
+                    qreal dx = srcP.x() - std::floor( srcP.x() );
+                    qreal dy = srcP.y() - std::floor( srcP.y() );
+
+                    QPoint p4( std::floor(srcP.x()), std::floor(srcP.y()) );
+                    QRgb c4 = originalImage.pixel( p4 );
+                    QPoint p3( std::floor(srcP.x()+1.0), std::floor(srcP.y()) );
+                    QRgb c3 = ( originalImage.rect().contains(p3) ) ? originalImage.pixel( p3 ) : c4;
+                    QPoint p2( std::floor(srcP.x()+1.0), std::floor(srcP.y()+1.0) );
+                    QRgb c2 = ( originalImage.rect().contains(p2) ) ? originalImage.pixel( p2 ) : c4;
+                    QPoint p1( std::floor(srcP.x()), std::floor(srcP.y()+1.0) );
+                    QRgb c1 = ( originalImage.rect().contains(p1) ) ? originalImage.pixel( p1 ) : c4;
+
+                    if( qAlpha(c1) < 10 ) c1 = c4;  // this is the pixel for nearest neighbour
+                    if( qAlpha(c2) < 10 ) c2 = c4;
+                    if( qAlpha(c3) < 10 ) c3 = c4;
+
+                    int red = ( 1.0 - dx ) * dy * qRed( c1 ) +
+                              dx * dy * qRed( c2 ) +
+                              dx * ( 1.0 - dy ) * qRed( c3 ) +
+                              ( 1.0 - dx ) * ( 1.0 - dy ) * qRed( c4 );
+                    int green = ( 1.0 - dx ) * dy * qGreen( c1 ) +
+                                dx * dy * qGreen( c2 ) +
+                                dx * ( 1.0 - dy ) * qGreen( c3 ) +
+                                ( 1.0 - dx ) * ( 1.0 - dy ) * qGreen( c4 );
+                    int blue = ( 1.0 - dx ) * dy * qBlue( c1 ) +
+                               dx * dy * qBlue( c2 ) +
+                               dx * ( 1.0 - dy ) * qBlue( c3 ) +
+                               ( 1.0 - dx ) * ( 1.0 - dy ) * qBlue( c4 );
+                    int alpha = ( 1.0 - dx ) * dy * qAlpha( c1 ) +
+                               dx * dy * qAlpha( c2 ) +
+                               dx * ( 1.0 - dy ) * qAlpha( c3 ) +
+                               ( 1.0 - dx ) * ( 1.0 - dy ) * qAlpha( c4 );
+
+                    alpha = ( alpha > 10 ) ? 255 : 0;
+                    warped.setPixel(px, py, qRgba( red, green, blue, alpha ) );
+                    // warped.setPixel(px, py, qRgba( qAlpha(c), 0, 0, qAlpha(c) ) );
+
+#endif
+                  } else {
+                    // This voxel is inside the new cage but outside the 
+                    // bounding box of the original layer. The cage after 
+                    // should map perfectly to the cage before, minus some
+                    // rounding errors. This will occur along the top row
+                    // and left column of the cage where floor() interpolation
+                    // can cause the (top/left) corner of the voxel to be
+                    // outside. Clamp the local coordinates "start" to project
+                    // onto the border of the cage.
+
+                    if ( GeometryUtils::pointInQuad(srcP, srcQuad) ) {
+                      qreal xi = ( start.x() <= -1.0 ) ? -1.0 : ( start.x() > 1.0 ? 1.0 : start.x() );
+                      qreal eta = ( start.y() <= -1.0 ) ? -1.0 : ( start.y() > 1.0 ? 1.0 : start.y() );
+                      srcP.setX( 0.25 * ( (1.0-xi)*(1.0-eta)*srcQuad[0].x() +
+                                          (1.0+xi)*(1.0-eta)*srcQuad[1].x() +
+                                          (1.0+xi)*(1.0+eta)*srcQuad[2].x() +
+                                          (1.0-xi)*(1.0+eta)*srcQuad[3].x() ) );
+                      srcP.setY( 0.25 * ( (1.0-xi)*(1.0-eta)*srcQuad[0].y() +
+                                          (1.0+xi)*(1.0-eta)*srcQuad[1].y() +
+                                          (1.0+xi)*(1.0+eta)*srcQuad[2].y() +
+                                          (1.0-xi)*(1.0+eta)*srcQuad[3].y() ) );
+
+                      if( originalImage.rect().contains( srcP.toPoint() ) ) {
+                        warped.setPixel(px, py, originalImage.pixel(srcP.toPoint()) );
+                      }
+                    }
+
                   }
                 } else {
+ 
+                  // This quad does not need to be updated, so simply copy the
+                  // image from the previous (currrent) image to the new one (warped).
 
                   QPointF pp(px, py);
                   pp += cageMesh.getOffset(1);
-                  
-                  QRgb c = currentImage.pixel(pp.toPoint() );
-                  warped.setPixel(px, py, c );
+
+#if 1
+                  if( currentImage.rect().contains(pp.toPoint()) ) {
+                    QRgb c = currentImage.pixel(pp.toPoint() );   // WRONG: toPoint() is rounding, not flooring
+                    warped.setPixel(px, py, c );
+                  }
+#else
+                  if( currentImage.rect().contains( QPoint( std::floor(pp.x()), std::floor(pp.y()) ) ) ) {
+                    QRgb c = currentImage.pixel( QPoint( std::floor(pp.x()), std::floor(pp.y()) ) );
+                    warped.setPixel(px, py, c );
+                  }
+#endif
                 }
             }
         }

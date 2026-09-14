@@ -730,6 +730,9 @@ void ImageView::setSelectedLayer( int caller, const QString &name )
 {
   qCDebug(logEditor) << "ImageView::setSelectedLayer(" << caller << "): name =" << name;
   {
+    if ( m_selectedLayer == nullptr || !m_selectedLayer->name().endsWith(name) ) {
+      clearLayerColorEffects();
+    }
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow == nullptr ) return;
     mainWindow->setSelectedLayer(3,name);
@@ -918,6 +921,27 @@ void ImageView::keyPressEvent( QKeyEvent* event )
     }
     QGraphicsView::keyPressEvent(event);
   }
+}
+
+void ImageView::clearLayerColorEffects()
+{
+  if ( !m_scene ) return;
+  for ( auto* item : m_scene->items() ) {
+    auto* layer = dynamic_cast<LayerItem*>(item);
+    if ( layer && layer->graphicsEffect() ) {
+      layer->setOpacity(1.0);
+      layer->setGraphicsEffect(nullptr);
+    }
+  }
+}
+
+void ImageView::keyReleaseEvent( QKeyEvent* event )
+{
+  if ( event->key() == Qt::Key_Alt || event->key() == Qt::Key_Control
+       || event->key() == Qt::Key_Meta ) {
+    clearLayerColorEffects();
+  }
+  QGraphicsView::keyReleaseEvent(event);
 }
 
 // ------------------------ ------------------------ ------------------------
@@ -1628,6 +1652,7 @@ void ImageView::setLayerOperationMode( LayerItem::OperationMode mode )
     const bool modeChanged = ( m_layerOperationMode != mode );
     // --- handle old mode ---
     if ( modeChanged ) {
+      clearLayerColorEffects();
       if ( m_layerOperationMode == LayerItem::OperationMode::Scale ) {
         disableTransformMode();
       } else if ( m_layerOperationMode == LayerItem::OperationMode::Perspective ) {

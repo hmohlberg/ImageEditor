@@ -20,6 +20,7 @@
 #include "../undo/TransformLayerCommand.h"
 
 #include <QGraphicsSceneMouseEvent>
+#include <QGraphicsColorizeEffect>
 #include <QtMath>
 #include <QCursor>
 
@@ -110,7 +111,7 @@ void TransformHandleItem::init()
 // - m_layer != nullptr: cage warp
 void TransformHandleItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
 {
- qCDebug(logEditor) << "TransformHandleItem::mousePressEvent(): overlay=" << (m_overlay?"ok":"null") 
+ qCDebug(logEditor) << "TransformHandleItem::mousePressEvent(): overlay=" << (m_overlay?"ok":"null")
                  << ", perspective=" << (m_perspectiveOverlay?"ok":"null")
                  << ", layer=" << (m_layer?"ok":"null");
  {
@@ -119,6 +120,16 @@ void TransformHandleItem::mousePressEvent( QGraphicsSceneMouseEvent* e )
     m_overlay->beginTransform();
    } else if ( m_perspectiveOverlay ) {
     m_perspectiveOverlay->beginWarp();
+    if ( e->modifiers() & Qt::ControlModifier ) {
+      LayerItem* layer = m_perspectiveOverlay->layer();
+      if ( layer ) {
+        layer->setOpacity(EditorStyle::instance().layerOverlayOpacity());
+        auto* colorEffect = new QGraphicsColorizeEffect();
+        colorEffect->setColor(Qt::red);
+        colorEffect->setStrength(1.0);
+        layer->setGraphicsEffect(colorEffect);
+      }
+    }
    } else if ( m_layer ) {
     m_startTransform = m_layer->transform();
    }
@@ -172,6 +183,13 @@ void TransformHandleItem::mouseReleaseEvent( QGraphicsSceneMouseEvent *e )
       m_overlay->endTransform();
       e->accept();
     } else if ( m_perspectiveOverlay ) {
+      if ( !(e->modifiers() & Qt::ControlModifier) ) {
+        LayerItem* layer = m_perspectiveOverlay->layer();
+        if ( layer ) {
+          layer->setOpacity(1.0);
+          layer->setGraphicsEffect(nullptr);
+        }
+      }
       m_perspectiveOverlay->endWarp();
       e->accept();
     } else if ( m_layer ) {

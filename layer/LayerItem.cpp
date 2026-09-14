@@ -855,6 +855,8 @@ void LayerItem::setCagePoint( int idx, const QPointF& pos )
   qCDebug(logEditor) << "LayerItem::setCagePoint(): index =" << idx << ", point =" << pos;
   {
     QPointF localPos = mapFromScene(pos);
+    if ( EditorStyle::instance().allowIntegerMoveOnly() )
+        localPos = QPointF(qRound(localPos.x()), qRound(localPos.y()));
     m_cageMesh.setPoint(idx,localPos);
     QRectF newBounds = QPolygonF(m_cageMesh.points()).boundingRect();
     if ( newBounds.x() != 0 || newBounds.y() != 0 ) {
@@ -1096,12 +1098,10 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
 {
   qDebug() << "LayerItem::mouseReleaseEvent(): index =" << m_index << ", name =" << name();
   {
+    setOpacity(1.0);
+    setGraphicsEffect(nullptr);
+
     if ( !isSelected() ) return;
-    
-    // if ( event->modifiers() & Qt::ControlModifier ) {
-      setOpacity(1.0);
-      setGraphicsEffect(nullptr);
-    // }
     
     if ( !m_undoStack ) {
       QGraphicsPixmapItem::mouseReleaseEvent(event);
@@ -1127,6 +1127,9 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
     }
     // m_operationMode = None;
     QGraphicsPixmapItem::mouseReleaseEvent(event);
+    // Qt's default handler deselects the item on click-without-drag (toggle behavior).
+    // We always want the layer to stay selected after an active press.
+    setSelected(true);
   }
 }
 
