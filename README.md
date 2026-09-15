@@ -2,7 +2,7 @@
 
 Copyright 2026, Forschungszentrum Jülich GmbH
 
-Authors: Hartmut Mohlberg, Daniel Krötz <br>
+Authors: Hartmut Mohlberg, Daniel Krötz<br>
 Institute of Neuroscience and Medicine (INM-1), Forschungszentrum Jülich GmbH
 
 ---
@@ -28,20 +28,20 @@ The ImageEditor application requires **Qt6**. Below is a list of Linux distribut
 ### Supported Ubuntu Versions
 | Ubuntu Version | Release Name | Qt6 Support | Native Repo Version |
 | :--- | :--- | :--- | :--- |
-| **Ubuntu 26.04** | Resolute Raccoon | ?~\~E Supported | Qt 6.10.x |
-| **Ubuntu 24.10** | Oracular Oriole | ✅ Supported | Qt 6.6.x |
-| **Ubuntu 24.04 LTS**| Noble Numbat | ✅ Supported | Qt 6.4.x |
-| **Ubuntu 22.04 LTS**| Jammy Jellyfish | �~]~L No | Qt 6.2.4 |
-| **Ubuntu 20.04 LTS**| Focal Fossa | ❌ No | (Qt 5 only) |
+| **Ubuntu 26.04** | Resolute Raccoon | :white_check_mark: Supported | Qt 6.10.x |
+| **Ubuntu 24.10** | Oracular Oriole | :white_check_mark: Supported | Qt 6.6.x |
+| **Ubuntu 24.04 LTS**| Noble Numbat | :x: No | Qt 6.4.x |
+| **Ubuntu 22.04 LTS**| Jammy Jellyfish | :x: No | Qt 6.2.4 |
+| **Ubuntu 20.04 LTS**| Focal Fossa | :x: No | (Qt 5 only) |
 
 [^1]: This version of QT seems to be missing some functionality used in the precompiled version
 
 ### Supported Debian Versions
 | Debian Version | Release Name | Qt6 Support | Native Repo Version |
 | :--- | :--- | :--- | :--- |
-| **Debian 13** | Trixie | ✅ Testing | Qt 6.8.x |
-| **Debian 12** | Bookworm | �~]~L No | Qt 6.4.2 |
-| **Debian 11** | Bullseye | ❌ No | (Qt 5 only) |
+| **Debian 13** | Trixie | :white_check_mark: Testing | Qt 6.8.x |
+| **Debian 12** | Bookworm | :x: No | Qt 6.4.2 |
+| **Debian 11** | Bullseye | :x: No | (Qt 5 only) |
 
 ---
 
@@ -180,7 +180,7 @@ The codebase automatically handles the transition from mirrored() (older Qt6) to
 ---
 
 ## Acknowledgements
-This work was funded by Helmholtz Association’s Initiative and Networking Fund through the Helmholtz International BigBrain Analytics and Learning Laboratory (HIBALL) under the Helmholtz International Lab grant agreement InterLabs-0015, the European Union’s Horizon Europe Programme under the Specific Grant Agreement No. 101147319 (EBRAINS 2.0 Project) and No. 945539 (Human Brain Project SGA3).
+This work was funded by Helmholtz Associations Initiative and Networking Fund through the Helmholtz International BigBrain Analytics and Learning Laboratory (HIBALL) under the Helmholtz International Lab grant agreement InterLabs-0015, the European Unions Horizon Europe Programme under the Specific Grant Agreement No. 101147319 (EBRAINS 2.0 Project) and No. 945539 (Human Brain Project SGA3).
 
 This project was developed in frame of the [BigBrainProject](https://bigbrainproject.org/index.html) and significantly contributed to the [Julich Brain Atlas](https://julich-brain-atlas.de/).
 
