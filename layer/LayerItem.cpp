@@ -570,6 +570,71 @@ QImage LayerItem::applyCageWarp( const QString &caller )
       options.inverseMapping = CageWarpRenderer::InverseMapping::Newton;
       options.inverseIterations = 10;
       QImage warped = m_cageWarpRenderer->warp(m_cageMesh.points(),nullptr,options);
+
+      // The GPU inverse-field warp processes the entire output bounding box, which can
+      // produce opaque output in areas that are transparent in the source (alpha=0).
+      // Apply a CPU alpha mask using the cage mesh forward mapping — same approach as
+      // TriangleWarp — to restore correct transparency.
+      if (!warped.isNull()) {
+        warped = warped.convertToFormat(QImage::Format_ARGB32);
+        const QImage srcA = m_cageMesh.image().convertToFormat(QImage::Format_ARGB32);
+        const QVector<QPointF>& pts = m_cageMesh.points();
+        const int gcols = m_cageMesh.cols();
+        const int grows = m_cageMesh.rows();
+        if (!srcA.isNull() && pts.size() == gcols * grows && gcols >= 2 && grows >= 2) {
+          // Compute output origin = bounding box min of all warped cage points
+          double minX = pts[0].x(), minY = pts[0].y();
+          for (const QPointF& p : pts) { minX = qMin(minX, p.x()); minY = qMin(minY, p.y()); }
+          const QPointF origin(std::floor(minX), std::floor(minY));
+          const double srcW = srcA.width(), srcH = srcA.height();
+
+          // Build alpha mask by scanning each cage cell in output (target) space
+          QVector<bool> alphaMask(warped.width() * warped.height(), false);
+          for (int cy = 0; cy + 1 < grows; ++cy) {
+            for (int cx = 0; cx + 1 < gcols; ++cx) {
+              const QVector<QPointF> dstQuad = {
+                pts[ cy      * gcols + cx    ] - origin,
+                pts[ cy      * gcols + cx + 1] - origin,
+                pts[(cy + 1) * gcols + cx + 1] - origin,
+                pts[(cy + 1) * gcols + cx    ] - origin
+              };
+              const QVector<QPointF> srcQuad = {
+                QPointF( cx      * srcW / (gcols - 1),  cy      * srcH / (grows - 1)),
+                QPointF((cx + 1) * srcW / (gcols - 1),  cy      * srcH / (grows - 1)),
+                QPointF((cx + 1) * srcW / (gcols - 1), (cy + 1) * srcH / (grows - 1)),
+                QPointF( cx      * srcW / (gcols - 1), (cy + 1) * srcH / (grows - 1))
+              };
+              const QRectF bbox = QPolygonF(dstQuad).boundingRect();
+              const int yMin = qMax(0,                 int(bbox.top()));
+              const int yMax = qMin(warped.height()-1, int(bbox.bottom()) + 1);
+              const int xMin = qMax(0,                 int(bbox.left()));
+              const int xMax = qMin(warped.width()-1,  int(bbox.right())  + 1);
+              for (int py = yMin; py <= yMax; ++py) {
+                QPointF start(-1, -1);
+                for (int px = xMin; px <= xMax; ++px) {
+                  const QPointF p(px, py);
+                  if (!GeometryUtils::pointInQuad(p, dstQuad)) continue;
+                  int cnt = 0;
+                  const QPointF srcP = GeometryUtils::barycentric(p, dstQuad, srcQuad, &cnt, start);
+                  const int sx = qBound(0, int(srcP.x()), srcA.width()  - 1);
+                  const int sy = qBound(0, int(srcP.y()), srcA.height() - 1);
+                  if (qAlpha(srcA.pixel(sx, sy)) > 0)
+                    alphaMask[py * warped.width() + px] = true;
+                }
+              }
+            }
+          }
+          // Zero out pixels not covered by the alpha mask
+          for (int py = 0; py < warped.height(); ++py) {
+            QRgb* row = reinterpret_cast<QRgb*>(warped.scanLine(py));
+            for (int px = 0; px < warped.width(); ++px) {
+              if (!alphaMask[py * warped.width() + px])
+                row[px] = qRgba(0, 0, 0, 0);
+            }
+          }
+        }
+      }
+
       setPixmap(QPixmap::fromImage(warped));
       m_image = warped;
       QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
@@ -857,6 +922,66 @@ void LayerItem::setCagePoint( int idx, const QPointF& pos )
     QPointF localPos = mapFromScene(pos);
     if ( EditorStyle::instance().allowIntegerMoveOnly() )
         localPos = QPointF(qRound(localPos.x()), qRound(localPos.y()));
+
+    if ( EditorStyle::instance().noSelfIntersection() ) {
+        const QVector<QPointF>& pts = m_cageMesh.points();
+        const int cols = m_cageMesh.cols();
+        const int rows = m_cageMesh.rows();
+        const int row  = idx / cols;
+        const int col  = idx % cols;
+
+        // True if segments AB and CD properly intersect (strict, not just touching)
+        auto segmentsIntersect = [](const QPointF& a, const QPointF& b,
+                                    const QPointF& c, const QPointF& d) -> bool {
+            auto cr = [](const QPointF& u, const QPointF& v){ return u.x()*v.y() - u.y()*v.x(); };
+            double d1 = cr(d-c, a-c), d2 = cr(d-c, b-c);
+            double d3 = cr(b-a, c-a), d4 = cr(b-a, d-a);
+            return ((d1>0&&d2<0)||(d1<0&&d2>0)) && ((d3>0&&d4<0)||(d3<0&&d4>0));
+        };
+        // Signed area × 2 via shoelace — positive = valid TL→TR→BR→BL winding
+        auto signedArea2 = [](const QPointF& p0, const QPointF& p1,
+                               const QPointF& p2, const QPointF& p3) -> double {
+            return p0.x()*(p1.y()-p3.y()) + p1.x()*(p2.y()-p0.y()) +
+                   p2.x()*(p3.y()-p1.y()) + p3.x()*(p0.y()-p2.y());
+        };
+        // Quad is invalid if opposite edges cross (horizontal/vertical escape)
+        // OR if the overall winding inverts (diagonal escape)
+        auto isSelfIntersecting = [&](const QPointF& p0, const QPointF& p1,
+                                      const QPointF& p2, const QPointF& p3) -> bool {
+            return segmentsIntersect(p0, p1, p2, p3) ||
+                   segmentsIntersect(p1, p2, p3, p0) ||
+                   signedArea2(p0, p1, p2, p3) <= 0;
+        };
+        // Check all quads the moving point (at candidate pos) participates in
+        auto quadsOk = [&](const QPointF& candidate) -> bool {
+            // Temporarily override pt() for this candidate
+            auto ptC = [&](int r, int c) -> QPointF {
+                int i = r * cols + c;
+                return (i == idx) ? candidate : pts[i];
+            };
+            if ( row < rows-1 && col < cols-1 )
+                if ( isSelfIntersecting(ptC(row,col), ptC(row,col+1), ptC(row+1,col+1), ptC(row+1,col)) ) return false;
+            if ( row < rows-1 && col > 0 )
+                if ( isSelfIntersecting(ptC(row,col-1), ptC(row,col), ptC(row+1,col), ptC(row+1,col-1)) ) return false;
+            if ( row > 0 && col > 0 )
+                if ( isSelfIntersecting(ptC(row-1,col-1), ptC(row-1,col), ptC(row,col), ptC(row,col-1)) ) return false;
+            if ( row > 0 && col < cols-1 )
+                if ( isSelfIntersecting(ptC(row-1,col), ptC(row-1,col+1), ptC(row,col+1), ptC(row,col)) ) return false;
+            return true;
+        };
+
+        const QPointF current = pts[idx];
+        if ( quadsOk(localPos) ) {
+            // full move OK — nothing to do, localPos stays
+        } else if ( quadsOk(QPointF(localPos.x(), current.y())) ) {
+            localPos = QPointF(localPos.x(), current.y());   // slide along X only
+        } else if ( quadsOk(QPointF(current.x(), localPos.y())) ) {
+            localPos = QPointF(current.x(), localPos.y());   // slide along Y only
+        } else {
+            return;  // no valid partial move either
+        }
+    }
+
     m_cageMesh.setPoint(idx,localPos);
     QRectF newBounds = QPolygonF(m_cageMesh.points()).boundingRect();
     if ( newBounds.x() != 0 || newBounds.y() != 0 ) {
@@ -877,6 +1002,9 @@ void LayerItem::setCagePoint( int idx, const QPointF& pos )
     }
     m_cageMesh.setActiveCagePointId(idx);
     m_cageMesh.relax();
+    if ( EditorStyle::instance().useGPU() && EditorStyle::instance().liveWarp() ) {
+      applyCageWarp("setCagePoint");
+    }
     update();
   }
 }

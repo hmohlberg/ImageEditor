@@ -28,9 +28,10 @@ The ImageEditor application requires **Qt6**. Below is a list of Linux distribut
 ### Supported Ubuntu Versions
 | Ubuntu Version | Release Name | Qt6 Support | Native Repo Version |
 | :--- | :--- | :--- | :--- |
+| **Ubuntu 26.04** | Resolute Raccoon | ?~\~E Supported | Qt 6.10.x |
 | **Ubuntu 24.10** | Oracular Oriole | ✅ Supported | Qt 6.6.x |
 | **Ubuntu 24.04 LTS**| Noble Numbat | ✅ Supported | Qt 6.4.x |
-| **Ubuntu 22.04 LTS**| Jammy Jellyfish | ✅ Supported [^1] | Qt 6.2.4 |
+| **Ubuntu 22.04 LTS**| Jammy Jellyfish | �~]~L No | Qt 6.2.4 |
 | **Ubuntu 20.04 LTS**| Focal Fossa | ❌ No | (Qt 5 only) |
 
 [^1]: This version of QT seems to be missing some functionality used in the precompiled version
@@ -38,8 +39,8 @@ The ImageEditor application requires **Qt6**. Below is a list of Linux distribut
 ### Supported Debian Versions
 | Debian Version | Release Name | Qt6 Support | Native Repo Version |
 | :--- | :--- | :--- | :--- |
-| **Debian 13** | Trixie | ✅ Testing | Qt 6.6 / 6.7 |
-| **Debian 12** | Bookworm | ✅ Stable | Qt 6.4.2 |
+| **Debian 13** | Trixie | ✅ Testing | Qt 6.8.x |
+| **Debian 12** | Bookworm | �~]~L No | Qt 6.4.2 |
 | **Debian 11** | Bullseye | ❌ No | (Qt 5 only) |
 
 ---

@@ -43,6 +43,7 @@ set(SOURCES
     core/ImageProcessor.cpp
     gui/MainWindow.cpp
     gui/ImageView.cpp
+    gui/ConfigDialog.cpp
     layer/LayerItem.cpp
     layer/CageMesh.cpp
     layer/CageControlPointItem.cpp
@@ -85,6 +86,7 @@ set(HEADERS
     core/ImageProcessor.h
     gui/MainWindow.h
     gui/ImageView.h
+    gui/ConfigDialog.h
     layer/LayerItem.h
     layer/CageMesh.h
     layer/CageControlPointItem.h

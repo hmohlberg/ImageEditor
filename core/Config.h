@@ -64,6 +64,7 @@
     }
     
     void load( const QString &path ) {
+      m_path = path;
       QSettings settings(path, QSettings::IniFormat);
       m_version = settings.value("Main/version","public").toString();
       m_windowSize = settings.value("Main/windowSize","default").toString();
@@ -93,6 +94,10 @@
       // Cage quads
       m_useCageQuads = settings.value("Cage/quads", true).toBool();
       m_usegpu = settings.value("Cage/gpu", false).toBool();
+      // Live warp during drag (GPU only, experimental)
+      m_liveWarp = settings.value("Cage/liveWarp", false).toBool();
+      // Prevent self-intersection of cage quad edges
+      m_noSelfIntersection = settings.value("Cage/noSelfIntersection", true).toBool();
       // Cage control point radius
       m_controlPointRadius = settings.value("Cage/controlPointRadius", 4).toInt();
       // Cage control point color
@@ -181,6 +186,8 @@
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
     bool useGPU() const { return m_usegpu; }
+    bool liveWarp() const { return m_liveWarp; }
+    bool noSelfIntersection() const { return m_noSelfIntersection; }
     bool useClaudeQuads() const { return m_useClaudeQuads; }
     bool hasPerspective() const { return m_hasPerspective; }
     bool binaryMasking() const { return m_binaryMasking; }
@@ -189,6 +196,113 @@
     double layerOverlayOpacity() const { return m_layerOverlayOpacity; }
     Qt::TransformationMode transformationMode() const { return m_transformationMode; }
     InterpolationMode interpolationMode() const { return m_interpolationMode; }
+    QString path() const { return m_path; }
+
+    // Setters (used by ConfigDialog to apply changes at runtime)
+    void setLoggingEnabled(bool v) { m_loggingIsEnabled = v; QLoggingCategory::setFilterRules(v ? "editor.graphics.debug=true" : "editor.graphics.debug=false"); }
+    void setWindowSize(const QString& v) { m_windowSize = v; }
+    void setHasPerspective(bool v) { m_hasPerspective = v; }
+    void setBinaryMasking(bool v) { m_binaryMasking = v; }
+    void setCrosshair(bool v) { m_crosshair = v; }
+    void setCursorSize(int v) { m_cursorSize = v; }
+    void setCursorFillColor(const QColor& v) { m_cursorFillColor = v; }
+    void setCursorBorderColor(const QColor& v) { m_cursorBorderColor = v; }
+    void setUseClaudeQuads(bool v) { m_useClaudeQuads = v; }
+    void setUseCageQuads(bool v) { m_useCageQuads = v; }
+    void setUseGPU(bool v) { m_usegpu = v; }
+    void setLiveWarp(bool v) { m_liveWarp = v; }
+    void setNoSelfIntersection(bool v) { m_noSelfIntersection = v; }
+    void setControlPointRadius(int v) { m_controlPointRadius = v; }
+    void setControlPointColor(const QColor& v) { m_controlPointColor = v; }
+    void setCageGridColor(const QColor& v) { m_gridColor = v; }
+    void setCageWarpColor(const QColor& v) { m_cageWarpColor = v; }
+    void setHandleColor(const QColor& v) { m_handleColor = v; }
+    void setHandleSize(int v) { m_handleSize = v; }
+    void setLassoColor(const QColor& v) { m_lassoColor = v; }
+    void setLassoWidth(int v) { m_lassoWidth = v; }
+    void setPolygonWidth(int v) { m_polygonWidth = v; }
+    void setAllowIntegerMoveOnly(bool v) { m_allowIntegerMoveOnly = v; }
+    void setLayerOverlayOpacity(double v) { m_layerOverlayOpacity = v; }
+    void setRotationSingleStep(double v) { m_rotationSingleStep = v; }
+    void setHandleRadius(double v) { m_handleRadius = v; }
+    void setTransformationMode(Qt::TransformationMode v) { m_transformationMode = v; }
+    void setInterpolationMode(InterpolationMode v) { m_interpolationMode = v; }
+    void setPath(const QString& v) { m_path = v; }
+
+    void resetToDefaults() {
+      m_lassoColor        = Qt::red;
+      m_handleColor       = Qt::cyan;
+      m_handleSize        = 10;
+      m_lassoWidth        = 3;
+      m_polygonWidth      = 10;
+      m_handleRadius      = 4.0;
+      m_cursorSize        = 0;
+      m_controlPointRadius= 4;
+      m_gridColor         = Qt::green;
+      m_controlPointColor = Qt::red;
+      m_cursorFillColor   = Qt::black;
+      m_cursorBorderColor = Qt::white;
+      m_cageWarpColor     = Qt::green;
+      m_rotationSingleStep= 0.5;
+      m_layerOverlayOpacity = 0.8;
+      m_loggingIsEnabled  = false;
+      m_useCageQuads      = true;
+      m_usegpu            = false;
+      m_liveWarp          = false;
+      m_noSelfIntersection= true;
+      m_allowIntegerMoveOnly = true;
+      m_useClaudeQuads    = true;
+      m_hasPerspective    = true;
+      m_binaryMasking     = true;
+      m_crosshair         = true;
+      m_windowSize        = "default";
+      m_version           = "public";
+      m_transformationMode= Qt::FastTransformation;
+      m_interpolationMode = InterpolationMode::Linear;
+      QLoggingCategory::setFilterRules("editor.graphics.debug=false");
+    }
+
+    void save() {
+      if ( m_path.isEmpty() ) return;
+      QSettings s(m_path, QSettings::IniFormat);
+      s.setValue("Main/version",           m_version);
+      s.setValue("Main/windowSize",        m_windowSize);
+      s.setValue("Main/enableLogging",     m_loggingIsEnabled);
+      s.setValue("Main/perspective",       m_hasPerspective);
+      s.setValue("Main/binaryMasking",     m_binaryMasking);
+      s.setValue("Main/crosshair",         m_crosshair);
+      s.setValue("Main/cursorSize",        m_cursorSize);
+      s.setValue("Main/cursorFillColor",   m_cursorFillColor.name());
+      s.setValue("Main/cursorBorderColor", m_cursorBorderColor.name());
+      s.setValue("Cage/claudeQuads",          m_useClaudeQuads);
+      s.setValue("Cage/quads",               m_useCageQuads);
+      s.setValue("Cage/gpu",                 m_usegpu);
+      s.setValue("Cage/liveWarp",            m_liveWarp);
+      s.setValue("Cage/noSelfIntersection",  m_noSelfIntersection);
+      s.setValue("Cage/controlPointRadius",  m_controlPointRadius);
+      s.setValue("Cage/controlPointColor",   m_controlPointColor.name());
+      s.setValue("Cage/gridColor",           m_gridColor.name());
+      s.setValue("Cage/color",               m_cageWarpColor.name());
+      s.setValue("Scale/handleColor", m_handleColor.name());
+      s.setValue("Scale/handleSize",  m_handleSize);
+      s.setValue("Lasso/color", m_lassoColor.name());
+      s.setValue("Lasso/width", m_lassoWidth);
+      s.setValue("Polygon/width", m_polygonWidth);
+      s.setValue("ImageLayer/integerMoveOnly",    m_allowIntegerMoveOnly);
+      s.setValue("ImageLayer/overlayOpacity",     m_layerOverlayOpacity);
+      s.setValue("ImageLayer/rotationSingleStep", m_rotationSingleStep);
+      s.setValue("ImageLayer/handleRadius",       m_handleRadius);
+      QString tm = (m_transformationMode == Qt::FastTransformation) ? "fast" : "smooth";
+      s.setValue("ImageLayer/transformationMode", tm);
+      QString im;
+      switch (m_interpolationMode) {
+        case InterpolationMode::Nearest: im = "nearest"; break;
+        case InterpolationMode::Bicubic: im = "bicubic"; break;
+        default:                         im = "linear";  break;
+      }
+      s.setValue("ImageLayer/interpolationMode", im);
+      s.sync();
+    }
 
    private:
    
@@ -208,8 +322,10 @@
           m_rotationSingleStep(0.5),
           m_layerOverlayOpacity(0.8),
           m_loggingIsEnabled(false), 
-          m_useCageQuads(true), 
+          m_useCageQuads(true),
           m_usegpu(false),
+          m_liveWarp(false),
+          m_noSelfIntersection(true),
           m_allowIntegerMoveOnly(true),
           m_useClaudeQuads(true), 
           m_hasPerspective(true),
@@ -217,9 +333,10 @@
           m_crosshair(true),
           m_windowSize("default"),
           m_version("public"),
-          m_cageWarpColor(Qt::green), 
+          m_cageWarpColor(Qt::green),
           m_transformationMode(Qt::FastTransformation),
-          m_interpolationMode(InterpolationMode::Linear) 
+          m_interpolationMode(InterpolationMode::Linear),
+          m_path(QString())
     { 
       if ( m_loggingIsEnabled ) {
         QLoggingCategory::setFilterRules("editor.graphics.debug=true");
@@ -237,6 +354,7 @@
     QColor m_cursorBorderColor;
     QString m_windowSize;
     QString m_version;
+    QString m_path;
     
     Qt::TransformationMode m_transformationMode;
     InterpolationMode m_interpolationMode;
@@ -249,6 +367,8 @@
     bool m_binaryMasking;
     bool m_allowIntegerMoveOnly;
     bool m_usegpu;
+    bool m_liveWarp;
+    bool m_noSelfIntersection;
     
     int m_lassoWidth;
     int m_polygonWidth;

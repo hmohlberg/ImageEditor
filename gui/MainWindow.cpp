@@ -17,6 +17,7 @@
 
 #include "MainWindow.h"
 #include "ImageView.h"
+#include "ConfigDialog.h"
 
 #include "../core/ImageLoader.h"
 #include "../core/ImageProcessor.h"
@@ -1340,8 +1341,8 @@ void MainWindow::createActions()
 {
   qCDebug(logEditor) << "MainWindow::createActions(): Processing...";
   {
-    m_infoAction = new QAction(tr("Info"), this);
-    connect(m_infoAction, &QAction::triggered, this, &MainWindow::info);
+    m_configAction = new QAction(tr("Config"), this);
+    connect(m_configAction, &QAction::triggered, this, &MainWindow::showConfig);
     
     m_sortHistoryAction = new QAction(tr("Sort and merge history"), this);
     connect(m_sortHistoryAction, &QAction::triggered, m_imageView, &ImageView::rebuildUndoStack);
@@ -1658,8 +1659,8 @@ void MainWindow::createToolbars()
     fileToolbar->addAction(m_saveHistoryAction);
     fileToolbar->insertSeparator(m_saveHistoryAction);
     fileToolbar->addAction(m_openHistoryAction);
-    fileToolbar->addAction(m_infoAction);
-    fileToolbar->insertSeparator(m_infoAction);
+    fileToolbar->addAction(m_configAction);
+    fileToolbar->insertSeparator(m_configAction);
     // add spacer
     QWidget* spacer = new QWidget();
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -2220,18 +2221,11 @@ double MainWindow::getLayerOperationParameter( int mode )
   return 0.0;
 }
 
-void MainWindow::info()
+void MainWindow::showConfig()
 {
-  qCDebug(logEditor) << "MainWindow::info(): Processing...";
-  {
-    for ( auto* item : m_imageView->getScene()->items(Qt::DescendingOrder) ) {
-      auto* layer = dynamic_cast<LayerItem*>(item);
-      if ( layer ) {
-        layer->printself(true);
-      }  
-    }
-    m_imageView->printself();
-  }
+  qCDebug(logEditor) << "MainWindow::showConfig(): Processing...";
+  ConfigDialog dlg(this);
+  dlg.exec();
 }
 
 void MainWindow::setLayerOperationMode( int mode, bool updateMode ) 

@@ -100,7 +100,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     void toggleDocks();
     void createMaskImage();
     void forcedUpdate();
-    void info();
+    void showConfig();
     
     void updateButtonState();
     void updateControlButtonState();
@@ -177,7 +177,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     QAction* m_showDockWidgets = nullptr;
     QAction* m_lassoAction = nullptr;
     QAction* m_polygonAction = nullptr;
-    QAction* m_infoAction = nullptr; 
+    QAction* m_configAction = nullptr;
     
     QLabel *m_messageLabel = nullptr;
     
