@@ -1814,6 +1814,7 @@ void MainWindow::createToolbars()
 
     auto* editorBtn = new QPushButton(tr("Editor"));
     editorBtn->setFixedHeight(24);
+    editorBtn->setFocusPolicy(Qt::NoFocus);
     m_layerToolbar->addWidget(editorBtn);
     connect(editorBtn, &QPushButton::clicked, this, [this] {
         const int id = m_selectLayerItem->currentData().toInt();

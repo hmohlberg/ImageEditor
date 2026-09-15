@@ -387,6 +387,27 @@ LayerEditorView::LayerEditorView(QWidget* parent)
     connect(m_undoStack,&QUndoStack::canUndoChanged, m_undoBtn, &QPushButton::setEnabled);
     connect(m_undoStack,&QUndoStack::canRedoChanged, m_redoBtn, &QPushButton::setEnabled);
     connect(m_updateBtn,&QPushButton::clicked,  this, &LayerEditorView::onUpdateClicked);
+    connect(btnQuit, &QPushButton::clicked, this, [this] {
+        if (m_modified) {
+            QMessageBox dlg(this);
+            dlg.setWindowTitle(tr("Layer Editor"));
+            dlg.setText(tr("The layer currently in the workflow has not yet been updated. "
+                           "Any edits made will be lost when switching layers if an update has not been "
+                           "carried out beforehand. Should an update be carried out now?"));
+            dlg.setIcon(QMessageBox::Warning);
+            auto* yesBtn    = dlg.addButton(tr("Yes"),         QMessageBox::NoRole);
+            auto* skipBtn   = dlg.addButton(tr("Skip update"), QMessageBox::NoRole);
+            auto* cancelBtn = dlg.addButton(tr("Cancel"),      QMessageBox::NoRole);
+            dlg.setDefaultButton(cancelBtn);
+            dlg.exec();
+            QAbstractButton* clicked = dlg.clickedButton();
+            if (clicked == cancelBtn) return;
+            if (clicked == yesBtn) emit updateRequested(m_layerImage);
+            Q_UNUSED(skipBtn)
+        }
+        emit quitRequested();
+    });
+
     connect(btnSave, &QPushButton::clicked, this, [this] {
         if (m_layerImage.isNull()) return;
         const QString path = QFileDialog::getSaveFileName(
@@ -397,7 +418,6 @@ LayerEditorView::LayerEditorView(QWidget* parent)
         if (!m_layerImage.save(path))
             QMessageBox::warning(this, tr("Save Mask"), tr("Could not save image to:\n%1").arg(path));
     });
-    connect(btnQuit,    &QPushButton::clicked,  this, &LayerEditorView::quitRequested);
     connect(editorView, &EditorGraphicsView::scaleChanged, this, &LayerEditorView::scaleChanged);
 
     // Keyboard shortcut: E toggles eraser
