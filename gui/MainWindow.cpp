@@ -18,11 +18,13 @@
 #include "MainWindow.h"
 #include "ImageView.h"
 #include "ConfigDialog.h"
+#include "LayerEditorView.h"
 
 #include "../core/ImageLoader.h"
 #include "../core/ImageProcessor.h"
 
 #include "../layer/LayerItem.h"
+#include "../layer/Layer.h"
 #include "../undo/AbstractCommand.h"
 #include "../undo/PaintStrokeCommand.h"
 #include "../undo/TransformLayerCommand.h"
@@ -136,7 +138,34 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     QGraphicsScene *scene = m_imageView->getScene();
     scene->setBackgroundBrush(QWidgetUtils::createCheckerBrush());
     m_imageView->setScene(scene);
-    setCentralWidget(m_imageView);
+
+    m_layerEditorView = new LayerEditorView(this);
+    connect(m_layerEditorView, &LayerEditorView::quitRequested,
+            this, [this]{ m_centralStack->setCurrentIndex(0); });
+    connect(m_layerEditorView, &LayerEditorView::updateRequested,
+            this, &MainWindow::onLayerUpdateRequested);
+    connect(m_layerEditorView, &LayerEditorView::scaleChanged, this, [this](double scale) {
+        if (m_statusScaleLabel)
+            m_statusScaleLabel->setText(QString("Scale: %1×").arg(scale, 0, 'f', 2));
+    });
+    connect(m_layerEditorView, &LayerEditorView::pickerSampled,
+            this, [this](int x, int y, const QColor& c, const QString& text) {
+                if (m_statusPosLabel)
+                    m_statusPosLabel->setText(QString("|  Pos: %1, %2").arg(x).arg(y));
+                if (m_statusColorSwatch) {
+                    QPixmap pix(24, 24);
+                    pix.fill(c);
+                    m_statusColorSwatch->setPixmap(pix);
+                    m_statusColorSwatch->setToolTip(text);
+                }
+                if (m_statusColorText)
+                    m_statusColorText->setText(QString("|  Color: %1").arg(text));
+            });
+
+    m_centralStack = new QStackedWidget(this);
+    m_centralStack->addWidget(m_imageView);       // index 0 — normal view
+    m_centralStack->addWidget(m_layerEditorView); // index 1 — layer editor
+    setCentralWidget(m_centralStack);
 
     // >>>
     createActions();
@@ -1120,6 +1149,15 @@ void MainWindow::layerItemClicked( QListWidgetItem* item )
 void MainWindow::onLayerItemClicked( QListWidgetItem* item )
 {
   if ( !item ) return;
+
+  // If layer editor is active, switch it to the newly selected layer
+  if (m_centralStack && m_centralStack->currentIndex() == 1) {
+      void* ptr = item->data(Qt::UserRole).value<void*>();
+      if (Layer* layer = static_cast<Layer*>(ptr))
+          editLayer(layer);
+      return;
+  }
+
   bool ok = false;
   int layerNumber = item->text().section(' ', 1, 1).toInt(&ok);
   layerNumber = ok ? layerNumber : -1;
@@ -1214,6 +1252,11 @@ void MainWindow::showLayerContextMenu( const QPoint& pos )
           qCDebug(logEditor) << "Saved layer " << layer->name() << " image as " << fileName;
           qCDebug(logEditor) << "  geometry: " << layer->m_item->boundingRect();
         }
+    });
+    menu.addAction("Edit Layer", [this, item]() {
+        Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
+        if ( !layer ) return;
+        editLayer(layer);
     });
     menu.addAction("Delete Layer", this, &MainWindow::deleteLayer);
     menu.addAction("Merge Layer", this, &MainWindow::mergeLayer);
@@ -1760,6 +1803,25 @@ void MainWindow::createToolbars()
     m_selectLayerItem->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_layerToolbar->addWidget(m_selectLayerItem);
     connect(m_selectLayerItem,&QComboBox::currentTextChanged,this,&MainWindow::selectLayerItem);
+    connect(m_selectLayerItem, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        if (m_centralStack && m_centralStack->currentIndex() == 1) {
+            const int id = m_selectLayerItem->currentData().toInt();
+            for (Layer* l : m_imageView->layers()) {
+                if (l->id() == id) { editLayer(l); return; }
+            }
+        }
+    });
+
+    auto* editorBtn = new QPushButton(tr("Editor"));
+    editorBtn->setFixedHeight(24);
+    m_layerToolbar->addWidget(editorBtn);
+    connect(editorBtn, &QPushButton::clicked, this, [this] {
+        const int id = m_selectLayerItem->currentData().toInt();
+        for (Layer* l : m_imageView->layers()) {
+            if (l->id() == id) { editLayer(l); return; }
+        }
+    });
+
     // --- operation modus ---
     m_transformLayerItem = new QComboBox();
     auto *view = new QListView(m_transformLayerItem);
@@ -2146,32 +2208,32 @@ void MainWindow::createStatusbar()
     m_messageLabel->setFrameStyle(QFrame::NoFrame);
     statusBar()->insertWidget(0, m_messageLabel);
     
-	QLabel* scaleLabel = new QLabel(this);
-    QLabel* posLabel   = new QLabel(this);
-    QLabel* cursorColorLabel = new QLabel(this);
-    cursorColorLabel->setFixedSize(24,24);
-    QLabel* cursorColorText = new QLabel(this);
+    m_statusScaleLabel  = new QLabel(this);
+    m_statusPosLabel    = new QLabel(this);
+    m_statusColorSwatch = new QLabel(this);
+    m_statusColorSwatch->setFixedSize(24, 24);
+    m_statusColorText   = new QLabel(this);
 
-    statusBar()->addPermanentWidget(scaleLabel);
-    statusBar()->addPermanentWidget(posLabel);
-    statusBar()->addPermanentWidget(cursorColorText);
-    statusBar()->addPermanentWidget(cursorColorLabel);
-    
-    connect(m_imageView, &ImageView::scaleChanged, this, [scaleLabel](double scale){
-        scaleLabel->setText(QString("Scale: %1×").arg(scale, 0, 'f', 2));
+    statusBar()->addPermanentWidget(m_statusScaleLabel);
+    statusBar()->addPermanentWidget(m_statusPosLabel);
+    statusBar()->addPermanentWidget(m_statusColorText);
+    statusBar()->addPermanentWidget(m_statusColorSwatch);
+
+    connect(m_imageView, &ImageView::scaleChanged, this, [this](double scale){
+        m_statusScaleLabel->setText(QString("Scale: %1×").arg(scale, 0, 'f', 2));
     });
 
-    connect(m_imageView, &ImageView::cursorPositionChanged, this, [posLabel](int x, int y){
-        posLabel->setText(QString("|  Pos: %1, %2").arg(x).arg(y));
+    connect(m_imageView, &ImageView::cursorPositionChanged, this, [this](int x, int y){
+        m_statusPosLabel->setText(QString("|  Pos: %1, %2").arg(x).arg(y));
     });
-    
-    connect(m_imageView, &ImageView::cursorColorChanged, this, [cursorColorText,cursorColorLabel](const QColor& c){
-        QPixmap pix(24,24); 
-        pix.fill(c); 
-        cursorColorLabel->setPixmap(pix);
-        cursorColorText->setText(QString("|  Color: R:%1 G:%2 B:%3").arg(c.red()).arg(c.green()).arg(c.blue()));
-        cursorColorLabel->setToolTip(QString("R:%1 G:%2 B:%3 A:%4")
-                                 .arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha()));
+
+    connect(m_imageView, &ImageView::cursorColorChanged, this, [this](const QColor& c){
+        QPixmap pix(24, 24);
+        pix.fill(c);
+        m_statusColorSwatch->setPixmap(pix);
+        m_statusColorText->setText(QString("|  Color: R:%1 G:%2 B:%3").arg(c.red()).arg(c.green()).arg(c.blue()));
+        m_statusColorSwatch->setToolTip(QString("R:%1 G:%2 B:%3 A:%4")
+                                        .arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha()));
     });
   }
 }
@@ -2226,6 +2288,55 @@ void MainWindow::showConfig()
   qCDebug(logEditor) << "MainWindow::showConfig(): Processing...";
   ConfigDialog dlg(this);
   dlg.exec();
+}
+
+void MainWindow::editLayer(Layer* layer)
+{
+  if (m_centralStack->currentIndex() == 1 && m_layerEditorView->isModified()) {
+    QMessageBox dlg(this);
+    dlg.setWindowTitle(tr("Layer Editor"));
+    dlg.setText(tr("The layer currently in the workflow has not yet been updated. "
+                   "Any edits made will be lost when switching layers if an update has not been "
+                   "carried out beforehand. Should an update be carried out now?"));
+    dlg.setIcon(QMessageBox::Warning);
+    auto* yesBtn    = dlg.addButton(tr("Yes"),         QMessageBox::NoRole);
+    auto* skipBtn   = dlg.addButton(tr("Skip update"), QMessageBox::NoRole);
+    auto* cancelBtn = dlg.addButton(tr("Cancel"),      QMessageBox::NoRole);
+    dlg.setDefaultButton(cancelBtn);
+    dlg.exec();
+    if (dlg.clickedButton() == cancelBtn) return;
+    if (dlg.clickedButton() == yesBtn)
+        onLayerUpdateRequested(m_layerEditorView->layerImage());
+  }
+
+  m_editingLayer = layer;
+
+  QImage layerImg;
+  if (layer->m_item) {
+      if (auto* li = dynamic_cast<LayerItem*>(layer->m_item))
+          layerImg = li->image();
+      else if (auto* pi = dynamic_cast<QGraphicsPixmapItem*>(layer->m_item))
+          layerImg = pi->pixmap().toImage();
+  }
+  if (layerImg.isNull())
+      layerImg = layer->image();
+
+  const QImage mainImg = m_layerItem ? m_layerItem->image() : QImage();
+  const QPoint origin  = layer->m_item ? layer->m_item->pos().toPoint() : QPoint();
+  const bool preserveMode = (m_centralStack->currentIndex() == 1);
+  m_layerEditorView->setImages(layerImg, mainImg, origin, preserveMode);
+  m_centralStack->setCurrentIndex(1);
+}
+
+void MainWindow::onLayerUpdateRequested(const QImage& modifiedImage)
+{
+  if (!m_editingLayer || !m_editingLayer->m_item) return;
+  auto* li = dynamic_cast<LayerItem*>(m_editingLayer->m_item);
+  if (!li) return;
+
+  li->setImage(modifiedImage);
+  li->updatePixmap();
+  m_imageView->update();
 }
 
 void MainWindow::setLayerOperationMode( int mode, bool updateMode ) 

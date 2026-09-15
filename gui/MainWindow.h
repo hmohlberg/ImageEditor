@@ -31,9 +31,12 @@
 #include <QToolBar>
 #include <QLabel>
 #include <QIcon>
+#include <QStackedWidget>
 
 class ImageView;
+class LayerEditorView;
 class LayerItem;
+class Layer;
 class DarkHistoryDelegate;
 
 class MainWindow : public QMainWindow, public IMainSystem
@@ -101,7 +104,9 @@ class MainWindow : public QMainWindow, public IMainSystem
     void createMaskImage();
     void forcedUpdate();
     void showConfig();
-    
+    void editLayer(Layer* layer);
+    void onLayerUpdateRequested(const QImage& modifiedImage);
+
     void updateButtonState();
     void updateControlButtonState();
     void updatePolygonEnabledState( bool isToggled );
@@ -124,8 +129,11 @@ class MainWindow : public QMainWindow, public IMainSystem
     
     QComboBox* buildDefaultColorComboBox( const QString& name = "Label" );
     
-    ImageView* m_imageView = nullptr;
-    LayerItem* m_layerItem = nullptr;
+    ImageView*       m_imageView       = nullptr;
+    LayerEditorView* m_layerEditorView = nullptr;
+    QStackedWidget*  m_centralStack    = nullptr;
+    LayerItem*       m_layerItem       = nullptr;
+    Layer*           m_editingLayer    = nullptr;
     
     QUndoView* m_undoView;
     DarkHistoryDelegate* m_undoViewDelegate;
@@ -179,7 +187,11 @@ class MainWindow : public QMainWindow, public IMainSystem
     QAction* m_polygonAction = nullptr;
     QAction* m_configAction = nullptr;
     
-    QLabel *m_messageLabel = nullptr;
+    QLabel* m_messageLabel      = nullptr;
+    QLabel* m_statusScaleLabel  = nullptr;
+    QLabel* m_statusPosLabel    = nullptr;
+    QLabel* m_statusColorText   = nullptr;
+    QLabel* m_statusColorSwatch = nullptr;
     
     QComboBox* m_polygonIndexBox = nullptr;
     QComboBox* m_transformLayerItem = nullptr;
