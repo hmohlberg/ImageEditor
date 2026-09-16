@@ -10,12 +10,10 @@ Institute of Neuroscience and Medicine (INM-1), Forschungszentrum Jülich GmbH
 A versatile Qt6-based image processing tool with JSON-history support, designed to run on Debian Linux and macOS. It supports both a Graphical User Interface and a headless batch mode for server environments.
 
 ## Features
-- Basic interactive image manipulation tools: Provides a few image manipulation tools, the use of which can be fully documented and saved in a JSON project file for later use.
-- Batch Processing: Run transformations via CLI without a GUI.
-- JSON Project Support: Load and apply transformation histories from JSON files.
-- Offscreen Optimized: Perfect for headless servers using the 'minimal' platform plugin.
-- High-Res Ready: Automatically handles large image allocations (>128MB).
-- Vulkan Support: Optional hardware acceleration for rendering.
+- **Basic interactive image manipulation tools**: Provides a few image manipulation tools, the use of which can be fully documented and saved in a JSON project file for later use.
+- **Batch Processing**: Run transformations via CLI without a GUI.
+- **JSON Project Support**: Load and apply transformation histories from JSON files.
+- **Offscreen Optimized**: Perfect for headless servers using the 'minimal' platform plugin.
 - **BigTIFF / Pyramid TIFF Viewer**: Tile-based, pan/zoomable viewer for very large TIFF and BigTIFF files stored as image pyramids (multi-resolution IFDs). Supports all standard TIFF compression codecs via libtiff. Requires `libtiff` (≥ 4.0).
 - **HDF5 Image Viewer** *(optional)*: Tile-based viewer for large HDF5 image datasets with built-in pyramid support (`/pyramid/00`–`/pyramid/N`). Reads RGB and grayscale datasets with chunk-based tile loading. Requires `libhdf5`. The viewer is compiled in automatically when HDF5 is found; the rest of the application builds without it.
 - **Color LUT / Color Table**: A toolbar color-table selector applies lookup tables (LUT) to both the standard image view and the BigTIFF/HDF5 viewers. Includes general-purpose LUTs (Jet, Viridis, Plasma, Inferno, Hot, Cold, Copper) as well as histology-specific LUTs (Nissl, Myelin) suitable for stained tissue section images.
