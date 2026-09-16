@@ -35,6 +35,10 @@
 
 class ImageView;
 class LayerEditorView;
+class BigTiffViewer;
+#ifdef HASHDF5
+class Hdf5Viewer;
+#endif
 class LayerItem;
 class Layer;
 class DarkHistoryDelegate;
@@ -106,6 +110,10 @@ class MainWindow : public QMainWindow, public IMainSystem
     void showConfig();
     void editLayer(Layer* layer);
     void onLayerUpdateRequested(const QImage& modifiedImage);
+    void openBigTiff(const QString& filePath);
+#ifdef HASHDF5
+    void openHdf5(const QString& filePath);
+#endif
 
     void updateButtonState();
     void updateControlButtonState();
@@ -131,6 +139,10 @@ class MainWindow : public QMainWindow, public IMainSystem
     
     ImageView*       m_imageView       = nullptr;
     LayerEditorView* m_layerEditorView = nullptr;
+    BigTiffViewer*   m_bigTiffViewer   = nullptr;
+#ifdef HASHDF5
+    Hdf5Viewer*      m_hdf5Viewer      = nullptr;
+#endif
     QStackedWidget*  m_centralStack    = nullptr;
     LayerItem*       m_layerItem       = nullptr;
     Layer*           m_editingLayer    = nullptr;

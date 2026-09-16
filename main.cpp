@@ -253,13 +253,13 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   }
   // --- Set variables ---
   obj["imagePath"] = parser.value(fileOption);
-  if ( !validateFile(obj["imagePath"].toString(),"image file",{"png","mnc","mnc2","tif","tiff"}) ) {
+  if ( !validateFile(obj["imagePath"].toString(),"image file",{"png","mnc","mnc2","tif","tiff","h5","hdf5","hdf"}) ) {
     exit(1);
   }
   obj["outputPath"] = parser.value(outFileOption);
   obj["classPath"] = parser.value(classFileOption);
   obj["imagePath"] = parser.value(fileOption);
-  if ( !validateFile(obj["imagePath"].toString(),"image file",{"png","mnc","mnc2","tif","tiff"}) ) {
+  if ( !validateFile(obj["imagePath"].toString(),"image file",{"png","mnc","mnc2","tif","tiff","h5","hdf5","hdf"}) ) {
    exit(1);
   }
   obj["historyPath"] = parser.value(projectFileOption);

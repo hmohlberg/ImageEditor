@@ -21,6 +21,7 @@ if(APPLE)
   set(CMAKE_PREFIX_PATH "/opt/homebrew/opt/qtbase")
 endif()
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets Svg)
+find_package(TIFF REQUIRED)
 
 # itk find
 if(APPLE)
@@ -36,6 +37,14 @@ else()
   message(STATUS "ITK not found")
 endif()
 
+# hdf5 find (optional)
+find_package(HDF5 QUIET COMPONENTS C)
+if(HDF5_FOUND)
+  message(STATUS "Found HDF5 ${HDF5_VERSION} - HDF5 support enabled")
+else()
+  message(STATUS "HDF5 not found - HDF5 support will not be built")
+endif()
+
 # Quellen
 set(SOURCES
     main.cpp
@@ -45,6 +54,7 @@ set(SOURCES
     gui/ImageView.cpp
     gui/ConfigDialog.cpp
     gui/LayerEditorView.cpp
+    gui/BigTiffViewer.cpp
     layer/LayerItem.cpp
     layer/CageMesh.cpp
     layer/CageControlPointItem.cpp
@@ -133,12 +143,18 @@ qt_add_executable(${PROJECT_NAME}
    resources.qrc
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets Qt6::Svg)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets Qt6::Svg TIFF::TIFF)
 if(ITK_FOUND)
     include(${ITK_USE_FILE})
     target_include_directories(ImageEditor PRIVATE ${ITK_INCLUDE_DIRS})
     target_link_libraries(ImageEditor PRIVATE ${ITK_LIBRARIES})
     target_compile_definitions(ImageEditor PRIVATE HASITK)
+endif()
+if(HDF5_FOUND)
+    target_sources(ImageEditor PRIVATE gui/Hdf5Viewer.cpp)
+    target_include_directories(ImageEditor PRIVATE ${HDF5_INCLUDE_DIRS})
+    target_link_libraries(ImageEditor PRIVATE ${HDF5_LIBRARIES})
+    target_compile_definitions(ImageEditor PRIVATE HASHDF5)
 endif()
 
 # Automatische Suche nach Plugins ermöglichen

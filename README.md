@@ -16,6 +16,9 @@ A versatile Qt6-based image processing tool with JSON-history support, designed 
 - Offscreen Optimized: Perfect for headless servers using the 'minimal' platform plugin.
 - High-Res Ready: Automatically handles large image allocations (>128MB).
 - Vulkan Support: Optional hardware acceleration for rendering.
+- **BigTIFF / Pyramid TIFF Viewer**: Tile-based, pan/zoomable viewer for very large TIFF and BigTIFF files stored as image pyramids (multi-resolution IFDs). Supports all standard TIFF compression codecs via libtiff. Requires `libtiff` (≥ 4.0).
+- **HDF5 Image Viewer** *(optional)*: Tile-based viewer for large HDF5 image datasets with built-in pyramid support (`/pyramid/00`–`/pyramid/N`). Reads RGB and grayscale datasets with chunk-based tile loading. Requires `libhdf5`. The viewer is compiled in automatically when HDF5 is found; the rest of the application builds without it.
+- **Color LUT / Color Table**: A toolbar color-table selector applies lookup tables (LUT) to both the standard image view and the BigTIFF/HDF5 viewers. Includes general-purpose LUTs (Jet, Viridis, Plasma, Inferno, Hot, Cold, Copper) as well as histology-specific LUTs (Nissl, Myelin) suitable for stained tissue section images.
 
 ---
 
@@ -52,48 +55,75 @@ To set up the development environment on a supported Debian or Ubuntu system, ru
 # Update package lists
 sudo apt update
 
+# Install build tools
+sudo apt install build-essential cmake
+
 # Install Qt6 base development files
 sudo apt install qt6-base-dev qt6-declarative-dev qt6-svg-dev
 
-# Optional: Install build tools if not present
-sudo apt install build-essential cmake
+# Required: TIFF support (BigTIFF / Pyramid TIFF viewer)
+sudo apt install libtiff-dev
+
+# Required: XKB (needed by Qt6 on Linux)
+sudo apt install libxkbcommon-dev libxkbcommon-x11-dev
+
+# Optional: HDF5 support (HDF5 image viewer)
+sudo apt install libhdf5-dev
 ```
 
-Note for older systems: If you are using an unsupported version (like Ubuntu 20.04), you must install Qt6 manually via the Qt Online Installer or use a containerized environment (Docker).
+> **Note for older systems:** If you are using an unsupported version (like Ubuntu 20.04), you must install Qt6 manually via the Qt Online Installer or use a containerized environment (Docker).
+
+> **HDF5:** If `libhdf5-dev` is not installed, CMake will print a notice and the HDF5 viewer will simply not be compiled. All other functionality remains unaffected.
 
 ### macOS
 
 ```bash
+# Qt6 and build tools
 brew install qt cmake
 
+# Required: TIFF support (BigTIFF / Pyramid TIFF viewer)
+brew install libtiff
+
+# Optional: HDF5 support (HDF5 image viewer)
+brew install hdf5
 ```
 
-*Note: If CMake fails to find Qt, run: export CMAKE_PREFIX_PATH=$(brew --prefix qt)*
+*Note: If CMake fails to find Qt, run: `export CMAKE_PREFIX_PATH=$(brew --prefix qt)`*
 
 ### Windows with WSL and Debian
 
 * Create a directory where ImageEditor should be installed, open the Powershell there (Open the folder --> Rightclick --> Open in terminal) and enter `wsl --install Debian`
 * Wait for Download and Installation to finish, at the end you will be asked to create a username and password. Can be the same as Windows or different.
 * After picking a user and password combination the Linux environment will autostart. Now run the following commands:
-  *  `sudo apt-get update`
-  *  `sudo apt-get install qt6-base-dev qt6-declarative-dev qt6-svg-dev git`
-  *  `sudo git clone https://github.com/hmohlberg/ImageEditor.git`
+  ```bash
+  sudo apt-get update
+  sudo apt-get install qt6-base-dev qt6-declarative-dev qt6-svg-dev git
+  sudo apt-get install libtiff-dev libxkbcommon-dev libxkbcommon-x11-dev
+  sudo apt-get install libhdf5-dev   # optional, for HDF5 viewer
+  sudo git clone https://github.com/hmohlberg/ImageEditor.git
+  ```
 * Leave the Linux environment by entering `exit`
 * To run ImageEditor open the file in ImageEditor/bin/windows/wsl.bat
 
 ### Windows with WSL and Ubuntu 24.04
 
-`wsl --install Ubuntu-24.04`
-`wsl --set-default Ubuntu-24.04`
+```bash
+wsl --install Ubuntu-24.04
+wsl --set-default Ubuntu-24.04
 
-`sudo apt update`
-`sudo apt install qt6-svg-dev qt6-base-dev qt6-declarative-dev`
-`sudo apt install libgles2 libgles2-mesa-dev libegl1-mesa-dev`
+sudo apt update
+sudo apt install qt6-svg-dev qt6-base-dev qt6-declarative-dev
+sudo apt install libgles2 libgles2-mesa-dev libegl1-mesa-dev
+sudo apt install libtiff-dev libxkbcommon-dev libxkbcommon-x11-dev
+sudo apt install libhdf5-dev   # optional, for HDF5 viewer
+```
 
-These are necessary and can be saved in .bashrc.
+These environment variables are necessary for WSL rendering and can be saved in `.bashrc`:
 
-`export MESA_LOADER_DRIVER_OVERRIDE=d3d12`
-`export GALLIUM_DRIVER=d3d12`
+```bash
+export MESA_LOADER_DRIVER_OVERRIDE=d3d12
+export GALLIUM_DRIVER=d3d12
+```
  
 ---
 
@@ -135,11 +165,11 @@ To run the editor without a GUI (e.g., via SSH on your Debian server), use the -
 
 | Option | Description |
 | --- | --- |
-| -f, --file <file> | Path to the input image file. |
-| --project <json> | Path to an input JSON-project file (history). |
-| --class <file> | Path to input image class file. |
-| -o, --output <file> | Path to the output image file. |
-| --config <file> | Path to config file. |
+| -f, --file \<file\> | Path to the input image file. Supported formats: `png`, `jpg`, `bmp`, `tif`/`tiff` (including BigTIFF pyramids), `h5`/`hdf5` (HDF5 pyramids, requires HDF5 build). |
+| --project \<json\> | Path to an input JSON-project file (history). |
+| --class \<file\> | Path to input image class file. |
+| -o, --output \<file\> | Path to the output image file. |
+| --config \<file\> | Path to config file. |
 | --batch | Run in batch mode (no GUI). |
 | --vulkan | Enable hardware accelerated Vulkan rendering. |
 | --history | Print history of last calls to stdout. |
@@ -149,22 +179,50 @@ To run the editor without a GUI (e.g., via SSH on your Debian server), use the -
 
 ### Examples
 
-**Open an image with a project file:**
+**Open a standard image with a project file:**
 
 ```bash
-./ImageEditor --file filename.png --project project.json 
+./ImageEditor --file filename.png --project project.json
+```
 
+**Open a large BigTIFF pyramid image:**
+
+```bash
+./ImageEditor --file large_image.tif
+```
+
+**Open a large HDF5 pyramid image:**
+
+```bash
+./ImageEditor --file brain_section.h5
 ```
 
 **Apply a JSON transformation project (Offscreen):**
 
 ```bash
 ./ImageEditor --batch --project task.json -o result.png
-
 ```
 ---
 
 ## Technical Notes
+
+### BigTIFF / Pyramid TIFF Viewer
+
+Large TIFF and BigTIFF files stored as multi-resolution pyramids (multiple IFDs sorted by decreasing resolution) are opened in a dedicated viewer that never loads the full image into memory. Instead, tiles are read on demand via libtiff (`TIFFReadRGBATile`) and cached in an LRU tile cache. Pan and zoom are smooth at any resolution level because the viewer automatically selects the best pyramid level for the current zoom factor.
+
+- Requires libtiff ≥ 4.0 (`libtiff-dev` on Linux, `brew install libtiff` on macOS).
+- All TIFF compression codecs supported by libtiff work (Deflate, LZW, JPEG, uncompressed, …).
+- Both tiled and strip-based TIFFs are supported.
+- The color LUT toolbar applies to the BigTIFF viewer in real time.
+
+### HDF5 Image Viewer
+
+HDF5 files containing image datasets are opened in a dedicated viewer using the same tile-based approach. The viewer expects the file to contain a `/pyramid/00` dataset (the full-resolution image) and optional downscaled levels at `/pyramid/01`, `/pyramid/02`, … with a factor-of-4 downscale per level. If no pyramid group is present, a single `/Image` dataset is used. Datasets must be 2D (grayscale) or 3D (rows × cols × channels) with `uint8` data type.
+
+- HDF5 support is **optional**: CMake detects `libhdf5` automatically. If not found, a notice is printed and the rest of the application compiles unchanged.
+- Requires libhdf5 (`libhdf5-dev` on Linux, `brew install hdf5` on macOS).
+- Chunk dimensions from the HDF5 dataset are used as the tile size (typically 2048 × 2048).
+- For non-identity color LUTs, RGB images are converted to luminance first, then the LUT is applied.
 
 ### Cross-Platform Compatibility
 

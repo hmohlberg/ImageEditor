@@ -19,6 +19,10 @@
 #include "ImageView.h"
 #include "ConfigDialog.h"
 #include "LayerEditorView.h"
+#include "BigTiffViewer.h"
+#ifdef HASHDF5
+#include "Hdf5Viewer.h"
+#endif
 
 #include "../core/ImageLoader.h"
 #include "../core/ImageProcessor.h"
@@ -162,9 +166,24 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
                     m_statusColorText->setText(QString("|  Color: %1").arg(text));
             });
 
+    m_bigTiffViewer = new BigTiffViewer(this);
+    connect(m_bigTiffViewer, &BigTiffViewer::closeRequested, this, [this]{
+        m_bigTiffViewer->closeTiff();
+        m_centralStack->setCurrentIndex(0);
+    });
+
     m_centralStack = new QStackedWidget(this);
     m_centralStack->addWidget(m_imageView);       // index 0 — normal view
     m_centralStack->addWidget(m_layerEditorView); // index 1 — layer editor
+    m_centralStack->addWidget(m_bigTiffViewer);   // index 2 — BigTIFF viewer
+#ifdef HASHDF5
+    m_hdf5Viewer = new Hdf5Viewer(this);
+    connect(m_hdf5Viewer, &Hdf5Viewer::closeRequested, this, [this]{
+        m_hdf5Viewer->closeFile();
+        m_centralStack->setCurrentIndex(0);
+    });
+    m_centralStack->addWidget(m_hdf5Viewer);      // index 3 — HDF5 viewer
+#endif
     setCentralWidget(m_centralStack);
 
     // >>>
@@ -174,13 +193,28 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     createDockWidgets();
 
     // >>>
+    auto loadAnyImage = [this](const QString& path) -> bool {
+        const QString ext = QFileInfo(path).suffix().toLower();
+        if (ext == "tif" || ext == "tiff") {
+            QTimer::singleShot(0, this, [this, path]{ openBigTiff(path); });
+            return false;
+        }
+#ifdef HASHDF5
+        if (ext == "h5" || ext == "hdf5" || ext == "hdf") {
+            QTimer::singleShot(0, this, [this, path]{ openHdf5(path); });
+            return false;
+        }
+#endif
+        return loadImage(path);
+    };
+
     bool hasMainImage = false;
     if ( !imagePath.isEmpty() && historyPath.isEmpty() ) {
-     hasMainImage = loadImage(imagePath);
+     hasMainImage = loadAnyImage(imagePath);
     } else if ( imagePath.isEmpty() && !historyPath.isEmpty() ) {
      hasMainImage = loadProject(historyPath, false);
     } else if ( !imagePath.isEmpty() && !historyPath.isEmpty() ) {
-     hasMainImage = loadImage(imagePath);
+     hasMainImage = loadAnyImage(imagePath);
      loadProject(historyPath, true);
     }
     if ( !classPath.isEmpty() ) {
@@ -362,16 +396,67 @@ void MainWindow::openImage()
     QString title = isMaskImage ? QString("Open mask image") : QString("Open image");
     QString fileName = QFileDialog::getOpenFileName(this,
                         title, QString(),
-                        tr("Images (*.png *.jpg *.bmp)"));
+                        tr("Images (*.png *.jpg *.bmp *.tif *.tiff *.h5 *.hdf5);;TIFF Images (*.tif *.tiff);;HDF5 Files (*.h5 *.hdf5);;All Files (*)"));
     if ( fileName.isEmpty() )
       return;
     if ( isMaskImage ) {
       m_imageView->loadMaskImage(fileName);
     } else {
-      loadImage(fileName);
+      const QString ext = QFileInfo(fileName).suffix().toLower();
+      if (ext == "tif" || ext == "tiff") {
+          openBigTiff(fileName);
+#ifdef HASHDF5
+      } else if (ext == "h5" || ext == "hdf5" || ext == "hdf") {
+          openHdf5(fileName);
+#endif
+      } else {
+          loadImage(fileName);
+      }
     }
   }
 }
+
+void MainWindow::openBigTiff(const QString& filePath)
+{
+    if (!m_bigTiffViewer->open(filePath)) {
+        showMessage(tr("Could not open TIFF file: %1").arg(filePath), 1);
+        return;
+    }
+    m_centralStack->setCurrentIndex(2);
+
+    // Resize window to match image aspect ratio, up to 80% of available screen
+    const QSize imgSize = m_bigTiffViewer->imageSize();
+    if (imgSize.isValid()) {
+        QScreen* screen = QGuiApplication::primaryScreen();
+        const QSize available = screen->availableSize() * 0.8;
+        const QSize winContent = imgSize.scaled(available, Qt::KeepAspectRatio);
+        // account for toolbars and docks that are already laid out
+        const int extraH = height() - m_centralStack->height();
+        const int extraW = width()  - m_centralStack->width();
+        resize(winContent.width() + extraW, winContent.height() + extraH);
+    }
+}
+
+#ifdef HASHDF5
+void MainWindow::openHdf5(const QString& filePath)
+{
+    if (!m_hdf5Viewer->open(filePath)) {
+        showMessage(tr("Could not open HDF5 file: %1").arg(filePath), 1);
+        return;
+    }
+    m_centralStack->setCurrentIndex(3);
+
+    const QSize imgSize = m_hdf5Viewer->imageSize();
+    if (imgSize.isValid()) {
+        QScreen* screen = QGuiApplication::primaryScreen();
+        const QSize available = screen->availableSize() * 0.8;
+        const QSize winContent = imgSize.scaled(available, Qt::KeepAspectRatio);
+        const int extraH = height() - m_centralStack->height();
+        const int extraW = width()  - m_centralStack->width();
+        resize(winContent.width() + extraW, winContent.height() + extraH);
+    }
+}
+#endif
 
 void MainWindow::saveAsImage()
 {
@@ -1681,16 +1766,85 @@ void MainWindow::createToolbars()
     fileToolbar->addAction(m_crosshairAction);
     // color tables
     QComboBox* colorTableCombo = new QComboBox();
-    colorTableCombo->addItems({"Original","Invert","Red","Green","Blue"});
+    colorTableCombo->addItems({
+        "Original","Invert",
+        "Red","Green","Blue","Magenta","Cyan","Yellow",
+        "Hot","Cold","Copper",
+        "Jet","Viridis","Plasma","Inferno",
+        "Nissl","Myelin"
+    });
     fileToolbar->addWidget(colorTableCombo);
     connect(colorTableCombo, &QComboBox::currentTextChanged, m_imageView, [this](const QString& text){
+       // helper: build LUT by linear interpolation through anchor stops {index, r, g, b}
+       struct Stop { int x; int r,g,b; };
+       auto ramp = [](std::initializer_list<Stop> stops) {
+           QVector<QRgb> lut(256);
+           auto it = stops.begin();
+           auto nx = std::next(it);
+           for (int i = 0; i < 256; ++i) {
+               while (nx != stops.end() && nx->x <= i) { it = nx; ++nx; }
+               float t = (nx != stops.end() && nx->x > it->x)
+                         ? float(i - it->x) / float(nx->x - it->x) : 0.f;
+               lut[i] = qRgb(int(it->r + t*(nx->r - it->r)),
+                              int(it->g + t*(nx->g - it->g)),
+                              int(it->b + t*(nx->b - it->b)));
+           }
+           return lut;
+       };
+
        QVector<QRgb> lut(256);
-       if (text=="Original") for(int i=0;i<256;i++) lut[i] = qRgb(i,i,i);
-       else if(text=="Invert") for(int i=0;i<256;i++) lut[i] = qRgb(255-i,255-i,255-i);
-       else if(text=="Red") for(int i=0;i<256;i++) lut[i] = qRgb(i,0,0);
-       else if(text=="Green") for(int i=0;i<256;i++) lut[i] = qRgb(0,i,0);
-       else if(text=="Blue") for(int i=0;i<256;i++) lut[i] = qRgb(0,0,i);
+       if      (text=="Original") for(int i=0;i<256;i++) lut[i]=qRgb(i,i,i);
+       else if (text=="Invert")   for(int i=0;i<256;i++) lut[i]=qRgb(255-i,255-i,255-i);
+       else if (text=="Red")      for(int i=0;i<256;i++) lut[i]=qRgb(i,0,0);
+       else if (text=="Green")    for(int i=0;i<256;i++) lut[i]=qRgb(0,i,0);
+       else if (text=="Blue")     for(int i=0;i<256;i++) lut[i]=qRgb(0,0,i);
+       else if (text=="Magenta")  for(int i=0;i<256;i++) lut[i]=qRgb(i,0,i);
+       else if (text=="Cyan")     for(int i=0;i<256;i++) lut[i]=qRgb(0,i,i);
+       else if (text=="Yellow")   for(int i=0;i<256;i++) lut[i]=qRgb(i,i,0);
+       // ── ramp-based LUTs ──────────────────────────────────────────────────
+       else if (text=="Hot")    // black → red → yellow → white
+           lut = ramp({{0,0,0,0},{85,255,0,0},{170,255,255,0},{255,255,255,255}});
+       else if (text=="Cold")   // black → blue → cyan → white
+           lut = ramp({{0,0,0,0},{85,0,0,255},{170,0,255,255},{255,255,255,255}});
+       else if (text=="Copper") // black → copper/orange → light copper
+           lut = ramp({{0,0,0,0},{200,255,127,80},{255,255,200,160}});
+       else if (text=="Jet") {  // blue → cyan → green → yellow → red
+           for(int i=0;i<256;i++){
+               float v=i/255.f;
+               float r=qBound(0.f,1.5f-qAbs(4.f*v-3.f),1.f);
+               float g=qBound(0.f,1.5f-qAbs(4.f*v-2.f),1.f);
+               float b=qBound(0.f,1.5f-qAbs(4.f*v-1.f),1.f);
+               lut[i]=qRgb(int(r*255),int(g*255),int(b*255));
+           }
+       }
+       else if (text=="Viridis") // perceptually uniform blue-green-yellow
+           lut = ramp({{0,68,1,84},{32,71,41,122},{64,59,82,139},{96,44,113,142},
+                       {128,33,144,141},{160,53,183,121},{192,94,201,98},
+                       {224,170,220,50},{255,253,231,37}});
+       else if (text=="Plasma")  // perceptually uniform purple-red-yellow
+           lut = ramp({{0,13,8,135},{32,84,2,163},{64,139,10,165},{96,185,50,137},
+                       {128,219,92,104},{160,244,136,73},{192,254,188,43},
+                       {224,239,234,30},{255,240,249,33}});
+       else if (text=="Inferno") // perceptually uniform black-purple-orange-yellow
+           lut = ramp({{0,0,0,4},{32,40,11,84},{64,101,21,110},{96,159,42,99},
+                       {128,212,72,66},{160,245,125,21},{192,252,193,44},
+                       {224,252,255,164},{255,252,255,164}});
+       // ── histology-specific ───────────────────────────────────────────────
+       else if (text=="Nissl")  // dark-purple neural cell staining
+           // bright region (low gray) = unstained → white/yellow
+           // dark region (high gray)  = Nissl substance → deep violet
+           lut = ramp({{0,255,255,240},{64,220,200,230},{128,160,120,200},
+                       {192,90,40,150},{255,30,0,80}});
+       else if (text=="Myelin") // myelin sheath staining (Luxol fast blue style)
+           // dark myelin = deep blue/teal, background = cream/white
+           lut = ramp({{0,255,252,230},{64,200,230,210},{128,80,180,170},
+                       {192,20,90,140},{255,0,30,100}});
+
        m_imageView->setColorTable(lut);
+       m_bigTiffViewer->setColorTable(lut);
+#ifdef HASHDF5
+       m_hdf5Viewer->setColorTable(lut);
+#endif
     });
     fileToolbar->addAction(m_showDockWidgets);
     fileToolbar->insertSeparator(m_showDockWidgets);
