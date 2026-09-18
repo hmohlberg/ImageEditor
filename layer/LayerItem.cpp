@@ -410,7 +410,9 @@ void LayerItem::resetImageState( const QImage& image, const QPointF& position, c
   {
     prepareGeometryChange();
     setTransform(QTransform());
-    setPos(position);
+    const QPointF p = EditorStyle::instance().allowIntegerMoveOnly()
+        ? QPointF(qRound(position.x()), qRound(position.y())) : position;
+    setPos(p);
 	    m_image = image;
 	    m_totalTransform = transform;
 	    updatePixmap();
@@ -1270,15 +1272,16 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
             );
         }
     } else if ( m_operationMode == OperationMode::Rotate ) {
-       /*
-        if ( transform() != m_startTransform ) {
-            QString name = "Rotate Layer";
-            TransformLayerCommand::LayerTransformType trafoType = TransformLayerCommand::LayerTransformType::Rotate;
-            name += QString(" %1").arg(m_index);
-           // TransformLayerCommand *layerCommand = new TransformLayerCommand(this, m_startPos, pos(), m_startTransform, transform(), name, trafoType);
-            m_undoStack->push(layerCommand);
+        if ( EditorStyle::instance().allowIntegerMoveOnly() && m_undoStack->index() > 0 ) {
+            const QPointF snapped(qRound(pos().x()), qRound(pos().y()));
+            const QPointF adj = snapped - pos();
+            if ( !adj.isNull() ) {
+                auto* cmd = const_cast<QUndoCommand*>(m_undoStack->command(m_undoStack->index() - 1));
+                if ( auto* rotCmd = dynamic_cast<TransformLayerCommand*>(cmd) )
+                    rotCmd->setPositionAdjust(adj);
+                setPos(snapped);
+            }
         }
-       */
     }
     // m_operationMode = None;
     QGraphicsPixmapItem::mouseReleaseEvent(event);

@@ -59,6 +59,8 @@ class TransformOverlay : public QObject, public QGraphicsItem
 
     void applyHandleDrag( HandleType type, const QPointF& delta );
     void translateLayer( const QPointF& delta );
+
+    LayerItem* layer() const { return m_layer; }
     
     
  protected:

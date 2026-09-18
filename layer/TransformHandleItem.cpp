@@ -181,6 +181,7 @@ void TransformHandleItem::mouseReleaseEvent( QGraphicsSceneMouseEvent *e )
   {
     if ( m_overlay ) {
       m_overlay->endTransform();
+      // pos() is already snapped to the pixel grid inside setImageTransform
       e->accept();
     } else if ( m_perspectiveOverlay ) {
       if ( !(e->modifiers() & Qt::ControlModifier) ) {
@@ -191,6 +192,7 @@ void TransformHandleItem::mouseReleaseEvent( QGraphicsSceneMouseEvent *e )
         }
       }
       m_perspectiveOverlay->endWarp();
+      // pos() is already snapped to the pixel grid inside resetImageState
       e->accept();
     } else if ( m_layer ) {
       if ( m_layer->undoStack() && m_startTransform != m_layer->transform() ) {

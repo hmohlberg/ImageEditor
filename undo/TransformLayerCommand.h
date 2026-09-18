@@ -52,6 +52,7 @@ class TransformLayerCommand : public AbstractCommand
     double rotationAngle() const { return m_rotationAngle; }
     void restoreSceneTopLeft( LayerItem* layer, const QRectF& oldSceneRect );
     void setTransform( const QTransform& transform );
+    void setPositionAdjust( const QPointF& adj ) { m_positionAdjust = adj; }
     QString type() const override { return "TransformLayer"; }
     LayerItem* layer() const override { return m_layer; }
     LayerTransformType trafoType() const { return m_trafoType; } 
@@ -85,5 +86,7 @@ class TransformLayerCommand : public AbstractCommand
     QTransform m_oldTransform;
     QTransform m_newTransform;
     QTransform m_totalTransform;
+
+    QPointF m_positionAdjust;
     
 };

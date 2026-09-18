@@ -194,6 +194,10 @@ void TransformLayerCommand::redo()
     m_layer->setImageTransform(m_newTransform);
     if ( m_trafoType == LayerTransformType::Scale ) {
       m_layer->shiftTo(m_oldPos+QPointF(m_newTransform.dx(),m_newTransform.dy()));
+      if ( EditorStyle::instance().allowIntegerMoveOnly() )
+          m_layer->setPos(QPointF(qRound(m_layer->pos().x()), qRound(m_layer->pos().y())));
+    } else if ( m_trafoType == LayerTransformType::Rotate && !m_positionAdjust.isNull() ) {
+      m_layer->setPos(m_layer->pos() + m_positionAdjust);
     }
     if ( m_trafoType == LayerTransformType::Scale ) {
       m_layer->setCageVisible(LayerItem::OperationMode::Scale,true);
