@@ -52,10 +52,16 @@ class LassoCutCommand : public AbstractCommand
     QJsonObject toJson() const override;
     static LassoCutCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent = nullptr );
     
-    const QRect& rect() const { return m_bounds; }
-    int layerId() const { return m_newLayerId; }
-    void setController( QUndoCommand *undoCommand ) { m_controller = undoCommand; };
-    
+    const QRect&  rect()   const { return m_bounds; }
+    int           layerId() const { return m_newLayerId; }
+    void setController( QUndoCommand *undoCommand ) { m_controller = undoCommand; }
+
+    const QImage& backup() const { return m_backup; }
+    void updateData(const QImage& newBackup, const QRect& newBounds) {
+        m_backup = newBackup;
+        m_bounds = newBounds;
+    }
+
     void save_backup() {
       m_backup.save("/tmp/imageeditor_backuppic.png");
     }

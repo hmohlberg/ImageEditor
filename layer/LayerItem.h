@@ -88,6 +88,7 @@ class LayerItem : public QGraphicsPixmapItem
     double getRotationAngle() const { return m_currentRotation; }
     void setImageRect( const QRectF& rect );
     void setImageTransform( const QTransform& transform, bool combine = true );
+    void reapplyImageTransform();
     void resetImageState( const QImage& image, const QPointF& position, const QTransform& transform );
     void endCageEdit( int idx, const QPointF& pos );
     void setType( LayerType layerType );

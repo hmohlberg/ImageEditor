@@ -26,6 +26,7 @@
 
 #include "../core/ImageLoader.h"
 #include "../core/ImageProcessor.h"
+#include "../core/Updater.h"
 
 #include "../layer/LayerItem.h"
 #include "../layer/Layer.h"
@@ -56,6 +57,7 @@
 #include <QSvgRenderer>
 #include <QJsonDocument>
 #include <QApplication>
+#include <QDesktopServices>
 #include <QJsonArray>
 #include <QMenuBar>
 #include <QToolBar>
@@ -247,8 +249,11 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
        this->setMinimumSize(800, 600);
     }
     show();
-    fitToWindow();    
-  }    
+    fitToWindow();
+
+    // Check for new releases on GitHub on startup (silent — no dialog when up to date)
+    triggerUpdateCheck(true);
+  }
 }
 
 MainWindow::~MainWindow() {
@@ -1570,6 +1575,22 @@ void MainWindow::createActions()
     m_polygonControlAction = new QAction("Polygon", this);
     m_polygonControlAction->setCheckable(true);
     connect(m_polygonControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
+
+    // "Check for updates" lives in the macOS application menu (the one named
+    // after the app).  ApplicationSpecificRole tells Qt to move the action
+    // there automatically; on non-macOS platforms it ends up in the menu below.
+    {
+        const QString ver = QApplication::applicationVersion();
+        QMenu* appMenu = menuBar()->addMenu(
+            QString("ImageEditor %1").arg(ver));
+
+        QAction* checkUpdateAction = new QAction(tr("Check for updates…"), this);
+        checkUpdateAction->setMenuRole(QAction::ApplicationSpecificRole);
+        connect(checkUpdateAction, &QAction::triggered, this, [this](){
+            triggerUpdateCheck(false);
+        });
+        appMenu->addAction(checkUpdateAction);
+    }
   }
 }
 
@@ -1757,6 +1778,7 @@ void MainWindow::createToolbars()
     fileToolbar->setAutoFillBackground(true);
     fileToolbar->setMovable(false);
     fileToolbar->setFloatable(false);
+    fileToolbar->setFixedHeight(34);
     addToolBar(Qt::TopToolBarArea,fileToolbar);
     fileToolbar->addAction(m_openAction);
     fileToolbar->addAction(m_saveAsAction);
@@ -1875,7 +1897,8 @@ void MainWindow::createToolbars()
     // create second toolbar
     // ============================================================
     QToolBar* controlToolbar = addToolBar(tr("Control"));
-    
+    controlToolbar->setFixedHeight(34);
+
     controlToolbar->setStyleSheet(("QToolBar { background-color: #303030; border-bottom: 1px solid #1e1e1e; spacing: 4px; }"));
     
    // controlToolbar->setStyleSheet("QToolBar { background-color:#220022; } QToolButton { color:white; background-color:#222222; }");
@@ -2333,6 +2356,15 @@ void MainWindow::createToolbars()
     
     m_polygonCreateLayerAction = new QAction(tr("Create new polygon layer"), this);
     connect(m_polygonCreateLayerAction, &QAction::triggered, m_imageView, &ImageView::createPolygonLayer);
+    connect(m_imageView, &ImageView::polygonHasLayer, this, [this](bool hasLayer){
+        m_polygonCreateLayerAction->setText(
+            hasLayer ? tr("Update polygon layer") : tr("Create new polygon layer"));
+        if ( !hasLayer )
+            m_polygonCreateLayerAction->setEnabled(true);
+    });
+    connect(m_imageView, &ImageView::polygonNeedsUpdate, this, [this](bool needsUpdate){
+        m_polygonCreateLayerAction->setEnabled(needsUpdate);
+    });
     m_polygonToolbar->addAction(m_polygonCreateLayerAction);
     
   }
@@ -2607,8 +2639,70 @@ void MainWindow::newLassoLayerCreated()
 void MainWindow::zoom1to1() { m_imageView->resetTransform(); }
 void MainWindow::forcedUpdate() { m_imageView->forcedUpdate(); }
 
-void MainWindow::fitToWindow() { 
+void MainWindow::fitToWindow() {
   if ( m_layerItem != nullptr ) {
-     m_imageView->fitInView(m_layerItem,Qt::KeepAspectRatio); 
+     m_imageView->fitInView(m_layerItem,Qt::KeepAspectRatio);
   }
+}
+
+/* =================== Update Checker =================== */
+
+void MainWindow::triggerUpdateCheck(bool silent)
+{
+    m_silentUpdateCheck = silent;
+    if ( !m_updater ) {
+        m_updater = new Updater(QApplication::applicationVersion(), this);
+        connect(m_updater, &Updater::updateAvailable, this,
+                [this](const QString& ver, const QString& url){
+            showUpdateAvailableDialog(ver, url);
+        });
+        connect(m_updater, &Updater::noUpdateAvailable, this, [this](){
+            if ( !m_silentUpdateCheck ) {
+                const QString ver   = QApplication::applicationVersion();
+                const QString build = QString("%1 at %2").arg(__DATE__, __TIME__);
+                QMessageBox::information(this, tr("Software up to date"),
+                    tr("Your application (Version %1, Build %2) is up to date, "
+                       "and no new updates are available.")
+                    .arg(ver, build));
+            }
+        });
+        connect(m_updater, &Updater::localVersionNewer, this,
+                [this](const QString& localVer, const QString& githubVer){
+            if ( !m_silentUpdateCheck ) {
+                QMessageBox::warning(this, tr("GitHub repository outdated"),
+                    tr("Your installed version (%1) is newer than the latest release "
+                       "on GitHub (%2). The GitHub repository is not up to date and "
+                       "requires an update.")
+                    .arg(localVer, githubVer));
+            }
+        });
+        connect(m_updater, &Updater::checkFailed, this, [this](const QString& err){
+            if ( !m_silentUpdateCheck ) {
+                QMessageBox::warning(this, tr("Update check failed"), err);
+            }
+        });
+    }
+    m_updater->checkForUpdates();
+}
+
+void MainWindow::showUpdateAvailableDialog(const QString& newVersion,
+                                            const QString& releaseUrl)
+{
+    const QString installed = QApplication::applicationVersion();
+    const QString text = tr("Program is outdated. Latest version in GitHub repository is %1, "
+                            "installed version is %2.").arg(newVersion, installed);
+
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Update available"));
+    box.setIcon(QMessageBox::Information);
+    box.setText(text);
+
+    QPushButton* skipBtn   = box.addButton(tr("Skip"),   QMessageBox::RejectRole);
+    QPushButton* updateBtn = box.addButton(tr("Update"), QMessageBox::AcceptRole);
+    Q_UNUSED(skipBtn)
+
+    box.exec();
+
+    if ( box.clickedButton() == updateBtn )
+        QDesktopServices::openUrl(QUrl(releaseUrl));
 }

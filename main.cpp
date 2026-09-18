@@ -31,6 +31,10 @@
 #include <QPainter>
 #include <QFile>
 #include <QDir>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QEventLoop>
 
 #include <iostream>
 #include <unistd.h>
@@ -40,8 +44,11 @@
 #include "core/BatchMain.h"
 #include "core/ImageLoader.h"
 #include "core/ImageProcessor.h"
+#include "core/BigTiffIO.h"
+#include "core/BigTiffProjectApply.h"
 
 #include "gui/MainWindow.h"
+#include "core/version.h"
 
 
 // ---------------------- Init ----------------------
@@ -225,6 +232,11 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(historyOption);
   QCommandLineOption forceOption("force", "Overwrite an existing output file.");
   parser.addOption(forceOption);
+  QCommandLineOption scaleOption(QStringList() << "scale",
+      "Coordinate scale factor between the project file resolution and the "
+      "BigTIFF resolution (default: 20, i.e. project at 20 µm, BigTIFF at 1 µm).",
+      "factor");
+  parser.addOption(scaleOption);
   QCommandLineOption debugOption("debug", "Enable debug output to stdout.");
   parser.addOption(debugOption);
   QCommandLineOption verboseOption("verbose", "Enable verbose output to stdout.");
@@ -280,8 +292,77 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   obj["force"] = parser.isSet(forceOption);
   obj["debug"] = parser.isSet(debugOption);
   obj["verbose"] = parser.isSet(verboseOption);
+  obj["scaleFactor"] = parser.isSet(scaleOption)
+                       ? parser.value(scaleOption).toInt() : 20;
   
   return obj;
+}
+
+// ---------------------- Version check ----------------------
+static void printVersionInfo( int argc, char* argv[] )
+{
+    const QString localVer = APP_VERSION;
+    std::cout << "ImageEditor " << localVer.toStdString() << std::endl;
+
+    // Spin up a minimal core app so QNetworkAccessManager works
+    QCoreApplication app(argc, argv);
+    app.setApplicationName("ImageEditor");
+    app.setApplicationVersion(localVer);
+
+    QNetworkAccessManager nam;
+    QUrl url("https://api.github.com/repos/hmohlberg/ImageEditor/releases/latest");
+    QNetworkRequest req(url);
+    req.setRawHeader("Accept",     "application/vnd.github.v3+json");
+    req.setRawHeader("User-Agent", "ImageEditor-UpdateChecker/1.0");
+    QNetworkReply* reply = nam.get(req);
+
+    QEventLoop loop;
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    if ( reply->error() != QNetworkReply::NoError ) {
+        std::cerr << "Could not reach GitHub: "
+                  << reply->errorString().toStdString() << std::endl;
+        reply->deleteLater();
+        return;
+    }
+
+    const QJsonObject obj = QJsonDocument::fromJson(reply->readAll()).object();
+    const QString githubTag = obj["tag_name"].toString().trimmed();
+    reply->deleteLater();
+
+    if ( githubTag.isEmpty() ) {
+        std::cerr << "No release tag found on GitHub." << std::endl;
+        return;
+    }
+
+    // Normalise "v1.2.3" → ["1","2","3"] and compare component-wise
+    auto normalise = [](const QString& v) -> QStringList {
+        QString s = v.trimmed();
+        if ( s.startsWith('v') || s.startsWith('V') ) s = s.mid(1);
+        return s.split('.', Qt::SkipEmptyParts);
+    };
+    auto isNewer = [&normalise](const QString& base, const QString& cand) -> bool {
+        const QStringList b = normalise(base), c = normalise(cand);
+        const int n = qMax(b.size(), c.size());
+        for ( int i = 0; i < n; ++i ) {
+            const int bv = (i < b.size()) ? b[i].toInt() : 0;
+            const int cv = (i < c.size()) ? c[i].toInt() : 0;
+            if ( cv > bv ) return true;
+            if ( cv < bv ) return false;
+        }
+        return false;
+    };
+
+    if ( isNewer(localVer, githubTag) )
+        std::cout << "Status: Outdated. Latest version on GitHub is "
+                  << githubTag.toStdString() << "." << std::endl;
+    else if ( isNewer(githubTag, localVer) )
+        std::cout << "Status: Local version is ahead of GitHub (latest release: "
+                  << githubTag.toStdString()
+                  << "). The GitHub repository is not up to date." << std::endl;
+    else
+        std::cout << "Status: Up to date. No update available." << std::endl;
 }
 
 // ---------------------- Main ----------------------
@@ -293,10 +374,14 @@ int main( int argc, char *argv[] )
     }
     QImageReader::setAllocationLimit(0); // dangerous
     
-    // --- check first for gui option ---
+    // --- check first for version / gui / batch options ---
     bool batchProcessing = false;
     bool guiProcessing = false;
     for ( int i=0 ; i<argc ; ++i ) {
+     if ( QString(argv[i]) == "--version" || QString(argv[i]) == "-v" ) {
+       printVersionInfo(argc, argv);
+       return 0;
+     }
      if ( QString(argv[i]) == "--debug" ) {
        qputenv("QT_LOGGING_RULES", "editor.graphics.debug=true");
      }
@@ -309,7 +394,7 @@ int main( int argc, char *argv[] )
       QCoreApplication *app = new QCoreApplication(argc,argv);
       BatchMain batch;
       app->setApplicationName("ImageEditor");
-      app->setApplicationVersion("1.0");
+      app->setApplicationVersion(APP_VERSION);
       QJsonObject parsedOptions = parser(app,argc);
       QString imagePath = parsedOptions.value("imagePath").toString("");
       QString historyPath = parsedOptions.value("historyPath").toString("");
@@ -351,8 +436,56 @@ int main( int argc, char *argv[] )
       }
       if ( QFile::exists(outputPath) && parsedOptions.value("force").toBool() == false ) {
         printError(QString("Output file '%1' already exists. Use command line option --force to overwrite.").arg(outputPath));
-        return 1; 
+        return 1;
       }
+
+      // BigTIFF input with TIFF output: use the tile-based BigTIFF pipeline
+      // instead of loading the whole image into a QImage (which would fail
+      // for large files and never produce BigTIFF output).
+      {
+        const QString outExt = QFileInfo(outputPath).suffix().toLower();
+        if (!imagePath.isEmpty()
+            && (outExt == "tif" || outExt == "tiff")
+            && bigTiffIsBigTiff(imagePath))
+        {
+          if (QFile::exists(outputPath)) QFile::remove(outputPath);
+          saveCurrentCall(argc, argv);
+
+          QString errMsg;
+          bool ok = false;
+
+          if (!historyPath.isEmpty()) {
+            // Load the project JSON and apply it tile-by-tile
+            QFile pf(historyPath);
+            if (!pf.open(QIODevice::ReadOnly)) {
+              printError(QString("Cannot open project file: %1").arg(historyPath));
+              return 1;
+            }
+            QJsonObject proj = QJsonDocument::fromJson(pf.readAll()).object();
+            pf.close();
+
+            int scaleFactor = parsedOptions.value("scaleFactor").toInt(20);
+            qInfo() << "Applying project to BigTIFF (scale factor" << scaleFactor << ")…";
+            ok = bigTiffApplyProject(imagePath, outputPath, proj,
+                                     scaleFactor, {}, &errMsg);
+            if (!ok) {
+              printError(QString("BigTIFF project apply failed: %1").arg(errMsg));
+              return 1;
+            }
+          } else {
+            qInfo() << "BigTIFF input detected — copying pyramid to" << outputPath;
+            ok = bigTiffCopyPyramid(imagePath, outputPath, {}, &errMsg);
+            if (!ok) {
+              printError(QString("BigTIFF copy failed: %1").arg(errMsg));
+              return 1;
+            }
+          }
+
+          qInfo() << "Saved BigTIFF to" << outputPath;
+          return 0;
+        }
+      }
+
       QString saveIntermediatePath = parsedOptions.value("save-intermediate").toString("");
       ImageLoader loader;
       QImage image;
@@ -392,7 +525,7 @@ int main( int argc, char *argv[] )
     // --- gui processing ---
     QApplication *app = new QApplication(argc, argv);
     app->setApplicationName("ImageEditor");
-    app->setApplicationVersion("1.0");
+    app->setApplicationVersion(APP_VERSION);
     app->setQuitOnLastWindowClosed(true);
     QJsonObject parsedOptions = parser(app,argc);
     // --- create new history entry ---

@@ -16,6 +16,8 @@
 
 #include "BigTiffViewer.h"
 
+#include "../core/BigTiffIO.h"
+
 #include <tiffio.h>
 
 #include <QGraphicsView>
@@ -31,6 +33,14 @@
 #include <QHash>
 #include <QVector>
 #include <QTimer>
+#include <QApplication>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QMessageBox>
+#include <QProgressDialog>
+
+#include <functional>
 
 #include <vector>
 #include <algorithm>
@@ -103,6 +113,7 @@ public:
     // ── open / close ─────────────────────────────────────────────────────────
     bool openTiff(const QString& path) {
         closeTiff();
+        m_srcPath = path;
         m_tiff = TIFFOpen(path.toLocal8Bit().constData(), "r");
         if (!m_tiff) return false;
 
@@ -143,6 +154,7 @@ public:
         if (m_tiff) { TIFFClose(m_tiff); m_tiff = nullptr; }
         m_levels.clear();
         m_cache.clear();
+        m_srcPath.clear();
         scene()->setSceneRect(QRectF());
     }
 
@@ -292,10 +304,168 @@ private:
         }
     }
 
+public:
+    QString lastSaveError() const { return m_lastSaveError; }
+
+    // ── save BigTIFF pyramid ──────────────────────────────────────────────────
+    // progress(pct 0-100) → return false to cancel
+    bool saveTiff(const QString& outputPath,
+                  std::function<bool(int)> progress = {})
+    {
+        m_lastSaveError.clear();
+        if (!m_tiff || m_levels.isEmpty()) return false;
+
+        // Check whether current LUT is identity (gray → gray)
+        bool applyLut = false;
+        for (int i = 0; i < 256 && !applyLut; ++i)
+            if (m_lut[i] != qRgb(i, i, i)) applyLut = true;
+
+        // Fast path: identity LUT → delegate to the Qt-Widgets-free copy function
+        // so the same code path is used by the GUI Save As button and batch mode.
+        if (!applyLut) {
+            // Close our read handle first; bigTiffCopyPyramid opens the file itself.
+            const QString srcPath = m_srcPath;
+            bool ok = bigTiffCopyPyramid(srcPath, outputPath, progress, &m_lastSaveError);
+            return ok;
+        }
+
+        // Slow path: non-identity LUT — apply per tile and write RGB output.
+        TIFF* out = TIFFOpen(outputPath.toLocal8Bit().constData(), "w8");
+        if (!out) {
+            m_lastSaveError = tr("Could not create output file.");
+            return false;
+        }
+        if (!TIFFIsBigTIFF(out)) {
+            TIFFClose(out);
+            QFile::remove(outputPath);
+            m_lastSaveError = tr(
+                "The libtiff library loaded at runtime does not support BigTIFF "
+                "write mode (\"w8\"). Please ensure the correct libtiff ≥ 4.0 "
+                "is linked (check rpath / LD_LIBRARY_PATH).");
+            return false;
+        }
+
+        int totalTiles = 0;
+        for (const auto& lvl : m_levels) {
+            int tw = lvl.tiled ? (int)lvl.tileW : 256;
+            int th = lvl.tiled ? (int)lvl.tileH : 256;
+            totalTiles += ((int(lvl.w) + tw - 1) / tw) * ((int(lvl.h) + th - 1) / th);
+        }
+        int done = 0;
+        bool cancelled = false;
+
+        auto reportProgress = [&](int pct) {
+            if (progress && !progress(pct)) cancelled = true;
+        };
+
+        for (int li = 0; li < m_levels.size() && !cancelled; ++li) {
+            const auto& lvl = m_levels[li];
+            TIFFSetDirectory(m_tiff, (uint16_t)lvl.dirIdx);
+
+            uint16_t srcBps = 8, srcSpp = 1;
+            uint16_t srcPhoto = PHOTOMETRIC_MINISBLACK;
+            TIFFGetField(m_tiff, TIFFTAG_BITSPERSAMPLE,   &srcBps);
+            TIFFGetField(m_tiff, TIFFTAG_SAMPLESPERPIXEL, &srcSpp);
+            TIFFGetField(m_tiff, TIFFTAG_PHOTOMETRIC,     &srcPhoto);
+
+            uint32_t outTW  = lvl.tiled ? lvl.tileW : 256;
+            uint32_t outTH  = lvl.tiled ? lvl.tileH : 256;
+            // LUT maps gray → RGB
+            uint16_t outSpp   = 3;
+            uint16_t outPhoto = PHOTOMETRIC_RGB;
+
+            TIFFSetField(out, TIFFTAG_IMAGEWIDTH,      lvl.w);
+            TIFFSetField(out, TIFFTAG_IMAGELENGTH,     lvl.h);
+            TIFFSetField(out, TIFFTAG_TILEWIDTH,       outTW);
+            TIFFSetField(out, TIFFTAG_TILELENGTH,      outTH);
+            TIFFSetField(out, TIFFTAG_BITSPERSAMPLE,   (uint16_t)8);
+            TIFFSetField(out, TIFFTAG_SAMPLESPERPIXEL, outSpp);
+            TIFFSetField(out, TIFFTAG_PHOTOMETRIC,     outPhoto);
+            TIFFSetField(out, TIFFTAG_PLANARCONFIG,    PLANARCONFIG_CONTIG);
+            TIFFSetField(out, TIFFTAG_COMPRESSION,     COMPRESSION_DEFLATE);
+            TIFFSetField(out, TIFFTAG_PREDICTOR,       PREDICTOR_HORIZONTAL);
+            if (li > 0)
+                TIFFSetField(out, TIFFTAG_SUBFILETYPE, (uint32_t)FILETYPE_REDUCEDIMAGE);
+
+            int tilesX = (int(lvl.w) + int(outTW) - 1) / int(outTW);
+            int tilesY = (int(lvl.h) + int(outTH) - 1) / int(outTH);
+
+            std::vector<uint32_t> abgrBuf((size_t)outTW * outTH);
+            std::vector<uint8_t>  outBuf((size_t)outTW * outTH * outSpp, 0);
+
+            if (lvl.tiled) {
+                for (int ty = 0; ty < tilesY && !cancelled; ++ty) {
+                    for (int tx = 0; tx < tilesX && !cancelled; ++tx) {
+                        uint32_t x = (uint32_t)tx * outTW;
+                        uint32_t y = (uint32_t)ty * outTH;
+                        uint32_t validW = qMin(outTW, lvl.w - x);
+                        uint32_t validH = qMin(outTH, lvl.h - y);
+                        TIFFReadRGBATile(m_tiff, x, y, abgrBuf.data());
+                        std::fill(outBuf.begin(), outBuf.end(), 0);
+                        for (uint32_t row = 0; row < validH; ++row) {
+                            uint32_t srcRow = outTH - 1 - row; // RGBA tile is bottom-up
+                            for (uint32_t col = 0; col < validW; ++col) {
+                                uint32_t abgr = abgrBuf[(size_t)srcRow * outTW + col];
+                                uint8_t  gray = TIFFGetR(abgr);
+                                QRgb m = m_lut[gray];
+                                size_t idx = ((size_t)row * outTW + col) * 3;
+                                outBuf[idx]   = (uint8_t)qRed(m);
+                                outBuf[idx+1] = (uint8_t)qGreen(m);
+                                outBuf[idx+2] = (uint8_t)qBlue(m);
+                            }
+                        }
+                        TIFFWriteTile(out, outBuf.data(), x, y, 0, 0);
+                        reportProgress(++done * 100 / totalTiles);
+                    }
+                    QApplication::processEvents();
+                }
+            } else {
+                // Strip-based level
+                std::vector<uint32_t> raster((size_t)lvl.w * lvl.h);
+                TIFFReadRGBAImageOriented(m_tiff, lvl.w, lvl.h,
+                                          raster.data(), ORIENTATION_TOPLEFT, 0);
+                for (int ty = 0; ty < tilesY && !cancelled; ++ty) {
+                    for (int tx = 0; tx < tilesX && !cancelled; ++tx) {
+                        uint32_t x0 = (uint32_t)tx * outTW;
+                        uint32_t y0 = (uint32_t)ty * outTH;
+                        uint32_t tw = qMin(outTW, lvl.w - x0);
+                        uint32_t th = qMin(outTH, lvl.h - y0);
+                        std::fill(outBuf.begin(), outBuf.end(), 0);
+                        for (uint32_t r = 0; r < th; ++r) {
+                            for (uint32_t c = 0; c < tw; ++c) {
+                                uint32_t abgr = raster[(y0 + r) * lvl.w + (x0 + c)];
+                                uint8_t  gray = TIFFGetR(abgr);
+                                QRgb m = m_lut[gray];
+                                size_t idx = ((size_t)r * outTW + c) * 3;
+                                outBuf[idx]   = (uint8_t)qRed(m);
+                                outBuf[idx+1] = (uint8_t)qGreen(m);
+                                outBuf[idx+2] = (uint8_t)qBlue(m);
+                            }
+                        }
+                        TIFFWriteTile(out, outBuf.data(), x0, y0, 0, 0);
+                        reportProgress(++done * 100 / totalTiles);
+                    }
+                    QApplication::processEvents();
+                }
+            }
+
+            TIFFWriteDirectory(out);
+        }
+
+        TIFFClose(out);
+        if (cancelled) {
+            QFile::remove(outputPath);
+            return false;
+        }
+        return true;
+    }
+
     TIFF*                 m_tiff   = nullptr;
     QVector<BigTiffLevel> m_levels;
     TileCache             m_cache;
     QVector<QRgb>         m_lut;
+    QString               m_lastSaveError;
+    QString               m_srcPath;
 };
 
 // ── BigTiffViewer ─────────────────────────────────────────────────────────────
@@ -320,11 +490,13 @@ BigTiffViewer::BigTiffViewer(QWidget* parent)
         return btn;
     };
 
-    auto* closeBtn  = makePushBtn(tr("Close"));
+    auto* closeBtn   = makePushBtn(tr("Close"));
     toolbar->addSeparator();
-    auto* zoomInBtn = makePushBtn(tr("+"));
-    auto* zoomOutBtn= makePushBtn(tr("−"));
-    auto* fitBtn    = makePushBtn(tr("Fit"));
+    auto* saveAsBtn  = makePushBtn(tr("Save As…"));
+    toolbar->addSeparator();
+    auto* zoomInBtn  = makePushBtn(tr("+"));
+    auto* zoomOutBtn = makePushBtn(tr("−"));
+    auto* fitBtn     = makePushBtn(tr("Fit"));
     toolbar->addSeparator();
 
     m_infoLabel = new QLabel(toolbar);
@@ -338,6 +510,7 @@ BigTiffViewer::BigTiffViewer(QWidget* parent)
     layout->addWidget(m_view);
 
     connect(closeBtn,   &QPushButton::clicked, this, &BigTiffViewer::closeRequested);
+    connect(saveAsBtn,  &QPushButton::clicked, this, &BigTiffViewer::saveAs);
     connect(zoomInBtn,  &QPushButton::clicked, this, &BigTiffViewer::zoomIn);
     connect(zoomOutBtn, &QPushButton::clicked, this, &BigTiffViewer::zoomOut);
     connect(fitBtn,     &QPushButton::clicked, this, &BigTiffViewer::fitView);
@@ -402,4 +575,45 @@ void BigTiffViewer::updateInfoLabel()
         .arg(levels.size() != 1 ? "s" : "")
         .arg(m_view->isBigTiff() ? "  |  BigTIFF" : "");
     m_infoLabel->setText(info);
+}
+
+bool BigTiffViewer::saveTiff(const QString& outputPath)
+{
+    QProgressDialog progress(tr("Saving BigTIFF pyramid…"), tr("Cancel"), 0, 100, this);
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumDuration(300);
+    progress.setValue(0);
+
+    bool ok = m_view->saveTiff(outputPath, [&](int pct) -> bool {
+        progress.setValue(pct);
+        return !progress.wasCanceled();
+    });
+
+    progress.setValue(100);
+    return ok;
+}
+
+void BigTiffViewer::saveAs()
+{
+    if (!m_view->isOpen()) return;
+
+    const QString suggestedDir = QFileInfo(m_filePath).absolutePath();
+    QString path = QFileDialog::getSaveFileName(
+        this,
+        tr("Save BigTIFF As…"),
+        suggestedDir,
+        tr("TIFF Files (*.tif *.tiff);;All Files (*)"));
+    if (path.isEmpty()) return;
+
+    if (!path.endsWith(".tif", Qt::CaseInsensitive) &&
+        !path.endsWith(".tiff", Qt::CaseInsensitive))
+        path += ".tif";
+
+    if (!saveTiff(path)) {
+        const QString detail = m_view->lastSaveError();
+        const QString msg = detail.isEmpty()
+            ? tr("Could not write BigTIFF to:\n%1").arg(path)
+            : tr("Could not write BigTIFF to:\n%1\n\n%2").arg(path, detail);
+        QMessageBox::warning(this, tr("Save Failed"), msg);
+    }
 }

@@ -32,6 +32,7 @@
 #include "../undo/InvertLayerCommand.h"
 #include "../undo/DeleteLayerCommand.h"
 #include "../undo/LassoCutCommand.h"
+#include "../undo/UpdatePolygonLayerCommand.h"
 
 #include "../util/GeometryUtils.h"
 #include "../util/QUndoSortDialog.h"
@@ -2035,6 +2036,16 @@ void ImageView::setPolygonIndex( quint8 index, bool doUpdate )
       }
      }
      
+    // Notify MainWindow whether the selected polygon already has a layer
+    // (so the toolbar button can show "Create" vs. "Update")
+    {
+      bool hasLayer = false;
+      for ( EditablePolygon* polygon : m_editablePolygons ) {
+        if ( polygon && polygon->index() == (int)index )
+          hasLayer = polygon->layer();
+      }
+      emit polygonHasLayer(hasLayer);
+    }
     // end test
   }
 }
@@ -2105,17 +2116,17 @@ void ImageView::createPolygonLayer()
 {
   qCDebug(logEditor) << "ImageView::createPolygonLayer(): polygonIndex =" << m_polygonIndex;
   {
-    // check whether a layer has been already created
-    for ( int i=0 ; i<m_editablePolygons.size() ; i++ ) {
+    // If a layer already exists for this polygon, update it instead
+    for ( int i=0; i<m_editablePolygons.size(); i++ ) {
       if ( m_editablePolygons[i]->index() == m_polygonIndex ) {
         if ( m_editablePolygons[i]->layer() ) {
-          IMainSystem::instance()->showMessage(QString("Cannot create a new layer from %1. Layer already created.").arg(m_editablePolygons[i]->name()),1);
+          updatePolygonLayer();
           return;
         }
         m_editablePolygons[i]->setLayer();
       }
     }
-    // >>>
+    // Close any open active polygon before creating the layer
     if ( m_activePolygon != nullptr ) {
       LayerItem *layer = baseLayer();
       if ( layer != nullptr ) {
@@ -2126,25 +2137,180 @@ void ImageView::createPolygonLayer()
     if ( mainWindow != nullptr ) {
       mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
     }
-    // get active polygon
-    EditablePolygonCommand* polyCmd = ImageView::getPolygonUndoCommand(QString("Editable Polygon %1").arg(m_polygonIndex),true);
+    EditablePolygonCommand* polyCmd = ImageView::getPolygonUndoCommand(
+        QString("Editable Polygon %1").arg(m_polygonIndex), true);
     if ( polyCmd == nullptr ) {
       qWarning() << "ImageView::createPolygonLayer(): No polygon " << m_polygonIndex << " found";
       return;
     }
-    // process polygon
     qCDebug(logEditor) << "ImageView::createPolygonLayer(): polygon name =" << polyCmd->name();
     EditablePolygon *editablePolygon = polyCmd->model();
     if ( editablePolygon != nullptr ) {
-     int index = m_layers.size()+1;
-     LassoCutCommand *layerCut = createNewLayer(editablePolygon->polygon(),QString("%1 Layer").arg(polyCmd->name()));
-     if ( layerCut != nullptr ) {
-      layerCut->setController(polyCmd);
-      editablePolygon->setVisible(false);
-      polyCmd->setChildLayerId(index);
-     }
-     emit lassoLayerAdded();
+      int index = m_layers.size()+1;
+      LassoCutCommand *layerCut = createNewLayer(editablePolygon->polygon(),
+                                                  QString("%1 Layer").arg(polyCmd->name()));
+      if ( layerCut != nullptr ) {
+        layerCut->setController(polyCmd);
+        editablePolygon->setVisible(false);
+        polyCmd->setChildLayerId(index);
+        emit polygonHasLayer(true);
+        emit polygonNeedsUpdate(false);
+      }
+      emit lassoLayerAdded();
     }
+  }
+}
+
+// Directly updates the pixel content of the existing polygon cut layer to match
+// the current (modified) polygon shape.
+//
+// Strategy: step the undo stack back to the position immediately after the
+// LassoCutCommand, modify the source and cut layer images, update the
+// LassoCutCommand's stored backup, then re-advance the undo stack to its
+// previous tip so that all subsequent commands (MoveLayer, TransformLayer,
+// etc.) are re-applied on top of the new content.  No new stack entry is created.
+void ImageView::updatePolygonLayer()
+{
+  qCDebug(logEditor) << "ImageView::updatePolygonLayer(): polygonIndex =" << m_polygonIndex;
+  {
+    // 1. Find the EditablePolygonCommand for this polygon
+    EditablePolygonCommand* polyCmd = ImageView::getPolygonUndoCommand(
+        QString("Editable Polygon %1").arg(m_polygonIndex), true);
+    if ( !polyCmd || polyCmd->childLayerId() < 0 ) {
+      qWarning() << "ImageView::updatePolygonLayer(): polygon or childLayerId not found";
+      return;
+    }
+    EditablePolygon* editablePolygon = polyCmd->model();
+    if ( !editablePolygon ) return;
+
+    // 2. Find the cut layer and its LassoCutCommand in the undo stack
+    int cutLayerId  = polyCmd->childLayerId();
+    LayerItem* srcLayer = baseLayer();
+    LayerItem* cutLayer = nullptr;
+    for ( Layer* l : m_layers ) {
+      LayerItem* li = dynamic_cast<LayerItem*>(l->m_item);
+      if ( li && li->id() == cutLayerId ) { cutLayer = li; break; }
+    }
+    int lassoCmdIdx = -1;
+    LassoCutCommand* lassoCmd = nullptr;
+    for ( int i = 0; i < m_undoStack->count(); ++i ) {
+      auto* lc = const_cast<LassoCutCommand*>(
+          dynamic_cast<const LassoCutCommand*>(m_undoStack->command(i)));
+      if ( lc && lc->layerId() == cutLayerId ) { lassoCmd = lc; lassoCmdIdx = i; break; }
+    }
+    if ( !srcLayer || !cutLayer || !lassoCmd || lassoCmdIdx < 0 ) {
+      qWarning() << "ImageView::updatePolygonLayer(): cannot find srcLayer/cutLayer/lassoCmd";
+      return;
+    }
+
+    // 3. Restore the source pixels that were removed by the old cut.
+    //    Work from the current live image (all subsequent commands already applied
+    //    to the cut layer's scene transform, not to the source layer pixels).
+    QImage restoredSrc = srcLayer->image().copy();
+    const QImage& oldBackup = lassoCmd->backup();
+    const QRect&  oldBounds = lassoCmd->rect();
+    for ( int y = 0; y < oldBackup.height(); ++y ) {
+      for ( int x = 0; x < oldBackup.width(); ++x ) {
+        QColor px = oldBackup.pixelColor(x, y);
+        if ( px.alpha() > 0 )
+          restoredSrc.setPixelColor(oldBounds.x() + x, oldBounds.y() + y, px);
+      }
+    }
+
+    // 5. Compute new cut using the current polygon shape
+    QPolygonF polyF(editablePolygon->polygon());
+    if ( polyF.size() < 3 )
+      return;
+    QRect newBounds = polyF.boundingRect().toAlignedRect();
+    QColor backgroundColor = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
+
+    // Rasterise polygon into an alpha mask (255 = inside, 0 = outside).
+    // Always use Qt::white as brush so the alpha component (255) is written to
+    // the Format_Alpha8 image regardless of the image background mode.
+    QImage mask(newBounds.size(), QImage::Format_Alpha8);
+    mask.fill(0);
+    {
+      QPainter pm(&mask);
+      pm.setRenderHint(QPainter::Antialiasing);
+      pm.setBrush(Qt::white);
+      pm.setPen(Qt::NoPen);
+      QPolygonF relPoly = polyF;
+      for ( int i = 0; i < relPoly.size(); ++i ) relPoly[i] -= newBounds.topLeft();
+      pm.drawPolygon(relPoly);
+      pm.end();
+    }
+    if ( m_lassoFeatherRadius > 0 )
+      mask = QImageUtils::blurAlphaMask(mask, m_lassoFeatherRadius);
+
+    // Build cut-layer image: polygon pixels only (transparent outside)
+    QImage newCutImage(newBounds.size(), QImage::Format_ARGB32_Premultiplied);
+    newCutImage.fill(Qt::transparent);
+    for ( int y = 0; y < newBounds.height(); ++y ) {
+      const uchar* m = mask.constScanLine(y);
+      int ypos = newBounds.top() + y;
+      for ( int x = 0; x < newBounds.width(); ++x ) {
+        if ( m[x] == 0 ) continue;
+        QColor c = restoredSrc.pixelColor(newBounds.left() + x, ypos);
+        if ( c != backgroundColor )
+          newCutImage.setPixelColor(x, y, c);
+      }
+    }
+
+    // Build new source image: apply the new cut (blank polygon area)
+    QImage newSrcImage = restoredSrc.copy();
+    for ( int y = 0; y < newBounds.height(); ++y ) {
+      const uchar* m = mask.constScanLine(y);
+      int ypos = newBounds.top() + y;
+      for ( int x = 0; x < newBounds.width(); ++x ) {
+        if ( m[x] > 128 )
+          newSrcImage.setPixelColor(newBounds.x() + x, ypos, backgroundColor);
+      }
+    }
+
+    // 6. Apply the new source/cut images.
+    //
+    // Strategy: step the undo stack back to just after the LassoCutCommand so
+    // that all subsequent commands (MoveLayer, TransformLayer, …) are undone,
+    // patch source and cut layer in that clean state, then re-advance the stack
+    // so those commands re-execute on the new image content.  This is the only
+    // way to correctly re-apply baked image transforms (TransformLayerCommand
+    // calls setImageTransform which re-bakes the rotation/scale from m_originalImage).
+    int savedIdx = m_undoStack->index();
+    m_undoStack->setIndex(lassoCmdIdx + 1);   // undo MoveLayer, TransformLayer, …
+
+    srcLayer->setImage(newSrcImage);
+    srcLayer->updatePixmap();
+    srcLayer->update();
+
+    // Update the cut layer image without touching position — subsequent commands
+    // will re-apply positions / transforms when setIndex(savedIdx) redoes them.
+    cutLayer->setOriginalImage(newCutImage);
+    cutLayer->setImage(newCutImage);
+    cutLayer->updatePixmap();
+    cutLayer->update();
+
+    // Update the stored backup so that undoing the LassoCutCommand later
+    // correctly restores the new cut content.
+    lassoCmd->updateData(newCutImage, newBounds);
+
+    // Hide the editable polygon overlay — same as LassoCutCommand::redo() does.
+    polyCmd->setVisible(false);
+
+    // Re-advance the stack: this redoes MoveLayer, TransformLayer, … on the new
+    // image content, restoring correct positions and re-baking any image transform.
+    m_undoStack->setIndex(savedIdx);
+
+    // Force a full scene repaint so changes become visible immediately.
+    if ( m_scene ) m_scene->update();
+
+    emit polygonNeedsUpdate(false);
+
+    MainWindow* mainWindow = dynamic_cast<MainWindow*>(m_parent);
+    if ( mainWindow ) mainWindow->updateLayerList();
+
+    IMainSystem::instance()->showMessage(
+        QString("Updated %1 layer — new size (%2×%3)")
+            .arg(polyCmd->name()).arg(newBounds.width()).arg(newBounds.height()));
   }
 }
 
@@ -2217,6 +2383,13 @@ void ImageView::setPolygonEnabled( bool enabled )
      QString name = QString("Polygon %1").arg(polygonIndex); // 1+m_editablePolygons.size());
      m_polygonIndex = polygonIndex;
      m_activePolygon = new EditablePolygon("ImageView::setPolygonEnabled()",name);
+     connect(m_activePolygon, &EditablePolygon::changed, this, [this, poly = m_activePolygon](){
+       if ( poly->index() != m_polygonIndex ) return;
+       EditablePolygonCommand* cmd = getPolygonUndoCommand(
+           QString("Editable Polygon %1").arg(m_polygonIndex), true);
+       if ( cmd && cmd->childLayerId() >= 0 )
+         emit polygonNeedsUpdate(true);
+     });
      m_editablePolygons.push_back(m_activePolygon);
      m_activePolygonItem = new EditablePolygonItem(m_activePolygon,layer);
      m_activePolygonItem->setColor(QColor(255,0,0));
@@ -2238,6 +2411,13 @@ int ImageView::pushEditablePolygon( EditablePolygon* editablePolygon )
       }
     }
     m_editablePolygons.push_back(editablePolygon);
+    connect(editablePolygon, &EditablePolygon::changed, this, [this, poly = editablePolygon](){
+      if ( poly->index() != m_polygonIndex ) return;
+      EditablePolygonCommand* cmd = getPolygonUndoCommand(
+          QString("Editable Polygon %1").arg(m_polygonIndex), true);
+      if ( cmd && cmd->childLayerId() >= 0 )
+        emit polygonNeedsUpdate(true);
+    });
     return m_editablePolygons.size();
 }
 

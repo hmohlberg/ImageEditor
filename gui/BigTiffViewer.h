@@ -39,12 +39,13 @@ public:
     explicit BigTiffViewer(QWidget* parent = nullptr);
     ~BigTiffViewer();
 
-    bool   open(const QString& path);
-    void   closeTiff();
-    bool   isOpen() const;
+    bool    open(const QString& path);
+    void    closeTiff();
+    bool    isOpen() const;
     QString filePath() const { return m_filePath; }
-    QSize  imageSize() const;
-    void   setColorTable(const QVector<QRgb>& lut);
+    QSize   imageSize() const;
+    void    setColorTable(const QVector<QRgb>& lut);
+    bool    saveTiff(const QString& outputPath);
 
 signals:
     void closeRequested();
@@ -53,6 +54,7 @@ private slots:
     void zoomIn();
     void zoomOut();
     void fitView();
+    void saveAs();
 
 private:
     void updateInfoLabel();

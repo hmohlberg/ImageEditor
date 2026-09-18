@@ -481,6 +481,33 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
   }
 }
 
+// Re-applies the stored m_totalTransform to an updated m_originalImage without
+// modifying the transform itself.  For an identity transform the image is used
+// as-is.  In either case the item's scene position is adjusted so its visual
+// centre stays at the same scene point (same centre-alignment as setImageTransform).
+void LayerItem::reapplyImageTransform()
+{
+  prepareGeometryChange();
+  QPointF sceneCenter = qobject_cast<QApplication*>(qApp)
+      ? mapToScene(QRectF(pixmap().rect()).center())
+      : mapToScene(QRectF(m_originalImage.rect()).center());
+  if ( m_totalTransform.isIdentity() ) {
+    m_image = m_originalImage;
+  } else if ( !m_nogui && EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::System ) {
+    m_image = Interpolation::transformWithHighQuality(m_originalImage, m_totalTransform);
+  } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Bicubic ) {
+    m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
+  } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Nearest ) {
+    m_image = m_originalImage.transformed(m_totalTransform, Qt::FastTransformation);
+  } else {
+    m_image = m_originalImage.transformed(m_totalTransform, Qt::SmoothTransformation);
+  }
+  QPointF newImageCenter(m_image.width() / 2.0, m_image.height() / 2.0);
+  setPos(sceneCenter - newImageCenter);
+  setTransform(QTransform());
+  updatePixmap();
+}
+
 // ------------------------ Paint ------------------------
 void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget )
 {

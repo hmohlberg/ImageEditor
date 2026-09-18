@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(ImageEditor LANGUAGES CXX)
+project(ImageEditor VERSION 1.0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,9 +18,37 @@ if(APPLE)
   list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew")
   list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew/Cellar/qtbase/6.10.1")
   set(Qt6Svg_DIR "/opt/homebrew/opt/qtsvg/lib/cmake/Qt6Svg")
-  set(CMAKE_PREFIX_PATH "/opt/homebrew/opt/qtbase")
+  # Prepend qtbase so Qt is found first, but keep all existing paths
+  list(INSERT CMAKE_PREFIX_PATH 0 "/opt/homebrew/opt/qtbase")
+  # Explicit Homebrew libtiff path so find_package doesn't fall back to a system copy
+  list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew/opt/libtiff")
 endif()
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets Svg)
+# On Linux, XKB (xkbcommon) is a transitive dependency of Qt6 GUI/XCB.
+# Pre-populate the variables that Qt6's find_dependency(XKB) checks so the
+# build succeeds even when libxkbcommon-dev is not installed separately.
+if(UNIX AND NOT APPLE)
+    find_library(XKB_LIBRARY NAMES xkbcommon)
+    find_path(XKB_INCLUDE_DIR NAMES xkbcommon/xkbcommon.h
+              PATHS /usr/include /usr/local/include)
+    if(XKB_LIBRARY)
+        set(XKB_FOUND TRUE)
+        set(XKB_LIBRARIES "${XKB_LIBRARY}")
+        set(XKB_INCLUDE_DIRS "${XKB_INCLUDE_DIR}")
+        message(STATUS "Found XKB: ${XKB_LIBRARY}")
+    else()
+        message(WARNING "XKB (xkbcommon) not found — Qt6 GUI on X11 may not work.\n"
+                        "Install with: sudo apt-get install libxkbcommon-dev libxkbcommon-x11-dev")
+    endif()
+endif()
+
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets Svg Network)
+
+# Generate version header from CMake project version
+configure_file(
+    "${CMAKE_SOURCE_DIR}/core/version.h.in"
+    "${CMAKE_BINARY_DIR}/core/version.h"
+)
+include_directories("${CMAKE_BINARY_DIR}")
 find_package(TIFF REQUIRED)
 
 # itk find
@@ -50,6 +78,9 @@ set(SOURCES
     main.cpp
     core/ImageLoader.cpp
     core/ImageProcessor.cpp
+    core/Updater.cpp
+    core/BigTiffIO.cpp
+    core/BigTiffProjectApply.cpp
     gui/MainWindow.cpp
     gui/ImageView.cpp
     gui/ConfigDialog.cpp
@@ -79,6 +110,7 @@ set(SOURCES
     undo/MirrorLayerCommand.cpp
     undo/EditablePolygonCommand.cpp
     undo/TransformLayerCommand.cpp
+    undo/UpdatePolygonLayerCommand.cpp
     undo/PerspectiveWarpCommand.cpp
     undo/PolygonMovePointCommand.cpp
     undo/PolygonInsertPointCommand.cpp
@@ -143,7 +175,7 @@ qt_add_executable(${PROJECT_NAME}
    resources.qrc
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets Qt6::Svg TIFF::TIFF)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets Qt6::Svg Qt6::Network TIFF::TIFF)
 if(ITK_FOUND)
     include(${ITK_USE_FILE})
     target_include_directories(ImageEditor PRIVATE ${ITK_INCLUDE_DIRS})
@@ -157,6 +189,23 @@ if(HDF5_FOUND)
     target_compile_definitions(ImageEditor PRIVATE HASHDF5)
 endif()
 
+# Embed Homebrew lib dir as rpath so libtiff.dylib (and libhdf5.dylib) are
+# found at runtime without requiring DYLD_LIBRARY_PATH to be set.
+if(APPLE)
+    # Resolve the actual path from the TIFF::TIFF imported target so the rpath
+    # stays correct even if libtiff moves to a versioned keg directory.
+    get_target_property(_tiff_lib TIFF::TIFF IMPORTED_LOCATION)
+    if(_tiff_lib)
+        get_filename_component(_tiff_dir "${_tiff_lib}" DIRECTORY)
+    else()
+        set(_tiff_dir "/opt/homebrew/lib")
+    endif()
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        BUILD_RPATH "${_tiff_dir}"
+        INSTALL_RPATH "${_tiff_dir}")
+    message(STATUS "libtiff rpath: ${_tiff_dir}")
+endif()
+
 # Automatische Suche nach Plugins ermöglichen
 if(APPLE)
     set(QT_PLATFORMS_SRC "/opt/homebrew/opt/qtbase/share/qt/plugins/platforms")
@@ -165,5 +214,12 @@ if(APPLE)
         COMMAND ${CMAKE_COMMAND} -E make_directory "${QT_PLATFORMS_DEST}"
         COMMAND ${CMAKE_COMMAND} -E copy "${QT_PLATFORMS_SRC}/libqcocoa.dylib" "${QT_PLATFORMS_DEST}/"
         COMMENT "Kopiere libqcocoa.dylib nach ${QT_PLATFORMS_DEST}"
+    )
+    set(QT_TLS_SRC "/opt/homebrew/opt/qtbase/share/qt/plugins/tls")
+    set(QT_TLS_DEST "${CMAKE_BINARY_DIR}/tls")
+    add_custom_command(TARGET ImageEditor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${QT_TLS_DEST}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${QT_TLS_SRC}" "${QT_TLS_DEST}"
+        COMMENT "Kopiere Qt TLS-Plugins nach ${QT_TLS_DEST}"
     )
 endif()

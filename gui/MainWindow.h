@@ -223,5 +223,11 @@ class MainWindow : public QMainWindow, public IMainSystem
     
     bool m_updatingLayerList = false;
     bool m_saveImageDataInProjectFile = false;
-    
+    bool m_silentUpdateCheck = false;
+
+    class Updater* m_updater = nullptr;
+
+    void triggerUpdateCheck(bool silent);
+    void showUpdateAvailableDialog(const QString& newVersion,
+                                   const QString& releaseUrl);
 };

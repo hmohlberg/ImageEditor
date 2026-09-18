@@ -142,6 +142,7 @@ class ImageView : public QGraphicsView
     
     void undoPolygonOperation();
     void redoPolygonOperation();
+    void updatePolygonLayer();
     
     void printself();
 
@@ -153,6 +154,8 @@ class ImageView : public QGraphicsView
     void scaleChanged( double scale );
     void lassoLayerAdded();
     void layerAdded();
+    void polygonHasLayer(bool hasLayer);
+    void polygonNeedsUpdate(bool needsUpdate);
 
  protected:
 
