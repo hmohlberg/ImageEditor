@@ -35,6 +35,7 @@
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QEventLoop>
+#include <QSslConfiguration>
 
 #include <iostream>
 #include <unistd.h>
@@ -49,6 +50,11 @@
 
 #include "gui/MainWindow.h"
 #include "core/version.h"
+
+#include <tiffvers.h>
+#ifdef HASHDF5
+#  include <hdf5.h>
+#endif
 
 
 // ---------------------- Init ----------------------
@@ -119,6 +125,8 @@ static void printError( const QString &msg ) {
 }
 
 static bool validateFile( const QString &filePath, const QString &optionName, const QStringList &allowedExtensions = {} ) {
+  if ( filePath.startsWith("http://") || filePath.startsWith("https://") )
+      return true;
   auto errorPrefix = []() { return "\033[1;31mERROR: \033[0m"; };
   if ( !filePath.isEmpty() ) {
     QFileInfo fileInfo(filePath);
@@ -142,6 +150,72 @@ static bool validateFile( const QString &filePath, const QString &optionName, co
     }
   }
   return true;
+}
+
+static QString downloadImageFromUrl( const QString& url )
+{
+    QNetworkAccessManager nam;
+    QUrl qurl(url);
+    QNetworkRequest req(qurl);
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                     QNetworkRequest::NoLessSafeRedirectPolicy);
+    req.setSslConfiguration(QSslConfiguration::defaultConfiguration());
+    QNetworkReply* reply = nam.get(req);
+    QObject::connect(reply, &QNetworkReply::sslErrors,
+                     reply, [reply](const QList<QSslError>& errors) {
+        for ( const auto& e : errors )
+            std::cerr << "SSL warning: " << e.errorString().toStdString() << std::endl;
+        reply->ignoreSslErrors();
+    });
+    QEventLoop loop;
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+    if ( reply->error() != QNetworkReply::NoError ) {
+        std::cerr << "\033[1;31mERROR: \033[0m"
+                  << "Download failed: " << reply->errorString().toStdString() << std::endl;
+        reply->deleteLater();
+        return {};
+    }
+    const QByteArray data = reply->readAll();
+    reply->deleteLater();
+    const QString tempPath = QDir::tempPath() + "/imageeditor_url_download.png";
+    QFile f(tempPath);
+    if ( !f.open(QIODevice::WriteOnly) ) {
+        std::cerr << "\033[1;31mERROR: \033[0m"
+                  << "Could not write temp file: " << tempPath.toStdString() << std::endl;
+        return {};
+    }
+    f.write(data);
+    f.close();
+    return tempPath;
+}
+
+static QStringList parseFileList( const QString& path )
+{
+    QStringList entries;
+    QFile f(path);
+    if ( !f.open(QIODevice::ReadOnly | QIODevice::Text) ) return entries;
+    const QStringList lines = QString::fromUtf8(f.readAll()).split('\n');
+    QString searchPath;
+    for ( const auto& line : lines ) {
+        const QString t = line.trimmed();
+        if ( t.isEmpty() || t.startsWith('#') ) continue;
+        if ( t.startsWith("http://") || t.startsWith("https://") ) {
+            entries << t;
+            continue;
+        }
+        QFileInfo fi(t);
+        if ( fi.isAbsolute() ) {
+            if ( fi.isDir() )
+                searchPath = t;           // directory → becomes search path
+            else
+                entries << t;             // absolute file path
+        } else {
+            // relative filename → resolve against current search path
+            entries << ( searchPath.isEmpty() ? t : searchPath + "/" + t );
+        }
+    }
+    return entries;
 }
 
 static bool isPathWritable( const QString &path ) {
@@ -197,8 +271,11 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   QCommandLineParser parser;
   parser.setApplicationDescription("A simple ImageEditor with JSON-history support.");
   parser.addHelpOption();
-  parser.addVersionOption();   
-  QCommandLineOption fileOption(QStringList() << "f" << "file", "Path to input image file.", "file");
+  QCommandLineOption aboutOption("about",
+      "Print version, authors, and license information.");
+  parser.addOption(aboutOption);
+  QCommandLineOption fileOption(QStringList() << "f" << "file",
+      "Path to input image file, HTTP/HTTPS URL, or .list file (first entry is loaded).", "file");
   parser.addOption(fileOption);
   QCommandLineOption projectFileOption(QStringList() << "project", "Path to input JSON-project file.", "json");
   parser.addOption(projectFileOption);
@@ -224,10 +301,6 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(intermediateOption);
   QCommandLineOption concatOption("concatenate", "Concatenate image transformations in batch mode.");
   parser.addOption(concatOption);
-  QCommandLineOption gpuOption("gpu", "Use gpu accelerated cage warp processing.");
-  parser.addOption(gpuOption);
-  // QCommandLineOption vulkanOption("vulkan", "If available enable hardware accelerated Vulkan rendering.");
-  // parser.addOption(vulkanOption);
   QCommandLineOption historyOption("history", "Print history of last calls to stdout. Optional: last <n> entries.");
   parser.addOption(historyOption);
   QCommandLineOption forceOption("force", "Overwrite an existing output file.");
@@ -264,16 +337,40 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
    parser.showHelp();
   }
   // --- Set variables ---
-  obj["imagePath"] = parser.value(fileOption);
-  if ( !validateFile(obj["imagePath"].toString(),"image file",{"png","mnc","mnc2","tif","tiff","h5","hdf5","hdf"}) ) {
-    exit(1);
+  {
+    QString imageFilePath = parser.value(fileOption);
+    if ( imageFilePath.startsWith("http://") || imageFilePath.startsWith("https://") ) {
+      obj["imageDisplayName"] = imageFilePath;
+      std::cout << "Downloading image from URL: " << imageFilePath.toStdString() << std::endl;
+      imageFilePath = downloadImageFromUrl(imageFilePath);
+      if ( imageFilePath.isEmpty() ) exit(1);
+    }
+    // .list file: parse entries, use first as imagePath, store all in fileList
+    if ( QFileInfo(imageFilePath).suffix().toLower() == "list" ) {
+        const QStringList entries = parseFileList(imageFilePath);
+        if ( entries.isEmpty() ) {
+            std::cerr << "\033[1;31mERROR: \033[0m"
+                      << "File list '" << imageFilePath.toStdString() << "' is empty." << std::endl;
+            exit(1);
+        }
+        QJsonArray arr;
+        for ( const auto& e : entries ) arr.append(e);
+        obj["fileList"] = arr;
+        imageFilePath = entries.first();
+        obj["imageDisplayName"] = imageFilePath;
+        if ( imageFilePath.startsWith("http://") || imageFilePath.startsWith("https://") ) {
+            std::cout << "Downloading image from URL: " << imageFilePath.toStdString() << std::endl;
+            imageFilePath = downloadImageFromUrl(imageFilePath);
+            if ( imageFilePath.isEmpty() ) exit(1);
+        }
+    }
+    if ( !validateFile(imageFilePath,"image file",{"png","mnc","mnc2","tif","tiff","h5","hdf5","hdf"}) ) {
+      exit(1);
+    }
+    obj["imagePath"] = imageFilePath;
   }
   obj["outputPath"] = parser.value(outFileOption);
   obj["classPath"] = parser.value(classFileOption);
-  obj["imagePath"] = parser.value(fileOption);
-  if ( !validateFile(obj["imagePath"].toString(),"image file",{"png","mnc","mnc2","tif","tiff","h5","hdf5","hdf"}) ) {
-   exit(1);
-  }
   obj["historyPath"] = parser.value(projectFileOption);
   if ( !validateFile(obj["historyPath"].toString(),"project",{"json"}) ) {
    exit(1);
@@ -285,8 +382,8 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
    exit(1);
   }
   obj["concatenate"] = parser.isSet(concatOption);
-  obj["vulkan"] = false; // parser.isSet(vulkanOption);
-  obj["gpu"] = parser.isSet(gpuOption);
+  obj["vulkan"] = false;
+  obj["gpu"] = false;
   obj["alphaMasking"] = parser.isSet(alphaMaskingOption);
   obj["skipValidation"] = parser.isSet(skipValidationOption);
   obj["force"] = parser.isSet(forceOption);
@@ -299,10 +396,34 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
 }
 
 // ---------------------- Version check ----------------------
+static void printLicense()
+{
+    QFile f(":/licence.txt");
+    if ( f.open(QIODevice::ReadOnly | QIODevice::Text) )
+        std::cout << f.readAll().toStdString() << std::endl;
+    else
+        std::cerr << "License file not found in resources." << std::endl;
+}
+
+static void printAuthors()
+{
+    QFile f(":/AUTHORS");
+    if ( f.open(QIODevice::ReadOnly | QIODevice::Text) )
+        std::cout << f.readAll().toStdString() << std::endl;
+    else
+        std::cerr << "AUTHORS file not found in resources." << std::endl;
+}
+
 static void printVersionInfo( int argc, char* argv[] )
 {
     const QString localVer = APP_VERSION;
     std::cout << "ImageEditor " << localVer.toStdString() << std::endl;
+    std::cout << "  BigTIFF support: yes (libtiff " << TIFFLIB_VERSION_STR_MAJ_MIN_MIC << ")" << std::endl;
+#ifdef HASHDF5
+    std::cout << "  HDF5 support:    yes (" << H5_VERSION << ")" << std::endl;
+#else
+    std::cout << "  HDF5 support:    no" << std::endl;
+#endif
 
     // Spin up a minimal core app so QNetworkAccessManager works
     QCoreApplication app(argc, argv);
@@ -365,6 +486,15 @@ static void printVersionInfo( int argc, char* argv[] )
         std::cout << "Status: Up to date. No update available." << std::endl;
 }
 
+static void printAbout( int argc, char* argv[] )
+{
+    printVersionInfo(argc, argv);
+    std::cout << std::endl;
+    printAuthors();
+    std::cout << std::endl;
+    printLicense();
+}
+
 // ---------------------- Main ----------------------
 int main( int argc, char *argv[] )
 {   
@@ -380,6 +510,18 @@ int main( int argc, char *argv[] )
     for ( int i=0 ; i<argc ; ++i ) {
      if ( QString(argv[i]) == "--version" || QString(argv[i]) == "-v" ) {
        printVersionInfo(argc, argv);
+       return 0;
+     }
+     if ( QString(argv[i]) == "--license" || QString(argv[i]) == "-l" ) {
+       printLicense();
+       return 0;
+     }
+     if ( QString(argv[i]) == "--authors" || QString(argv[i]) == "-a" ) {
+       printAuthors();
+       return 0;
+     }
+     if ( QString(argv[i]) == "--about" ) {
+       printAbout(argc, argv);
        return 0;
      }
      if ( QString(argv[i]) == "--debug" ) {

@@ -220,6 +220,8 @@ class MainWindow : public QMainWindow, public IMainSystem
     QString m_selectedLayerItemName;
     QString m_mainImageName;
     QString m_projectFileName;
+    QStringList m_fileList;
+    QString m_currentDisplayName;
     
     bool m_updatingLayerList = false;
     bool m_saveImageDataInProjectFile = false;
@@ -228,6 +230,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     class Updater* m_updater = nullptr;
 
     void triggerUpdateCheck(bool silent);
+    void showAboutDialog();
     void showUpdateAvailableDialog(const QString& newVersion,
                                    const QString& releaseUrl);
 };

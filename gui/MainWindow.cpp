@@ -18,6 +18,7 @@
 #include "MainWindow.h"
 #include "ImageView.h"
 #include "ConfigDialog.h"
+#include "AboutDialog.h"
 #include "LayerEditorView.h"
 #include "BigTiffViewer.h"
 #ifdef HASHDF5
@@ -80,6 +81,15 @@
 #include <QLineEdit>
 #include <QBuffer>
 #include <QTimer>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QEventLoop>
+#include <QSslConfiguration>
+#include <QVBoxLayout>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QTabWidget>
 
 #include <iostream>
 
@@ -98,6 +108,8 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     QString historyPath = options.value("historyPath").toString("");
     QString outputPath = options.value("outputPath").toString("");
     QString classPath = options.value("classPath").toString("");
+    for ( const auto& v : options.value("fileList").toArray() )
+        m_fileList << v.toString();
     bool useVulkan = options.value("vulkan").toBool();
     
     Config::gpuCageWarpProcessing = options.value("gpu").toBool();
@@ -218,6 +230,20 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     } else if ( !imagePath.isEmpty() && !historyPath.isEmpty() ) {
      hasMainImage = loadAnyImage(imagePath);
      loadProject(historyPath, true);
+    }
+    // override title when the loaded file was a downloaded URL/filelist entry
+    {
+     const QString dispName = options.value("imageDisplayName").toString("");
+     if ( !dispName.isEmpty() ) {
+       m_currentDisplayName = dispName;
+       setWindowTitle("ImageEditor - " + dispName);
+     }
+     // BigTIFF/HDF5 load via QTimer::singleShot → loadImage() not called → m_currentDisplayName empty
+     if ( m_currentDisplayName.isEmpty() && !imagePath.isEmpty() )
+       m_currentDisplayName = imagePath;
+     // ensure the current image appears in the filelist tab
+     if ( !m_currentDisplayName.isEmpty() && !m_fileList.contains(m_currentDisplayName) )
+       m_fileList.prepend(m_currentDisplayName);
     }
     if ( !classPath.isEmpty() ) {
      m_imageView->loadMaskImage(classPath); 
@@ -364,6 +390,8 @@ bool MainWindow::loadImage( const QString& filePath, bool askForNewLoad )
       QFileInfo fileInfo(filePath);
       m_mainImageName = fileInfo.fileName();
     }
+    m_currentDisplayName = filePath;
+    setWindowTitle("ImageEditor - " + filePath);
     Config::isWhiteBackgroundImage = loader.hasWhiteBackground();
     auto* scene = m_imageView->getScene();
     scene->clear();
@@ -389,33 +417,216 @@ void MainWindow::openImage()
 {
   qCDebug(logEditor) << "MainWindow::openImage(): Processing...";
   {
-    bool isMaskImage = sender() == m_openMaskImageAction ? true : false;
+    const bool isMaskImage = sender() == m_openMaskImageAction;
     if ( !isMaskImage ) {
-     if ( checkUnsavedData(false) == false ) {
-      return;
-     }
-     m_imageView->undoStack()->clear();
-     m_imageView->clearLayers();
-     rebuildLayerList();
+      if ( !checkUnsavedData(false) ) return;
+      m_imageView->undoStack()->clear();
+      m_imageView->clearLayers();
+      rebuildLayerList();
     }
-    QString title = isMaskImage ? QString("Open mask image") : QString("Open image");
-    QString fileName = QFileDialog::getOpenFileName(this,
-                        title, QString(),
-                        tr("Images (*.png *.jpg *.bmp *.tif *.tiff *.h5 *.hdf5);;TIFF Images (*.tif *.tiff);;HDF5 Files (*.h5 *.hdf5);;All Files (*)"));
-    if ( fileName.isEmpty() )
-      return;
+
+    // helper: parse a .list file
+    // - lines starting with # or empty → skip
+    // - http/https lines → URL entries
+    // - absolute directory path → becomes search path for subsequent relative names
+    // - relative filename → resolved against current search path
+    // - absolute file path → used as-is
+    auto parseLocalFileList = [](const QString& path) -> QStringList {
+        QStringList entries;
+        QFile f(path);
+        if ( !f.open(QIODevice::ReadOnly | QIODevice::Text) ) return entries;
+        const QStringList lines = QString::fromUtf8(f.readAll()).split('\n');
+        QString searchPath;
+        for ( const auto& line : lines ) {
+            const QString t = line.trimmed();
+            if ( t.isEmpty() || t.startsWith('#') ) continue;
+            if ( t.startsWith("http://") || t.startsWith("https://") ) {
+                entries << t;
+                continue;
+            }
+            QFileInfo fi(t);
+            if ( fi.isAbsolute() ) {
+                if ( fi.isDir() )
+                    searchPath = t;
+                else
+                    entries << t;
+            } else {
+                entries << ( searchPath.isEmpty() ? t : searchPath + "/" + t );
+            }
+        }
+        return entries;
+    };
+
+    // --- dialog with three tabs: local disk / web / filelist ---
+    QDialog dlg(this);
+    dlg.setWindowTitle(isMaskImage ? tr("Open mask image") : tr("Open image"));
+    dlg.setMinimumSize(700, 480);
+
+    const QString fileFilter = isMaskImage
+        ? tr("Images (*.png *.jpg *.bmp *.tif *.tiff);;All Files (*)")
+        : tr("Images (*.png *.jpg *.bmp *.tif *.tiff *.h5 *.hdf5);;File Lists (*.list);;TIFF Images (*.tif *.tiff);;HDF5 Files (*.h5 *.hdf5);;All Files (*)");
+
+    auto* tabs = new QTabWidget(&dlg);
+
+    // Tab 0: embedded file browser (no separate popup)
+    auto* localTab = new QWidget;
+    auto* localLay = new QVBoxLayout(localTab);
+    localLay->setContentsMargins(0, 0, 0, 0);
+    auto* fd = new QFileDialog(localTab);
+    fd->setWindowFlags(Qt::Widget);
+    fd->setOption(QFileDialog::DontUseNativeDialog, true);
+    fd->setFileMode(QFileDialog::ExistingFile);
+    fd->setNameFilter(fileFilter);
+    for ( auto* bb : fd->findChildren<QDialogButtonBox*>() ) bb->hide();
+    localLay->addWidget(fd);
+    tabs->addTab(localTab, tr("Open from local disk"));
+
+    // Tab 1: web URL
+    auto* webTab = new QWidget;
+    auto* webLay = new QVBoxLayout(webTab);
+    webLay->setContentsMargins(16, 20, 16, 8);
+    auto* urlEdit = new QLineEdit(webTab);
+    urlEdit->setPlaceholderText(tr("https://example.com/image.png"));
+    webLay->addWidget(new QLabel(tr("URL:"), webTab));
+    webLay->addWidget(urlEdit);
+    webLay->addStretch();
+    tabs->addTab(webTab, tr("Open from web"));
+
+    // Tab 2: filelist
+    auto* listTab    = new QWidget;
+    auto* listLay    = new QVBoxLayout(listTab);
+    listLay->setContentsMargins(8, 8, 8, 4);
+    auto* listWidget = new QListWidget(listTab);
+    for ( const auto& entry : m_fileList ) {
+        auto* item = new QListWidgetItem(entry, listWidget);
+        if ( entry == m_currentDisplayName ) {
+            QFont f = item->font();
+            f.setBold(true);
+            item->setFont(f);
+            item->setForeground(QColor("#5aabff"));
+        }
+    }
+    auto* browseListBtn = new QPushButton(tr("Browse list file…"), listTab);
+    listLay->addWidget(listWidget, 1);
+    listLay->addWidget(browseListBtn);
+    tabs->addTab(listTab, tr("Open from filelist"));
+
+    auto* bbox = new QDialogButtonBox(QDialogButtonBox::Open | QDialogButtonBox::Cancel, &dlg);
+    auto* vlay = new QVBoxLayout(&dlg);
+    vlay->addWidget(tabs);
+    vlay->addWidget(bbox);
+
+    // Tab 0: double-click in embedded browser → accept immediately
+    connect(fd, &QFileDialog::fileSelected, &dlg, &QDialog::accept);
+    // Tab 2: browse for a .list file and populate the list widget
+    connect(browseListBtn, &QPushButton::clicked, [&]() {
+        const QString f = QFileDialog::getOpenFileName(this, tr("Open file list"), QString(),
+            tr("File lists (*.list);;All Files (*)"));
+        if ( f.isEmpty() ) return;
+        const QStringList entries = parseLocalFileList(f);
+        listWidget->clear();
+        for ( const auto& e : entries ) listWidget->addItem(e);
+        m_fileList = entries;
+    });
+    // Tab 2: double-click on entry → accept immediately
+    connect(listWidget, &QListWidget::itemDoubleClicked, &dlg, &QDialog::accept);
+
+    connect(bbox, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(bbox, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    if ( dlg.exec() != QDialog::Accepted ) return;
+
+    QString fileName;
+    const int activeTab = tabs->currentIndex();
+    if ( activeTab == 0 ) {
+      const QStringList sel = fd->selectedFiles();
+      fileName = sel.isEmpty() ? QString() : sel.first();
+      // if a .list file was selected, parse and use first entry
+      if ( QFileInfo(fileName).suffix().toLower() == "list" ) {
+          const QStringList entries = parseLocalFileList(fileName);
+          if ( entries.isEmpty() ) { showMessage(tr("File list is empty."), 1); return; }
+          m_fileList = entries;
+          listWidget->clear();
+          for ( const auto& e : entries ) listWidget->addItem(e);
+          fileName = entries.first();
+      }
+    } else if ( activeTab == 1 ) {
+      fileName = urlEdit->text().trimmed();
+    } else {
+      // Tab 2: filelist — use double-clicked or currently selected item
+      auto* item = listWidget->currentItem();
+      fileName = item ? item->text() : QString();
+      // keep m_fileList in sync with what's in the widget
+      m_fileList.clear();
+      for ( int i = 0; i < listWidget->count(); ++i )
+          m_fileList << listWidget->item(i)->text();
+    }
+    if ( fileName.isEmpty() ) return;
+
+    // remember original name before possible URL → tempfile replacement
+    const QString displayName = fileName;
+
+    // --- URL download ---
+    if ( fileName.startsWith("http://") || fileName.startsWith("https://") ) {
+      showMessage(tr("Downloading image…"), 0);
+      QApplication::setOverrideCursor(Qt::WaitCursor);
+      QNetworkAccessManager nam;
+      QUrl qurl(fileName);
+      QNetworkRequest req(qurl);
+      req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                       QNetworkRequest::NoLessSafeRedirectPolicy);
+      req.setSslConfiguration(QSslConfiguration::defaultConfiguration());
+      QNetworkReply* reply = nam.get(req);
+      connect(reply, &QNetworkReply::sslErrors,
+              reply, [reply](const QList<QSslError>&) { reply->ignoreSslErrors(); });
+      QEventLoop loop;
+      connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+      loop.exec();
+      QApplication::restoreOverrideCursor();
+      if ( reply->error() != QNetworkReply::NoError ) {
+        QMessageBox::critical(this, tr("Download failed"), reply->errorString());
+        reply->deleteLater();
+        return;
+      }
+      const QByteArray data = reply->readAll();
+      reply->deleteLater();
+      const QString tempPath = QDir::tempPath() + "/imageeditor_url_download.png";
+      QFile f(tempPath);
+      if ( !f.open(QIODevice::WriteOnly) ) {
+        QMessageBox::critical(this, tr("Error"), tr("Could not write temporary file."));
+        return;
+      }
+      f.write(data);
+      f.close();
+      fileName = tempPath;
+    }
+
     if ( isMaskImage ) {
       m_imageView->loadMaskImage(fileName);
     } else {
       const QString ext = QFileInfo(fileName).suffix().toLower();
-      if (ext == "tif" || ext == "tiff") {
-          openBigTiff(fileName);
+      if ( ext == "tif" || ext == "tiff" ) {
+        openBigTiff(fileName);
+        m_currentDisplayName = displayName;
+        setWindowTitle("ImageEditor - " + displayName);
+        if ( !m_fileList.contains(displayName) )
+          m_fileList.prepend(displayName);
 #ifdef HASHDF5
-      } else if (ext == "h5" || ext == "hdf5" || ext == "hdf") {
-          openHdf5(fileName);
+      } else if ( ext == "h5" || ext == "hdf5" || ext == "hdf" ) {
+        openHdf5(fileName);
+        m_currentDisplayName = displayName;
+        setWindowTitle("ImageEditor - " + displayName);
+        if ( !m_fileList.contains(displayName) )
+          m_fileList.prepend(displayName);
 #endif
       } else {
-          loadImage(fileName);
+        if ( loadImage(fileName) ) {
+          m_currentDisplayName = displayName;
+          setWindowTitle("ImageEditor - " + displayName);
+          if ( !m_fileList.contains(displayName) )
+            m_fileList.prepend(displayName);
+          QTimer::singleShot(0, this, &MainWindow::fitToWindow);
+        }
       }
     }
   }
@@ -1590,6 +1801,11 @@ void MainWindow::createActions()
             triggerUpdateCheck(false);
         });
         appMenu->addAction(checkUpdateAction);
+
+        QAction* aboutAction = new QAction(tr("About ImageEditor…"), this);
+        aboutAction->setMenuRole(QAction::AboutRole);
+        connect(aboutAction, &QAction::triggered, this, &MainWindow::showAboutDialog);
+        appMenu->addAction(aboutAction);
     }
   }
 }
@@ -2643,6 +2859,14 @@ void MainWindow::fitToWindow() {
   if ( m_layerItem != nullptr ) {
      m_imageView->fitInView(m_layerItem,Qt::KeepAspectRatio);
   }
+}
+
+/* =================== About Dialog =================== */
+
+void MainWindow::showAboutDialog()
+{
+    AboutDialog dlg(this);
+    dlg.exec();
 }
 
 /* =================== Update Checker =================== */

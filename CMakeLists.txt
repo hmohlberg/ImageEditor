@@ -83,6 +83,7 @@ set(SOURCES
     core/BigTiffProjectApply.cpp
     gui/MainWindow.cpp
     gui/ImageView.cpp
+    gui/AboutDialog.cpp
     gui/ConfigDialog.cpp
     gui/LayerEditorView.cpp
     gui/BigTiffViewer.cpp

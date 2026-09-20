@@ -1,0 +1,40 @@
+ImageEditor - Authors and Contributors
+======================================
+
+Main Developer
+--------------
+  Hartmut Mohlberg
+  Institute of Neurosciences and Medicine (INM)
+  h.mohlberg@fz-juelich.de
+
+
+Contributors
+------------
+The following people have contributed to ImageEditor through bug reports,
+testing, and suggestions:
+
+  Claude Lepage
+  McGill University, Montreal Neurological Institute
+    - Bug fixes, Testing, Suggestions
+
+  Daniel Krötz
+  Institute of Neurosciences and Medicine (INM)
+    - Testing, Windows Compilation Documentation 
+
+  Susanne Wenzel
+  Institute of Neurosciences and Medicine (INM)
+    - Documentation
+
+
+Institutional Affiliation
+-------------------------
+  Forschungszentrum Jülich GmbH
+  52425 Jülich, Germany
+  https://www.fz-juelich.de
+
+
+License
+-------
+  Copyright 2026 Forschungszentrum Jülich
+  Apache License, Version 2.0
+  See LICENCE file or run: ImageEditor --license
