@@ -178,7 +178,11 @@ static QString downloadImageFromUrl( const QString& url )
     }
     const QByteArray data = reply->readAll();
     reply->deleteLater();
-    const QString tempPath = QDir::tempPath() + "/imageeditor_url_download.png";
+    const QString urlExt = QFileInfo(QUrl(url).path()).suffix().toLower();
+    static const QStringList knownExts = {
+        "png","jpg","jpeg","bmp","tif","tiff","h5","hdf5","hdf","mnc","mnc2","list"};
+    const QString useExt  = knownExts.contains(urlExt) ? urlExt : "png";
+    const QString tempPath = QDir::tempPath() + "/imageeditor_url_download." + useExt;
     QFile f(tempPath);
     if ( !f.open(QIODevice::WriteOnly) ) {
         std::cerr << "\033[1;31mERROR: \033[0m"
@@ -336,9 +340,24 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
    qCritical() << "Error: Missing path to image file and history file. Need at least one!";
    parser.showHelp();
   }
+  // pre-load config so github:// expansion uses the configured base URL
+  {
+    const QStringList args = app->arguments();
+    for ( int i = 1; i < args.size() - 1; ++i ) {
+      if ( args[i] == "--config" ) {
+        EditorStyle::instance().load(args[i + 1]);
+        break;
+      }
+    }
+  }
+
   // --- Set variables ---
   {
     QString imageFilePath = parser.value(fileOption);
+    // expand github:// shorthand
+    if ( imageFilePath.startsWith("github://") )
+      imageFilePath = EditorStyle::instance().githubBaseUrl()
+                      + "/" + imageFilePath.mid(9);
     if ( imageFilePath.startsWith("http://") || imageFilePath.startsWith("https://") ) {
       obj["imageDisplayName"] = imageFilePath;
       std::cout << "Downloading image from URL: " << imageFilePath.toStdString() << std::endl;

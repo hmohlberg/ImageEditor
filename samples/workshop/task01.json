@@ -1,0 +1,46 @@
+{
+    "layers": [
+        {
+            "filename": "pm2088o.png",
+            "filetime": "2026-03-12 10:48:33",
+            "id": "0",
+            "md5checksum": "dfb85a36b97d4988825818fe4cfb74ce",
+            "name": "MainImage",
+            "pathname": "/Users/hmohlberg/Projects/Software/HITools/progs/qt/ImageEditor/samples/images"
+        },
+        {
+            "binaryMask": true,
+            "creator": "Lasso Layer",
+            "data": "iVBORw0KGgoAAAANSUhEUgAAANIAAAIDCAMAAABGurDTAAADAFBMVEUAAAD///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////8HPQsIAAAACXBIWXMAAAsTAAALEwEAmpwYAAADtElEQVR4nO3cy3LaQBRFUf//T5NyMkhiG73Vt8/V2lMmZ1UDElTBx4ckSZIk3dfrd9Urruz1b9VjLun1tepBp/smikf9JApHvSElo96SclELpFTTEikVtWyKRK2QEk1rpEDUOinOtIGUhtpEykJtJCWZtpKCUNtJMaYdpBTULlKGaR+ppSkBtZcUYNpNmt+0nzS96QBpdtMR0uSmQ6S5TcdIU5uQEkxHSRObDpM6mqqHv6/hMR0nTWs6QZrVhJRgQkownSNNaWpI6mg6SZrRhJRgQkownSdNZ0JKMCElmJASTEgJpoakjqaLSDOZkBJMSAkmpAQTElJJF5JmMSEh1dTQhPQ00iQmpMeR5jA1JHU0ISWYkB5ImsGElGBCQupBqjchITEhISE1J5WbkJC6kKpNDUmeeUhI85KqTUhISPOakJCQkJCQkJCQqmtoQkJCQkJC6k2qFrU0XU8qNyElmO4gFZtuIdWa7iGVmpCYepEKTUgJJqQEE1KCCenppCITUgKpownp8aQaExJSCamjCQmpxISUYEJCKjEhJZgakjqakBJMSAkmJKQSU0NSRxMSElIQaawJCanEhIRUYkJi6k0aaEJCKjEhJZiQkEpMSEj9TUgJpEEmpAQTElKJCQnpCaQRpoYkzzwkJCSkZJJ7cSQkpClIQ0ROCekJJHdEESTfPjAhBZmQkJ5But+EhISUakJCQkJCQpqJ5PYBqYZ0uwkpgeTFhFRjQkJCQnoOyYUJCQkJCQmpm6mfyE0eUo3IKSH1JDW81o4XISEhhZAavuMhRZB8BkSqEHUk+cUP0iNIA0RITI8gjRAhIdWQ/OEIUokICak9aZAIKYE0UISUQBokQkogDRQhIdWYkJBKTEgJJqQA0jjRMBMSEhJSvQgJqTFpqAgJqYY0xNSPNFiElCBCiiDdbhovQkoQISWI7iWViJASREgJohtNZSKkBBFSggjpwaRK0U0mpABSrQgpQYSUILrBVA26nlTt+UCKEHUkXWuqxvwJKUCElCBCShBdaKqG/K2fCClBhJQg6ki6xFRt+BJSgOgCUrXgW/1ESAmis6bq9T/WT3SKVL39Te1ASBGiw6bq2Uv1Ex0jVY9erp/oCKl68lr9RPtJ1YPX6yfaa6peu6l+ol2k6q0b6ydaJv33aPXS7TU7os/6iTaRqjfurB1onVS970ANSSum6nWHagdaJFVPO1o/0XtS9bATtQP9TKredLJ+om+m6jmX1A70WTePJEmSJEmSJEmSJEmSJM3VLyD4c+WOIhsHAAAAAElFTkSuQmCC",
+            "id": 1,
+            "name": "Lasso Layer 1",
+            "opacity": 1,
+            "x": 3482,
+            "y": 718
+        }
+    ],
+    "undoStack": [
+        {
+            "name": "Lasso Layer",
+            "newLayerId": 1,
+            "originalLayerId": 0,
+            "rect": {
+                "height": 515,
+                "width": 210,
+                "x": 3482,
+                "y": 718
+            },
+            "text": "Lasso Layer 1 Cut",
+            "type": "LassoCutCommand"
+        },
+        {
+            "fromX": 3482,
+            "fromY": 718,
+            "layerId": 1,
+            "text": "Move Layer 1",
+            "toX": 3433,
+            "toY": 743,
+            "type": "MoveLayer"
+        }
+    ]
+}

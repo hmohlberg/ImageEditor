@@ -563,15 +563,19 @@ void MainWindow::openImage()
     }
     if ( fileName.isEmpty() ) return;
 
+    // expand github:// shorthand
+    if ( fileName.startsWith("github://") )
+      fileName = EditorStyle::instance().githubBaseUrl() + "/" + fileName.mid(9);
+
     // remember original name before possible URL → tempfile replacement
     const QString displayName = fileName;
 
-    // --- URL download ---
-    if ( fileName.startsWith("http://") || fileName.startsWith("https://") ) {
-      showMessage(tr("Downloading image…"), 0);
+    // --- download helper (used for URL → file and URL → .list → first entry) ---
+    auto downloadUrl = [&](const QString& url) -> QString {
+      showMessage(tr("Downloading…"), 0);
       QApplication::setOverrideCursor(Qt::WaitCursor);
       QNetworkAccessManager nam;
-      QUrl qurl(fileName);
+      QUrl qurl(url);
       QNetworkRequest req(qurl);
       req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                        QNetworkRequest::NoLessSafeRedirectPolicy);
@@ -586,19 +590,41 @@ void MainWindow::openImage()
       if ( reply->error() != QNetworkReply::NoError ) {
         QMessageBox::critical(this, tr("Download failed"), reply->errorString());
         reply->deleteLater();
-        return;
+        return QString();
       }
       const QByteArray data = reply->readAll();
       reply->deleteLater();
-      const QString tempPath = QDir::tempPath() + "/imageeditor_url_download.png";
-      QFile f(tempPath);
+      const QString urlExt = QFileInfo(QUrl(url).path()).suffix().toLower();
+      static const QStringList knownExts = {
+          "png","jpg","jpeg","bmp","tif","tiff","h5","hdf5","hdf","mnc","mnc2","list"};
+      const QString useExt  = knownExts.contains(urlExt) ? urlExt : "png";
+      const QString tmpPath = QDir::tempPath() + "/imageeditor_url_download." + useExt;
+      QFile f(tmpPath);
       if ( !f.open(QIODevice::WriteOnly) ) {
         QMessageBox::critical(this, tr("Error"), tr("Could not write temporary file."));
-        return;
+        return QString();
       }
       f.write(data);
       f.close();
-      fileName = tempPath;
+      return tmpPath;
+    };
+
+    // --- URL download ---
+    if ( fileName.startsWith("http://") || fileName.startsWith("https://") ) {
+      fileName = downloadUrl(fileName);
+      if ( fileName.isEmpty() ) return;
+    }
+
+    // --- if download result (or local selection) is a .list file, parse it ---
+    if ( QFileInfo(fileName).suffix().toLower() == "list" ) {
+      const QStringList entries = parseLocalFileList(fileName);
+      if ( entries.isEmpty() ) { showMessage(tr("File list is empty."), 1); return; }
+      m_fileList = entries;
+      fileName = entries.first();
+      if ( fileName.startsWith("http://") || fileName.startsWith("https://") ) {
+        fileName = downloadUrl(fileName);
+        if ( fileName.isEmpty() ) return;
+      }
     }
 
     if ( isMaskImage ) {

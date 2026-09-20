@@ -67,6 +67,7 @@ private:
     QPushButton* m_cursorFillBtn    = nullptr;
     QLineEdit*  m_cursorBorderColor = nullptr;
     QPushButton* m_cursorBorderBtn  = nullptr;
+    QLineEdit*  m_githubBaseUrl     = nullptr;
 
     // ---- Cage ----
     QCheckBox* m_claudeQuads        = nullptr;

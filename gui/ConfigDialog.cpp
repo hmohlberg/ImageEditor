@@ -59,7 +59,7 @@ ConfigDialog::ConfigDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle(tr("Configuration"));
-    setMinimumWidth(600);
+    setMinimumWidth(800);
 
     setStyleSheet(
         "QCheckBox::indicator {"
@@ -152,6 +152,11 @@ QWidget* ConfigDialog::buildMainTab()
         QWidget* cw = new QWidget; cw->setLayout(hl);
         f->addRow(tr("Cursor border color"), cw);
     }
+
+    m_githubBaseUrl = new QLineEdit;
+    m_githubBaseUrl->setPlaceholderText("https://raw.githubusercontent.com/...");
+    f->addRow(tr("GitHub base URL (github://)"), m_githubBaseUrl);
+
     return w;
 }
 
@@ -281,6 +286,7 @@ void ConfigDialog::loadFromStyle()
     styleColorButton(m_cursorFillBtn, s.cursorFillColor().name());
     m_cursorBorderColor->setText(s.cursorBorderColor().name());
     styleColorButton(m_cursorBorderBtn, s.cursorBorderColor().name());
+    m_githubBaseUrl->setText(s.githubBaseUrl());
 
     // Cage
     m_claudeQuads->setChecked(s.useClaudeQuads());
@@ -343,6 +349,7 @@ void ConfigDialog::applyToStyle()
     s.setCursorSize(m_cursorSize->value());
     { QColor c(m_cursorFillColor->text());   if (c.isValid()) s.setCursorFillColor(c); }
     { QColor c(m_cursorBorderColor->text()); if (c.isValid()) s.setCursorBorderColor(c); }
+    if (!m_githubBaseUrl->text().isEmpty()) s.setGithubBaseUrl(m_githubBaseUrl->text());
 
     // Cage
     s.setUseClaudeQuads(m_claudeQuads->isChecked());

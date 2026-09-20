@@ -140,6 +140,9 @@
         m_polygonWidth = polygonWidth;
       }
       
+      // github:// shorthand base URL
+      m_githubBaseUrl = settings.value("Network/githubBaseUrl",
+          "https://raw.githubusercontent.com/hmohlberg/ImageEditor/main/samples").toString();
       // ImageLayer allowIntegerMoveOnly
       m_allowIntegerMoveOnly = settings.value("ImageLayer/integerMoveOnly", true).toBool();
       // ImageLayer overlay opacity
@@ -197,6 +200,7 @@
     Qt::TransformationMode transformationMode() const { return m_transformationMode; }
     InterpolationMode interpolationMode() const { return m_interpolationMode; }
     QString path() const { return m_path; }
+    QString githubBaseUrl() const { return m_githubBaseUrl; }
 
     // Setters (used by ConfigDialog to apply changes at runtime)
     void setLoggingEnabled(bool v) { m_loggingIsEnabled = v; QLoggingCategory::setFilterRules(v ? "editor.graphics.debug=true" : "editor.graphics.debug=false"); }
@@ -228,6 +232,7 @@
     void setTransformationMode(Qt::TransformationMode v) { m_transformationMode = v; }
     void setInterpolationMode(InterpolationMode v) { m_interpolationMode = v; }
     void setPath(const QString& v) { m_path = v; }
+    void setGithubBaseUrl(const QString& v) { m_githubBaseUrl = v; }
 
     void resetToDefaults() {
       m_lassoColor        = Qt::red;
@@ -257,6 +262,7 @@
       m_crosshair         = true;
       m_windowSize        = "default";
       m_version           = "public";
+      m_githubBaseUrl     = "https://raw.githubusercontent.com/hmohlberg/ImageEditor/main/samples";
       m_transformationMode= Qt::FastTransformation;
       m_interpolationMode = InterpolationMode::Linear;
       QLoggingCategory::setFilterRules("editor.graphics.debug=false");
@@ -301,6 +307,7 @@
         default:                         im = "linear";  break;
       }
       s.setValue("ImageLayer/interpolationMode", im);
+      s.setValue("Network/githubBaseUrl", m_githubBaseUrl);
       s.sync();
     }
 
@@ -336,7 +343,8 @@
           m_cageWarpColor(Qt::green),
           m_transformationMode(Qt::FastTransformation),
           m_interpolationMode(InterpolationMode::Linear),
-          m_path(QString())
+          m_path(QString()),
+          m_githubBaseUrl("https://raw.githubusercontent.com/hmohlberg/ImageEditor/main/samples")
     { 
       if ( m_loggingIsEnabled ) {
         QLoggingCategory::setFilterRules("editor.graphics.debug=true");
@@ -355,6 +363,7 @@
     QString m_windowSize;
     QString m_version;
     QString m_path;
+    QString m_githubBaseUrl;
     
     Qt::TransformationMode m_transformationMode;
     InterpolationMode m_interpolationMode;
