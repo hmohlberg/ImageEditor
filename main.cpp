@@ -180,7 +180,7 @@ static QString downloadImageFromUrl( const QString& url )
     reply->deleteLater();
     const QString urlExt = QFileInfo(QUrl(url).path()).suffix().toLower();
     static const QStringList knownExts = {
-        "png","jpg","jpeg","bmp","tif","tiff","h5","hdf5","hdf","mnc","mnc2","list"};
+        "png","jpg","jpeg","bmp","tif","tiff","h5","hdf5","hdf","mnc","mnc2","list","json"};
     const QString useExt  = knownExts.contains(urlExt) ? urlExt : "png";
     const QString tempPath = QDir::tempPath() + "/imageeditor_url_download." + useExt;
     QFile f(tempPath);
@@ -390,9 +390,27 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   }
   obj["outputPath"] = parser.value(outFileOption);
   obj["classPath"] = parser.value(classFileOption);
-  obj["historyPath"] = parser.value(projectFileOption);
-  if ( !validateFile(obj["historyPath"].toString(),"project",{"json"}) ) {
-   exit(1);
+  {
+    QString projectPath = parser.value(projectFileOption);
+    if ( !projectPath.isEmpty() ) {
+      // expand github:// shorthand
+      if ( projectPath.startsWith("github://") )
+        projectPath = EditorStyle::instance().githubBaseUrl() + "/" + projectPath.mid(9);
+      // download if URL
+      if ( projectPath.startsWith("http://") || projectPath.startsWith("https://") ) {
+        if ( !parser.isSet(fileOption) ) {
+          std::cerr << "\033[1;31mERROR: \033[0m"
+                    << "--file is required when loading a project via URL.\n";
+          exit(1);
+        }
+        std::cout << "Downloading project from URL: " << projectPath.toStdString() << std::endl;
+        projectPath = downloadImageFromUrl(projectPath);
+        if ( projectPath.isEmpty() ) exit(1);
+      } else {
+        if ( !validateFile(projectPath,"project",{"json"}) ) exit(1);
+      }
+    }
+    obj["historyPath"] = projectPath;
   }
   obj["saveJSONPath"] = parser.value(saveJSONOption);
   obj["configPath"] = parser.value(configFileOption);
@@ -417,7 +435,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
 // ---------------------- Version check ----------------------
 static void printLicense()
 {
-    QFile f(":/licence.txt");
+    QFile f(":/LICENSE.txt");
     if ( f.open(QIODevice::ReadOnly | QIODevice::Text) )
         std::cout << f.readAll().toStdString() << std::endl;
     else

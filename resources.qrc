@@ -8,7 +8,7 @@
         <file>icons/colorpicker.svg</file>
     </qresource>
     <qresource prefix="/">
-        <file>licence.txt</file>
+        <file>LICENSE.txt</file>
         <file>AUTHORS</file>
     </qresource>
 </RCC>

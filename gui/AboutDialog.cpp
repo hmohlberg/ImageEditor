@@ -151,7 +151,7 @@ QWidget* AboutDialog::buildLicenseTab()
     browser->setReadOnly(true);
     browser->setOpenExternalLinks(false);
 
-    QFile f(":/licence.txt");
+    QFile f(":/LICENSE.txt");
     if ( f.open(QIODevice::ReadOnly | QIODevice::Text) )
         browser->setPlainText(QString::fromUtf8(f.readAll()));
     else

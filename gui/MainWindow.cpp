@@ -596,7 +596,7 @@ void MainWindow::openImage()
       reply->deleteLater();
       const QString urlExt = QFileInfo(QUrl(url).path()).suffix().toLower();
       static const QStringList knownExts = {
-          "png","jpg","jpeg","bmp","tif","tiff","h5","hdf5","hdf","mnc","mnc2","list"};
+          "png","jpg","jpeg","bmp","tif","tiff","h5","hdf5","hdf","mnc","mnc2","list","json"};
       const QString useExt  = knownExts.contains(urlExt) ? urlExt : "png";
       const QString tmpPath = QDir::tempPath() + "/imageeditor_url_download." + useExt;
       QFile f(tmpPath);
@@ -1139,14 +1139,102 @@ void MainWindow::loadHistory( const QString& file )
 void MainWindow::openHistory()
 {
   qCDebug(logEditor) << "MainWindow::openHistory(): Open history...";
-  {
-    QString fileName = QFileDialog::getOpenFileName(this,
-                        tr("Open JSON history file"), QString(),
-                        tr("JSON Files (*.json);;All Files (*)"));
-    if ( fileName.isEmpty() )
-      return;
-    loadHistory(fileName);
+
+  QDialog dlg(this);
+  dlg.setWindowTitle(tr("Open history file"));
+  dlg.setMinimumSize(700, 420);
+
+  QTabWidget* tabs = new QTabWidget(&dlg);
+
+  // --- Tab 0: local file ---
+  QFileDialog* fileDlg = new QFileDialog(tabs);
+  fileDlg->setWindowFlags(Qt::Widget);
+  fileDlg->setOption(QFileDialog::DontUseNativeDialog);
+  fileDlg->setOption(QFileDialog::DontUseCustomDirectoryIcons);
+  fileDlg->setFileMode(QFileDialog::ExistingFile);
+  fileDlg->setNameFilter(tr("JSON Files (*.json);;All Files (*)"));
+  for ( auto* btn : fileDlg->findChildren<QDialogButtonBox*>() )
+    btn->hide();
+  connect(fileDlg, &QFileDialog::fileSelected, &dlg, [&dlg](const QString&){ dlg.accept(); });
+  tabs->addTab(fileDlg, tr("Open from local disk"));
+
+  // --- Tab 1: URL ---
+  QWidget* urlTab = new QWidget;
+  QVBoxLayout* urlLayout = new QVBoxLayout(urlTab);
+  QLabel* urlLabel = new QLabel(tr("Project file URL (https:// or github://):"), urlTab);
+  QLineEdit* urlEdit = new QLineEdit(urlTab);
+  urlEdit->setPlaceholderText("https://  or  github://path/to/project.json");
+  QPushButton* urlLoadBtn = new QPushButton(tr("Load"), urlTab);
+  urlLayout->addWidget(urlLabel);
+  urlLayout->addWidget(urlEdit);
+  urlLayout->addWidget(urlLoadBtn);
+  urlLayout->addStretch();
+  connect(urlLoadBtn, &QPushButton::clicked, &dlg, [&](){
+    if ( !urlEdit->text().trimmed().isEmpty() ) dlg.accept();
+  });
+  connect(urlEdit, &QLineEdit::returnPressed, &dlg, [&](){
+    if ( !urlEdit->text().trimmed().isEmpty() ) dlg.accept();
+  });
+  tabs->addTab(urlTab, tr("Open from web"));
+
+  QDialogButtonBox* bbox = new QDialogButtonBox(QDialogButtonBox::Cancel);
+  connect(bbox, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+  QVBoxLayout* mainLayout = new QVBoxLayout(&dlg);
+  mainLayout->addWidget(tabs);
+  mainLayout->addWidget(bbox);
+
+  if ( dlg.exec() != QDialog::Accepted ) return;
+
+  QString fileName;
+  if ( tabs->currentIndex() == 0 ) {
+    const QStringList sel = fileDlg->selectedFiles();
+    if ( sel.isEmpty() ) return;
+    fileName = sel.first();
+  } else {
+    fileName = urlEdit->text().trimmed();
+    if ( fileName.isEmpty() ) return;
   }
+
+  // expand github:// shorthand
+  if ( fileName.startsWith("github://") )
+    fileName = EditorStyle::instance().githubBaseUrl() + "/" + fileName.mid(9);
+
+  // download if URL
+  if ( fileName.startsWith("http://") || fileName.startsWith("https://") ) {
+    auto downloadUrl = [&](const QString& url) -> QString {
+      QNetworkAccessManager nam;
+      QUrl qurl(url);
+      QNetworkRequest req(qurl);
+      req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                       QNetworkRequest::NoLessSafeRedirectPolicy);
+      req.setSslConfiguration(QSslConfiguration::defaultConfiguration());
+      QNetworkReply* reply = nam.get(req);
+      QObject::connect(reply, &QNetworkReply::sslErrors, reply,
+                       [reply](const QList<QSslError>&){ reply->ignoreSslErrors(); });
+      QEventLoop loop;
+      QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+      loop.exec();
+      if ( reply->error() != QNetworkReply::NoError ) {
+        QMessageBox::critical(this, tr("Download failed"), reply->errorString());
+        reply->deleteLater();
+        return {};
+      }
+      const QByteArray data = reply->readAll();
+      reply->deleteLater();
+      const QString tempPath = QDir::tempPath() + "/imageeditor_project_download.json";
+      QFile f(tempPath);
+      if ( !f.open(QIODevice::WriteOnly) ) return {};
+      f.write(data);
+      f.close();
+      return tempPath;
+    };
+    std::cout << "Downloading project from URL: " << fileName.toStdString() << std::endl;
+    fileName = downloadUrl(fileName);
+    if ( fileName.isEmpty() ) return;
+  }
+
+  loadHistory(fileName);
 }
 
 // ---------------------- Mask Image ----------------------
