@@ -243,6 +243,10 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
        topLeft["x"] = qRound(x);
        topLeft["y"] = qRound(y);
        layerObj["topLeft_after"] = topLeft;
+       QJsonObject rect = layerObj["rect"].toObject();
+       rect["x"] = qRound(rect["x"].toDouble());
+       rect["y"] = qRound(rect["y"].toDouble());
+       layerObj["rect"] = rect;
       } else if ( type == "MoveLayer" ) {
        double fromX = layerObj["fromX"].toDouble();
        double fromY = layerObj["fromY"].toDouble();

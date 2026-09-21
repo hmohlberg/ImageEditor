@@ -31,6 +31,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QHash>
+#include <QSet>
 #include <QVector>
 #include <QTimer>
 #include <QApplication>
@@ -39,12 +40,50 @@
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QProgressDialog>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QSslConfiguration>
+#include <QSslError>
+#include <QEventLoop>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonValue>
 
 #include <functional>
 
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <cstdio>
+#include <cmath>
+
+// ── memory I/O callbacks for TIFFClientOpen ───────────────────────────────────
+namespace {
+struct MemIO { const char* data; qint64 size; qint64 pos; };
+static tsize_t tiffMemRead(thandle_t h, tdata_t buf, tsize_t n) {
+    auto* m = static_cast<MemIO*>(h);
+    tsize_t avail = (tsize_t)qMax(qint64(0), m->size - m->pos);
+    tsize_t cnt   = qMin(n, avail);
+    if (cnt > 0) { std::memcpy(buf, m->data + m->pos, cnt); m->pos += cnt; }
+    return cnt;
+}
+static tsize_t tiffMemWrite(thandle_t, tdata_t, tsize_t) { return -1; }
+static toff_t  tiffMemSeek(thandle_t h, toff_t off, int whence) {
+    auto* m = static_cast<MemIO*>(h);
+    qint64 np;
+    if (whence == SEEK_SET) np = (qint64)off;
+    else if (whence == SEEK_CUR) np = m->pos + (qint64)off;
+    else np = m->size + (qint64)off;  // SEEK_END
+    m->pos = qBound(qint64(0), np, m->size);
+    return (toff_t)m->pos;
+}
+static int     tiffMemClose(thandle_t) { return 0; }
+static toff_t  tiffMemSize(thandle_t h) { return (toff_t)static_cast<MemIO*>(h)->size; }
+static int     tiffMemMap(thandle_t, tdata_t*, toff_t*) { return 0; }
+static void    tiffMemUnmap(thandle_t, tdata_t, toff_t) {}
+} // namespace
 
 // ── tile cache ───────────────────────────────────────────────────────────────
 //  LRU eviction, keyed by level:tileCol:tileRow packed into quint64
@@ -92,6 +131,8 @@ public:
         setRenderHint(QPainter::SmoothPixmapTransform, false);
         setViewportUpdateMode(QGraphicsView::BoundingRectViewportUpdate);
         setBackgroundBrush(QColor(0x28, 0x28, 0x28));
+        setMouseTracking(true);
+        viewport()->setMouseTracking(true);
 
         auto* scene = new QGraphicsScene(this);
         setScene(scene);
@@ -111,6 +152,16 @@ public:
     ~BigTiffGraphicsView() { closeTiff(); }
 
     // ── open / close ─────────────────────────────────────────────────────────
+    bool openWeb(const QString& url, const QVector<BigTiffLevel>& levels) {
+        closeTiff();
+        m_webMode    = true;
+        m_fitted     = false;
+        m_webBaseUrl = url;
+        m_levels     = levels;
+        scene()->setSceneRect(0, 0, m_levels[0].w, m_levels[0].h);
+        return true;
+    }
+
     bool openTiff(const QString& path) {
         closeTiff();
         m_srcPath = path;
@@ -152,32 +203,46 @@ public:
 
     void closeTiff() {
         if (m_tiff) { TIFFClose(m_tiff); m_tiff = nullptr; }
+        m_webMode  = false;
+        m_fitted   = false;
+        m_webBaseUrl.clear();
+        m_pending.clear();
         m_levels.clear();
         m_cache.clear();
         m_srcPath.clear();
         scene()->setSceneRect(QRectF());
     }
 
-    bool isOpen() const { return m_tiff != nullptr; }
+    bool isOpen() const { return m_tiff != nullptr || m_webMode; }
 
     const QVector<BigTiffLevel>& levels() const { return m_levels; }
-    bool isBigTiff() const { return m_tiff && TIFFIsBigTIFF(m_tiff); }
+    bool isBigTiff() const { return m_webMode || (m_tiff && TIFFIsBigTIFF(m_tiff)); }
 
     // ── zoom helpers ─────────────────────────────────────────────────────────
     void zoomBy(qreal factor) { scale(factor, factor); }
 
     void fitAll() {
         if (m_levels.isEmpty()) return;
+        m_fitted = true;
         fitInView(scene()->sceneRect(), Qt::KeepAspectRatio);
+        if (onScaleChanged) onScaleChanged(transform().m11());
     }
+
+    // called by BigTiffViewer to receive live level/scale updates
+    std::function<void(int dirIdx, qreal scale)>  onDebugInfo;
+    std::function<void(double)>                   onScaleChanged;
+    std::function<void(int, int)>                 onCursorPos;
+    std::function<void(QColor)>                   onCursorColor;
 
 protected:
     // ── tile-based background rendering ──────────────────────────────────────
     void drawBackground(QPainter* painter, const QRectF& exposed) override {
         QGraphicsView::drawBackground(painter, exposed);
-        if (!m_tiff || m_levels.isEmpty()) return;
+        if ((!m_tiff && !m_webMode) || m_levels.isEmpty()) return;
+        if (m_webMode && !m_fitted) return;  // wait for fitAll() before fetching tiles
 
-        const int level  = bestLevel(transform().m11());
+        const qreal viewScale = transform().m11();
+        const int level  = bestLevel(viewScale);
         const auto& lvl  = m_levels[level];
         const qreal D    = (qreal)m_levels[0].w / lvl.w;  // scene units per level pixel
 
@@ -186,6 +251,14 @@ protected:
         const qreal ly0 = exposed.top()    / D;
         const qreal lx1 = exposed.right()  / D;
         const qreal ly1 = exposed.bottom() / D;
+
+        {
+            const int maxN     = (int)std::floor(
+                std::log2((double)qMax(m_levels[0].w, m_levels[0].h) / 256.0));
+            const int dirParam = 1 + maxN - (int)std::floor(
+                std::log2((double)qMax(lvl.w, lvl.h) / 256.0));
+            if (onDebugInfo) onDebugInfo(dirParam, viewScale);
+        }
 
         if (lvl.tiled) {
             const int tileX0 = qMax(0, (int)(lx0 / lvl.tileW));
@@ -222,6 +295,35 @@ protected:
         scale(factor, factor);
         // always call parent so AnchorUnderMouse works
         QGraphicsView::wheelEvent(e);
+        if (onScaleChanged) onScaleChanged(transform().m11());
+    }
+
+    void mouseMoveEvent(QMouseEvent* e) override {
+        QGraphicsView::mouseMoveEvent(e);
+        if (!isOpen() || m_levels.isEmpty()) return;
+
+        const QPointF sp = mapToScene(e->pos());
+        if (onCursorPos)
+            onCursorPos((int)sp.x(), (int)sp.y());
+
+        if (onCursorColor && m_levels[0].w > 0) {
+            const int   level = bestLevel(transform().m11());
+            const auto& lvl   = m_levels[level];
+            const qreal D     = (qreal)m_levels[0].w / lvl.w;
+            const int   lx    = (int)(sp.x() / D);
+            const int   ly    = (int)(sp.y() / D);
+            if (lx < 0 || ly < 0 || (uint32_t)lx >= lvl.w || (uint32_t)ly >= lvl.h) return;
+            const int col = lx / (int)lvl.tileW;
+            const int row = ly / (int)lvl.tileH;
+            const quint64 key = TileCache::makeKey(level, col, row);
+            if (const QPixmap* pix = m_cache.get(key)) {
+                const int tx = lx - col * (int)lvl.tileW;
+                const int ty = ly - row * (int)lvl.tileH;
+                const QImage img = pix->toImage();
+                if (tx < img.width() && ty < img.height())
+                    onCursorColor(img.pixelColor(tx, ty));
+            }
+        }
     }
 
 private:
@@ -243,10 +345,70 @@ private:
         if (const QPixmap* cached = m_cache.get(key))
             return *cached;
 
+        if (m_webMode) {
+            if (m_pending.contains(key)) return {};
+            m_pending.insert(key);
+            const auto& lvl = m_levels[level];
+            const int maxN    = (int)std::floor(
+                std::log2((double)qMax(m_levels[0].w, m_levels[0].h) / 256.0));
+            const int dirParam = 1 + maxN - (int)std::floor(
+                std::log2((double)qMax(lvl.w, lvl.h) / 256.0));
+            const QString tileUrl = m_webBaseUrl
+                + "&directory=" + QString::number(dirParam)
+                + "&x=" + QString::number(col)
+                + "&y=" + QString::number(row);
+            QUrl tileQUrl(tileUrl);
+            QNetworkRequest req(tileQUrl);
+            req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                             QNetworkRequest::NoLessSafeRedirectPolicy);
+            req.setSslConfiguration(QSslConfiguration::defaultConfiguration());
+            QNetworkReply* reply = m_nam.get(req);
+            QObject::connect(reply, &QNetworkReply::sslErrors,
+                             reply, [reply](const QList<QSslError>&){ reply->ignoreSslErrors(); });
+            QObject::connect(reply, &QNetworkReply::finished,
+                             this, [this, key, level, col, row, reply]() {
+                m_pending.remove(key);
+                reply->deleteLater();
+                if (reply->error() != QNetworkReply::NoError) return;
+                QPixmap pix = loadTileFromBytes(level, reply->readAll());
+                if (!pix.isNull()) {
+                    m_cache.put(key, pix);
+                    if (level < m_levels.size()) {
+                        const auto& l = m_levels[level];
+                        const qreal D = (qreal)m_levels[0].w / l.w;
+                        scene()->update(QRectF((qreal)col * l.tileW * D,
+                                               (qreal)row * l.tileH * D,
+                                               l.tileW * D, l.tileH * D));
+                    }
+                }
+            });
+            return {};
+        }
+
         QPixmap pix = loadTile(level, col, row);
         if (!pix.isNull())
             m_cache.put(key, pix);
         return pix;
+    }
+
+    QPixmap loadTileFromBytes(int /*level*/, const QByteArray& bytes) {
+        if (bytes.isEmpty()) return {};
+        QImage src;
+        if (!src.loadFromData(bytes)) return {};
+        // Apply LUT (gray → mapped color)
+        QImage img = src.convertToFormat(QImage::Format_ARGB32);
+        for (int r = 0; r < img.height(); ++r) {
+            auto* dst = reinterpret_cast<uint32_t*>(img.scanLine(r));
+            for (int c = 0; c < img.width(); ++c) {
+                uint8_t gray = (uint8_t)qRed(dst[c]);
+                QRgb    mapped = m_lut[gray];
+                dst[c] = (0xFFu << 24)
+                       | ((uint32_t)qRed(mapped)   << 16)
+                       | ((uint32_t)qGreen(mapped) <<  8)
+                       |  (uint32_t)qBlue(mapped);
+            }
+        }
+        return QPixmap::fromImage(std::move(img));
     }
 
     QPixmap loadTile(int level, int col, int row) {
@@ -313,6 +475,10 @@ public:
                   std::function<bool(int)> progress = {})
     {
         m_lastSaveError.clear();
+        if (m_webMode) {
+            m_lastSaveError = tr("Save is not supported for web-based BigTIFF.");
+            return false;
+        }
         if (!m_tiff || m_levels.isEmpty()) return false;
 
         // Check whether current LUT is identity (gray → gray)
@@ -460,7 +626,12 @@ public:
         return true;
     }
 
-    TIFF*                 m_tiff   = nullptr;
+    TIFF*                 m_tiff       = nullptr;
+    bool                  m_webMode    = false;
+    bool                  m_fitted     = false;
+    QString               m_webBaseUrl;
+    QNetworkAccessManager m_nam;
+    QSet<quint64>         m_pending;
     QVector<BigTiffLevel> m_levels;
     TileCache             m_cache;
     QVector<QRgb>         m_lut;
@@ -524,16 +695,103 @@ BigTiffViewer::~BigTiffViewer()
 bool BigTiffViewer::open(const QString& path)
 {
     m_filePath = path;
-    // suppress libtiff non-fatal tag-order warnings
     TIFFSetWarningHandler(nullptr);
 
-    bool ok = m_view->openTiff(path);
+    bool ok;
+    if (path.startsWith("http://") || path.startsWith("https://"))
+        ok = openWebMode(path);
+    else
+        ok = m_view->openTiff(path);
+
     if (ok) {
         updateInfoLabel();
-        // fitInView only works after the widget has been laid out and shown
+        m_view->onDebugInfo = [this](int dirIdx, qreal scale) {
+            const auto& levels = m_view->levels();
+            if (levels.isEmpty()) return;
+            const auto& full = levels.first();
+            m_infoLabel->setText(
+                QString("%1 × %2 px  |  %3 level%4%5  |  dir=%6  zoom=×%7")
+                    .arg(full.w).arg(full.h)
+                    .arg(levels.size())
+                    .arg(levels.size() != 1 ? "s" : "")
+                    .arg(m_view->isBigTiff() ? "  |  BigTIFF" : "")
+                    .arg(dirIdx)
+                    .arg(scale, 0, 'f', 4));
+        };
+        m_view->onScaleChanged = [this](double s) { emit scaleChanged(s); };
+        m_view->onCursorPos    = [this](int x, int y) { emit cursorPositionChanged(x, y); };
+        m_view->onCursorColor  = [this](QColor c) { emit cursorColorChanged(c); };
         QTimer::singleShot(0, m_view, [this]{ m_view->fitAll(); });
     }
     return ok;
+}
+
+bool BigTiffViewer::openWebMode(const QString& url)
+{
+    QNetworkAccessManager nam;
+    QUrl metaQUrl(url);
+    QNetworkRequest req(metaQUrl);
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                     QNetworkRequest::NoLessSafeRedirectPolicy);
+    req.setSslConfiguration(QSslConfiguration::defaultConfiguration());
+    QNetworkReply* reply = nam.get(req);
+    QObject::connect(reply, &QNetworkReply::sslErrors,
+                     reply, [reply](const QList<QSslError>&){ reply->ignoreSslErrors(); });
+    QEventLoop loop;
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    if (reply->error() != QNetworkReply::NoError) {
+        reply->deleteLater();
+        return false;
+    }
+    const QByteArray data = reply->readAll();
+    reply->deleteLater();
+
+    const QJsonObject root = QJsonDocument::fromJson(data).object();
+    const QJsonObject ts   = root.value("tissuescope").toObject();
+    const QJsonArray  dirs = ts.value("Directories").toArray();
+    if (dirs.isEmpty()) return false;
+
+    QVector<BigTiffLevel> levels;
+    for (const QJsonValue& v : dirs) {
+        const QJsonObject d = v.toObject();
+        BigTiffLevel lvl;
+        lvl.dirIdx = d.value("PageNumber").toString().toInt();
+        lvl.w      = d.value("ImageWidth").toString().toUInt();
+        lvl.h      = d.value("ImageLength").toString().toUInt();
+        lvl.tileW  = d.value("TileWidth").toString().toUInt();
+        lvl.tileH  = d.value("TileLength").toString().toUInt();
+        lvl.tiled  = (lvl.tileW > 0 && lvl.tileH > 0);
+        if (!lvl.tiled) { lvl.tileW = lvl.w; lvl.tileH = lvl.h; }
+        if (lvl.w > 0 && lvl.h > 0) levels.append(lvl);
+    }
+    if (levels.isEmpty()) return false;
+
+    std::sort(levels.begin(), levels.end(), [](const BigTiffLevel& a, const BigTiffLevel& b){
+        return a.w > b.w;
+    });
+
+    // Replace TIFF level dimensions with the server's actual pixel dimensions at each
+    // directory. The server serves ceil(finest / 2^(dir-1)) pixels at directory dir,
+    // which may differ from the stored TIFF level dimensions.
+    {
+        const uint32_t fw    = levels[0].w;
+        const uint32_t fh    = levels[0].h;
+        const int      maxN  = (int)std::floor(std::log2((double)qMax(fw, fh) / 256.0));
+        for (auto& lvl : levels) {
+            const int rawDir  = (int)std::floor(std::log2((double)qMax(lvl.w, lvl.h) / 256.0));
+            const int dir     = 1 + maxN - rawDir;
+            const int scale   = 1 << dir;                      // 2^dir
+            lvl.w     = (fw + (uint32_t)scale - 1) / (uint32_t)scale; // ceil(fw / scale)
+            lvl.h     = (fh + (uint32_t)scale - 1) / (uint32_t)scale;
+            lvl.tileW = 256;
+            lvl.tileH = 256;
+            lvl.tiled = true;
+        }
+    }
+
+    return m_view->openWeb(url, levels);
 }
 
 void BigTiffViewer::closeTiff()

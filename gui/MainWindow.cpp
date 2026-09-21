@@ -49,6 +49,7 @@
  #include "itkMultiThreaderBase.h"
 #endif 
 
+#include <algorithm>
 #include <QCloseEvent>
 #include <QMessageBox>
 #include <QWidgetAction>
@@ -90,6 +91,9 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QTabWidget>
+#include <QTreeWidget>
+#include <QHeaderView>
+#include <QUrlQuery>
 
 #include <iostream>
 
@@ -108,8 +112,12 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     QString historyPath = options.value("historyPath").toString("");
     QString outputPath = options.value("outputPath").toString("");
     QString classPath = options.value("classPath").toString("");
-    for ( const auto& v : options.value("fileList").toArray() )
-        m_fileList << v.toString();
+    for ( const auto& v : options.value("fileList").toArray() ) {
+        const QJsonObject o = v.toObject();
+        m_fileList << FileListEntry{ o.value("title").toString(),
+                                     o.value("imagePath").toString(),
+                                     o.value("projectPath").toString() };
+    }
     bool useVulkan = options.value("vulkan").toBool();
     
     Config::gpuCageWarpProcessing = options.value("gpu").toBool();
@@ -208,6 +216,12 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
 
     // >>>
     auto loadAnyImage = [this](const QString& path) -> bool {
+        // web BigTIFF tile service URL (has "resolution=" query param)
+        if ((path.startsWith("http://") || path.startsWith("https://"))
+            && QUrlQuery(QUrl(path)).hasQueryItem("resolution")) {
+            QTimer::singleShot(0, this, [this, path]{ openBigTiff(path); });
+            return false;
+        }
         const QString ext = QFileInfo(path).suffix().toLower();
         if (ext == "tif" || ext == "tiff") {
             QTimer::singleShot(0, this, [this, path]{ openBigTiff(path); });
@@ -234,16 +248,26 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     // override title when the loaded file was a downloaded URL/filelist entry
     {
      const QString dispName = options.value("imageDisplayName").toString("");
+     const QString origPath = options.value("imageOriginalPath").toString("");
      if ( !dispName.isEmpty() ) {
-       m_currentDisplayName = dispName;
-       setWindowTitle("ImageEditor - " + dispName);
+       // m_currentDisplayName tracks the original URL/path for filelist highlighting
+       m_currentDisplayName = origPath.isEmpty() ? dispName : origPath;
+       const QString wTitle = dispName == m_currentDisplayName || m_currentDisplayName.isEmpty()
+           ? "ImageEditor - " + dispName
+           : "ImageEditor - " + dispName + " : " + m_currentDisplayName;
+       setWindowTitle(wTitle);
      }
      // BigTIFF/HDF5 load via QTimer::singleShot → loadImage() not called → m_currentDisplayName empty
      if ( m_currentDisplayName.isEmpty() && !imagePath.isEmpty() )
        m_currentDisplayName = imagePath;
      // ensure the current image appears in the filelist tab
-     if ( !m_currentDisplayName.isEmpty() && !m_fileList.contains(m_currentDisplayName) )
-       m_fileList.prepend(m_currentDisplayName);
+     if ( !m_currentDisplayName.isEmpty() ) {
+       const bool inList = std::any_of(m_fileList.begin(), m_fileList.end(),
+           [&](const FileListEntry& e){ return e.imagePath == m_currentDisplayName; });
+       if ( !inList )
+         m_fileList.prepend(FileListEntry{ dispName.isEmpty() ? m_currentDisplayName : dispName,
+                                           m_currentDisplayName, {} });
+     }
     }
     if ( !classPath.isEmpty() ) {
      m_imageView->loadMaskImage(classPath); 
@@ -427,31 +451,41 @@ void MainWindow::openImage()
 
     // helper: parse a .list file
     // - lines starting with # or empty → skip
-    // - http/https lines → URL entries
-    // - absolute directory path → becomes search path for subsequent relative names
-    // - relative filename → resolved against current search path
-    // - absolute file path → used as-is
-    auto parseLocalFileList = [](const QString& path) -> QStringList {
-        QStringList entries;
+    auto parseLocalFileList = [](const QString& path) -> QList<FileListEntry> {
+        QList<FileListEntry> entries;
         QFile f(path);
         if ( !f.open(QIODevice::ReadOnly | QIODevice::Text) ) return entries;
         const QStringList lines = QString::fromUtf8(f.readAll()).split('\n');
         QString searchPath;
+        int autoIndex = 1;
         for ( const auto& line : lines ) {
             const QString t = line.trimmed();
             if ( t.isEmpty() || t.startsWith('#') ) continue;
-            if ( t.startsWith("http://") || t.startsWith("https://") ) {
-                entries << t;
-                continue;
-            }
-            QFileInfo fi(t);
-            if ( fi.isAbsolute() ) {
-                if ( fi.isDir() )
-                    searchPath = t;
-                else
-                    entries << t;
+            if ( t.contains(';') ) {
+                const QStringList parts = t.split(';');
+                const QString title = parts[0].trimmed();
+                const QString img   = parts.size() > 1 ? parts[1].trimmed() : QString();
+                const QString proj  = parts.size() > 2 ? parts[2].trimmed() : QString();
+                if ( title.compare("path", Qt::CaseInsensitive) == 0 ) { searchPath = img; continue; }
+                if ( img.isEmpty() ) continue;
+                auto resolve = [&](const QString& p) -> QString {
+                    if ( p.startsWith("http://") || p.startsWith("https://") || p.startsWith("github://") ) return p;
+                    return QFileInfo(p).isAbsolute() ? p : ( searchPath.isEmpty() ? p : searchPath + "/" + p );
+                };
+                entries.append({ title, resolve(img), resolve(proj) });
             } else {
-                entries << ( searchPath.isEmpty() ? t : searchPath + "/" + t );
+                // old format (no semicolon) — auto-title "Image N"
+                if ( t.startsWith("http://") || t.startsWith("https://") ) {
+                    entries.append({ QString("Image %1").arg(autoIndex++), t, {} }); continue;
+                }
+                QFileInfo fi(t);
+                if ( fi.isAbsolute() ) {
+                    if ( fi.isDir() ) { searchPath = t; continue; }
+                    entries.append({ QString("Image %1").arg(autoIndex++), t, {} });
+                } else {
+                    const QString resolved = searchPath.isEmpty() ? t : searchPath + "/" + t;
+                    entries.append({ QString("Image %1").arg(autoIndex++), resolved, {} });
+                }
             }
         }
         return entries;
@@ -460,7 +494,7 @@ void MainWindow::openImage()
     // --- dialog with three tabs: local disk / web / filelist ---
     QDialog dlg(this);
     dlg.setWindowTitle(isMaskImage ? tr("Open mask image") : tr("Open image"));
-    dlg.setMinimumSize(700, 480);
+    dlg.setMinimumSize(900, 480);
 
     const QString fileFilter = isMaskImage
         ? tr("Images (*.png *.jpg *.bmp *.tif *.tiff);;All Files (*)")
@@ -496,16 +530,36 @@ void MainWindow::openImage()
     auto* listTab    = new QWidget;
     auto* listLay    = new QVBoxLayout(listTab);
     listLay->setContentsMargins(8, 8, 8, 4);
-    auto* listWidget = new QListWidget(listTab);
-    for ( const auto& entry : m_fileList ) {
-        auto* item = new QListWidgetItem(entry, listWidget);
-        if ( entry == m_currentDisplayName ) {
-            QFont f = item->font();
-            f.setBold(true);
-            item->setFont(f);
-            item->setForeground(QColor("#5aabff"));
+    auto populateListWidget = [&](QTreeWidget* lw, const QList<FileListEntry>& entries) {
+        lw->clear();
+        for ( const auto& entry : entries ) {
+            // second column: basename for local files, full URL otherwise
+            const bool isUrl = entry.imagePath.startsWith("http://")
+                            || entry.imagePath.startsWith("https://");
+            const QString col2 = isUrl ? entry.imagePath
+                                       : QFileInfo(entry.imagePath).fileName();
+            auto* item = new QTreeWidgetItem(lw, QStringList{ entry.title, col2 });
+            item->setData(0, Qt::UserRole,     entry.imagePath);
+            item->setData(0, Qt::UserRole + 1, entry.projectPath);
+            item->setToolTip(0, entry.imagePath
+                + (entry.projectPath.isEmpty() ? QString() : "\n" + entry.projectPath));
+            item->setToolTip(1, entry.imagePath);
+            if ( entry.imagePath == m_currentDisplayName ) {
+                QFont f = item->font(0); f.setBold(true);
+                item->setFont(0, f); item->setFont(1, f);
+                item->setForeground(0, QColor("#5aabff"));
+                item->setForeground(1, QColor("#5aabff"));
+            }
         }
-    }
+        lw->resizeColumnToContents(0);
+    };
+    auto* listWidget = new QTreeWidget(listTab);
+    listWidget->setColumnCount(2);
+    listWidget->setHeaderLabels({ tr("Title"), tr("File / URL") });
+    listWidget->setRootIsDecorated(false);
+    listWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
+    listWidget->header()->setStretchLastSection(true);
+    populateListWidget(listWidget, m_fileList);
     auto* browseListBtn = new QPushButton(tr("Browse list file…"), listTab);
     listLay->addWidget(listWidget, 1);
     listLay->addWidget(browseListBtn);
@@ -523,13 +577,12 @@ void MainWindow::openImage()
         const QString f = QFileDialog::getOpenFileName(this, tr("Open file list"), QString(),
             tr("File lists (*.list);;All Files (*)"));
         if ( f.isEmpty() ) return;
-        const QStringList entries = parseLocalFileList(f);
-        listWidget->clear();
-        for ( const auto& e : entries ) listWidget->addItem(e);
+        const QList<FileListEntry> entries = parseLocalFileList(f);
         m_fileList = entries;
+        populateListWidget(listWidget, m_fileList);
     });
     // Tab 2: double-click on entry → accept immediately
-    connect(listWidget, &QListWidget::itemDoubleClicked, &dlg, &QDialog::accept);
+    connect(listWidget, &QTreeWidget::itemDoubleClicked, &dlg, [&](QTreeWidgetItem*){ dlg.accept(); });
 
     connect(bbox, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(bbox, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
@@ -537,38 +590,55 @@ void MainWindow::openImage()
     if ( dlg.exec() != QDialog::Accepted ) return;
 
     QString fileName;
+    QString displayTitle;  // shown in window title + filelist highlight
+    QString projPath;      // optional associated project (tab 2)
     const int activeTab = tabs->currentIndex();
     if ( activeTab == 0 ) {
       const QStringList sel = fd->selectedFiles();
       fileName = sel.isEmpty() ? QString() : sel.first();
       // if a .list file was selected, parse and use first entry
       if ( QFileInfo(fileName).suffix().toLower() == "list" ) {
-          const QStringList entries = parseLocalFileList(fileName);
+          const QList<FileListEntry> entries = parseLocalFileList(fileName);
           if ( entries.isEmpty() ) { showMessage(tr("File list is empty."), 1); return; }
           m_fileList = entries;
-          listWidget->clear();
-          for ( const auto& e : entries ) listWidget->addItem(e);
-          fileName = entries.first();
+          populateListWidget(listWidget, m_fileList);
+          fileName  = entries.first().imagePath;
+          projPath  = entries.first().projectPath;
       }
+      displayTitle = fileName;
     } else if ( activeTab == 1 ) {
-      fileName = urlEdit->text().trimmed();
+      fileName     = urlEdit->text().trimmed();
+      displayTitle = fileName;
     } else {
       // Tab 2: filelist — use double-clicked or currently selected item
       auto* item = listWidget->currentItem();
-      fileName = item ? item->text() : QString();
-      // keep m_fileList in sync with what's in the widget
+      if ( !item ) return;
+      fileName     = item->data(0, Qt::UserRole).toString();
+      displayTitle = item->text(0);
+      projPath     = item->data(0, Qt::UserRole + 1).toString();
+      // sync m_fileList from widget
       m_fileList.clear();
-      for ( int i = 0; i < listWidget->count(); ++i )
-          m_fileList << listWidget->item(i)->text();
+      for ( int i = 0; i < listWidget->topLevelItemCount(); ++i ) {
+          auto* wi = listWidget->topLevelItem(i);
+          m_fileList << FileListEntry{ wi->text(0),
+                                       wi->data(0, Qt::UserRole).toString(),
+                                       wi->data(0, Qt::UserRole + 1).toString() };
+      }
     }
     if ( fileName.isEmpty() ) return;
 
     // expand github:// shorthand
     if ( fileName.startsWith("github://") )
       fileName = EditorStyle::instance().githubBaseUrl() + "/" + fileName.mid(9);
+    if ( displayTitle.startsWith("github://") )
+      displayTitle = EditorStyle::instance().githubBaseUrl() + "/" + displayTitle.mid(9);
 
-    // remember original name before possible URL → tempfile replacement
-    const QString displayName = fileName;
+    const QString displayName  = displayTitle;
+    const QString originalPath = fileName;   // before download — used for m_fileList dedup
+
+    // URL has "resolution=" query param → web-based BigTIFF tile service, no download
+    const bool isWebBigTiff = (originalPath.startsWith("http://") || originalPath.startsWith("https://"))
+                              && QUrlQuery(QUrl(originalPath)).hasQueryItem("resolution");
 
     // --- download helper (used for URL → file and URL → .list → first entry) ---
     auto downloadUrl = [&](const QString& url) -> QString {
@@ -610,47 +680,83 @@ void MainWindow::openImage()
     };
 
     // --- URL download ---
-    if ( fileName.startsWith("http://") || fileName.startsWith("https://") ) {
+    if ( !isWebBigTiff && (fileName.startsWith("http://") || fileName.startsWith("https://")) ) {
       fileName = downloadUrl(fileName);
       if ( fileName.isEmpty() ) return;
     }
 
     // --- if download result (or local selection) is a .list file, parse it ---
     if ( QFileInfo(fileName).suffix().toLower() == "list" ) {
-      const QStringList entries = parseLocalFileList(fileName);
+      const QList<FileListEntry> entries = parseLocalFileList(fileName);
       if ( entries.isEmpty() ) { showMessage(tr("File list is empty."), 1); return; }
       m_fileList = entries;
-      fileName = entries.first();
+      populateListWidget(listWidget, m_fileList);
+      fileName = entries.first().imagePath;
+      projPath = entries.first().projectPath;
       if ( fileName.startsWith("http://") || fileName.startsWith("https://") ) {
         fileName = downloadUrl(fileName);
         if ( fileName.isEmpty() ) return;
       }
     }
 
+    // build window title: "ImageEditor - <displayName> : <full path/URL>" when they differ
+    auto makeWinTitle = [&]() -> QString {
+        if ( displayName == originalPath || originalPath.isEmpty() )
+            return "ImageEditor - " + displayName;
+        return "ImageEditor - " + displayName + " : " + originalPath;
+    };
+
+    // helper: prepend to m_fileList only if originalPath not already present
+    auto ensureInList = [&]() {
+        const bool inList = std::any_of(m_fileList.begin(), m_fileList.end(),
+            [&](const FileListEntry& e){ return e.imagePath == originalPath; });
+        if ( !inList )
+            m_fileList.prepend(FileListEntry{ displayName, originalPath, projPath });
+    };
+
+    // helper: load associated project after image is loaded
+    auto loadAssociatedProject = [&]() {
+        if ( projPath.isEmpty() ) return;
+        QString p = projPath;
+        if ( p.startsWith("github://") )
+            p = EditorStyle::instance().githubBaseUrl() + "/" + p.mid(9);
+        if ( p.startsWith("http://") || p.startsWith("https://") ) {
+            p = downloadUrl(p);
+            if ( p.isEmpty() ) return;
+        }
+        loadHistory(p);
+    };
+
     if ( isMaskImage ) {
       m_imageView->loadMaskImage(fileName);
     } else {
       const QString ext = QFileInfo(fileName).suffix().toLower();
-      if ( ext == "tif" || ext == "tiff" ) {
+      if ( isWebBigTiff ) {
+        openBigTiff(fileName);   // fileName is still the URL (no download was done)
+        m_currentDisplayName = originalPath;
+        setWindowTitle(makeWinTitle());
+        ensureInList();
+        loadAssociatedProject();
+      } else if ( ext == "tif" || ext == "tiff" ) {
         openBigTiff(fileName);
-        m_currentDisplayName = displayName;
-        setWindowTitle("ImageEditor - " + displayName);
-        if ( !m_fileList.contains(displayName) )
-          m_fileList.prepend(displayName);
+        m_currentDisplayName = originalPath;
+        setWindowTitle(makeWinTitle());
+        ensureInList();
+        loadAssociatedProject();
 #ifdef HASHDF5
       } else if ( ext == "h5" || ext == "hdf5" || ext == "hdf" ) {
         openHdf5(fileName);
-        m_currentDisplayName = displayName;
-        setWindowTitle("ImageEditor - " + displayName);
-        if ( !m_fileList.contains(displayName) )
-          m_fileList.prepend(displayName);
+        m_currentDisplayName = originalPath;
+        setWindowTitle(makeWinTitle());
+        ensureInList();
+        loadAssociatedProject();
 #endif
       } else {
         if ( loadImage(fileName) ) {
-          m_currentDisplayName = displayName;
-          setWindowTitle("ImageEditor - " + displayName);
-          if ( !m_fileList.contains(displayName) )
-            m_fileList.prepend(displayName);
+          m_currentDisplayName = originalPath;
+          setWindowTitle(makeWinTitle());
+          ensureInList();
+          loadAssociatedProject();
           QTimer::singleShot(0, this, &MainWindow::fitToWindow);
         }
       }
@@ -2745,6 +2851,21 @@ void MainWindow::createStatusbar()
     });
 
     connect(m_imageView, &ImageView::cursorColorChanged, this, [this](const QColor& c){
+        QPixmap pix(24, 24);
+        pix.fill(c);
+        m_statusColorSwatch->setPixmap(pix);
+        m_statusColorText->setText(QString("|  Color: R:%1 G:%2 B:%3").arg(c.red()).arg(c.green()).arg(c.blue()));
+        m_statusColorSwatch->setToolTip(QString("R:%1 G:%2 B:%3 A:%4")
+                                        .arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha()));
+    });
+
+    connect(m_bigTiffViewer, &BigTiffViewer::scaleChanged, this, [this](double scale){
+        m_statusScaleLabel->setText(QString("Scale: %1×").arg(scale, 0, 'f', 4));
+    });
+    connect(m_bigTiffViewer, &BigTiffViewer::cursorPositionChanged, this, [this](int x, int y){
+        m_statusPosLabel->setText(QString("|  Pos: %1, %2").arg(x).arg(y));
+    });
+    connect(m_bigTiffViewer, &BigTiffViewer::cursorColorChanged, this, [this](const QColor& c){
         QPixmap pix(24, 24);
         pix.fill(c);
         m_statusColorSwatch->setPixmap(pix);

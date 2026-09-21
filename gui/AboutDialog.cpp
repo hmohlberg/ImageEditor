@@ -34,6 +34,11 @@
 #ifdef HASHDF5
 #  include <hdf5.h>
 #endif
+#ifdef HASITK
+#  include <itkConfigure.h>
+#endif
+
+#include <QSslSocket>
 
 AboutDialog::AboutDialog( QWidget* parent )
     : QDialog(parent)
@@ -79,13 +84,29 @@ QWidget* AboutDialog::buildAboutTab()
     outer->addSpacing(8);
 
     // --- Library versions ---
-    QString libInfo = QString("<b>%1</b> %2")
-        .arg(tr("BigTIFF support:"), QString("libtiff %1").arg(TIFFLIB_VERSION_STR_MAJ_MIN_MIC));
+    auto libRow = [](const QString& label, const QString& value) -> QString {
+        return QString("<tr><td align='right'><b>%1</b>&nbsp;</td><td>%2</td></tr>")
+            .arg(label, value);
+    };
+    QString libInfo = "<center><table cellspacing='3'>";
+    libInfo += libRow(tr("Qt:"),              QT_VERSION_STR);
+    libInfo += libRow(tr("BigTIFF support:"), QString("libtiff %1").arg(TIFFLIB_VERSION_STR_MAJ_MIN_MIC));
 #ifdef HASHDF5
-    libInfo += QString("<br><b>%1</b> HDF5 %2").arg(tr("HDF5 support:"), H5_VERSION);
+    libInfo += libRow(tr("HDF5 support:"),   QString("HDF5 %1").arg(H5_VERSION));
 #else
-    libInfo += QString("<br><b>%1</b> %2").arg(tr("HDF5 support:"), tr("not compiled in"));
+    libInfo += libRow(tr("HDF5 support:"),   tr("not compiled in"));
 #endif
+#ifdef HASITK
+    libInfo += libRow(tr("ITK support:"),
+        QString("%1.%2.%3").arg(ITK_VERSION_MAJOR).arg(ITK_VERSION_MINOR).arg(ITK_VERSION_PATCH));
+#else
+    libInfo += libRow(tr("ITK support:"),    tr("not compiled in"));
+#endif
+    {
+        const QString sslVer = QSslSocket::sslLibraryVersionString();
+        libInfo += libRow(tr("SSL:"), sslVer.isEmpty() ? tr("not available") : sslVer);
+    }
+    libInfo += "</table></center>";
     auto* libLabel = new QLabel(libInfo);
     libLabel->setTextFormat(Qt::RichText);
     libLabel->setAlignment(Qt::AlignCenter);

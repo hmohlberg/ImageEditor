@@ -36,6 +36,8 @@
 #include <QNetworkReply>
 #include <QEventLoop>
 #include <QSslConfiguration>
+#include <QSslSocket>
+#include <QUrlQuery>
 
 #include <iostream>
 #include <unistd.h>
@@ -54,6 +56,9 @@
 #include <tiffvers.h>
 #ifdef HASHDF5
 #  include <hdf5.h>
+#endif
+#ifdef HASITK
+#  include <itkConfigure.h>
 #endif
 
 
@@ -111,7 +116,7 @@ static void saveCurrentCall( int argc, char *argv[] ) {
     currentCall.insert("date", QDateTime::currentDateTime().toString(Qt::ISODate));
     currentCall.insert("args", argList.join(" "));
     history.prepend(currentCall);
-    if ( history.size() > 100 ) history.removeLast();
+    if ( history.size() > 1000 ) history.removeLast();
     if ( file.open(QIODevice::WriteOnly) ) {
         file.write(QJsonDocument(history).toJson());
     }
@@ -194,29 +199,50 @@ static QString downloadImageFromUrl( const QString& url )
     return tempPath;
 }
 
-static QStringList parseFileList( const QString& path )
+struct FLEntry { QString title, imagePath, projectPath; };
+
+static QList<FLEntry> parseFileList( const QString& path )
 {
-    QStringList entries;
+    QList<FLEntry> entries;
     QFile f(path);
     if ( !f.open(QIODevice::ReadOnly | QIODevice::Text) ) return entries;
     const QStringList lines = QString::fromUtf8(f.readAll()).split('\n');
     QString searchPath;
+    int autoIndex = 1;
     for ( const auto& line : lines ) {
         const QString t = line.trimmed();
         if ( t.isEmpty() || t.startsWith('#') ) continue;
-        if ( t.startsWith("http://") || t.startsWith("https://") ) {
-            entries << t;
-            continue;
-        }
-        QFileInfo fi(t);
-        if ( fi.isAbsolute() ) {
-            if ( fi.isDir() )
-                searchPath = t;           // directory → becomes search path
-            else
-                entries << t;             // absolute file path
+
+        if ( t.contains(';') ) {
+            // new format: title;imagePath[;projectPath]
+            const QStringList parts = t.split(';');
+            const QString title = parts[0].trimmed();
+            const QString img   = parts.size() > 1 ? parts[1].trimmed() : QString();
+            const QString proj  = parts.size() > 2 ? parts[2].trimmed() : QString();
+            if ( title.compare("path", Qt::CaseInsensitive) == 0 ) {
+                searchPath = img; continue;
+            }
+            if ( img.isEmpty() ) continue;
+            auto resolve = [&](const QString& p) -> QString {
+                if ( p.startsWith("http://") || p.startsWith("https://") || p.startsWith("github://") )
+                    return p;
+                return QFileInfo(p).isAbsolute() ? p
+                       : ( searchPath.isEmpty() ? p : searchPath + "/" + p );
+            };
+            entries.append({ title, resolve(img), resolve(proj) });
         } else {
-            // relative filename → resolve against current search path
-            entries << ( searchPath.isEmpty() ? t : searchPath + "/" + t );
+            // old format (no semicolon) — auto-title "Image N"
+            if ( t.startsWith("http://") || t.startsWith("https://") ) {
+                entries.append({ QString("Image %1").arg(autoIndex++), t, {} }); continue;
+            }
+            QFileInfo fi(t);
+            if ( fi.isAbsolute() ) {
+                if ( fi.isDir() ) { searchPath = t; continue; }
+                entries.append({ QString("Image %1").arg(autoIndex++), t, {} });
+            } else {
+                const QString resolved = searchPath.isEmpty() ? t : searchPath + "/" + t;
+                entries.append({ QString("Image %1").arg(autoIndex++), resolved, {} });
+            }
         }
     }
     return entries;
@@ -358,33 +384,67 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
     if ( imageFilePath.startsWith("github://") )
       imageFilePath = EditorStyle::instance().githubBaseUrl()
                       + "/" + imageFilePath.mid(9);
+    auto isWebBigTiffUrl = [](const QString& url) -> bool {
+        return (url.startsWith("http://") || url.startsWith("https://"))
+               && QUrlQuery(QUrl(url)).hasQueryItem("resolution");
+    };
     if ( imageFilePath.startsWith("http://") || imageFilePath.startsWith("https://") ) {
-      obj["imageDisplayName"] = imageFilePath;
-      std::cout << "Downloading image from URL: " << imageFilePath.toStdString() << std::endl;
-      imageFilePath = downloadImageFromUrl(imageFilePath);
-      if ( imageFilePath.isEmpty() ) exit(1);
+      obj["imageDisplayName"]  = imageFilePath;
+      obj["imageOriginalPath"] = imageFilePath;
+      if ( !isWebBigTiffUrl(imageFilePath) ) {
+        std::cout << "Downloading image from URL: " << imageFilePath.toStdString() << std::endl;
+        imageFilePath = downloadImageFromUrl(imageFilePath);
+        if ( imageFilePath.isEmpty() ) exit(1);
+      }
     }
     // .list file: parse entries, use first as imagePath, store all in fileList
     if ( QFileInfo(imageFilePath).suffix().toLower() == "list" ) {
-        const QStringList entries = parseFileList(imageFilePath);
+        if ( !validateFile(imageFilePath, "image file", {"list"}) ) exit(1);
+        const QList<FLEntry> entries = parseFileList(imageFilePath);
         if ( entries.isEmpty() ) {
             std::cerr << "\033[1;31mERROR: \033[0m"
                       << "File list '" << imageFilePath.toStdString() << "' is empty." << std::endl;
             exit(1);
         }
         QJsonArray arr;
-        for ( const auto& e : entries ) arr.append(e);
+        for ( const auto& e : entries ) {
+            QJsonObject o;
+            o["title"]       = e.title;
+            o["imagePath"]   = e.imagePath;
+            o["projectPath"] = e.projectPath;
+            arr.append(o);
+        }
         obj["fileList"] = arr;
-        imageFilePath = entries.first();
-        obj["imageDisplayName"] = imageFilePath;
+        // use first entry's image
+        imageFilePath = entries.first().imagePath;
+        if ( imageFilePath.startsWith("github://") )
+            imageFilePath = EditorStyle::instance().githubBaseUrl() + "/" + imageFilePath.mid(9);
+        obj["imageDisplayName"]  = entries.first().title;
+        obj["imageOriginalPath"] = imageFilePath; // URL/path before download, for filelist dedup
         if ( imageFilePath.startsWith("http://") || imageFilePath.startsWith("https://") ) {
-            std::cout << "Downloading image from URL: " << imageFilePath.toStdString() << std::endl;
-            imageFilePath = downloadImageFromUrl(imageFilePath);
-            if ( imageFilePath.isEmpty() ) exit(1);
+            if ( !isWebBigTiffUrl(imageFilePath) ) {
+                std::cout << "Downloading image from URL: " << imageFilePath.toStdString() << std::endl;
+                imageFilePath = downloadImageFromUrl(imageFilePath);
+                if ( imageFilePath.isEmpty() ) exit(1);
+            }
+        }
+        // use first entry's project as default (--project will override below if set)
+        if ( !entries.first().projectPath.isEmpty() ) {
+            QString projPath = entries.first().projectPath;
+            if ( projPath.startsWith("github://") )
+                projPath = EditorStyle::instance().githubBaseUrl() + "/" + projPath.mid(9);
+            if ( projPath.startsWith("http://") || projPath.startsWith("https://") ) {
+                std::cout << "Downloading project from URL: " << projPath.toStdString() << std::endl;
+                projPath = downloadImageFromUrl(projPath);
+                if ( projPath.isEmpty() ) exit(1);
+            }
+            obj["historyPath"] = projPath;
         }
     }
-    if ( !validateFile(imageFilePath,"image file",{"png","mnc","mnc2","tif","tiff","h5","hdf5","hdf"}) ) {
-      exit(1);
+    if ( !isWebBigTiffUrl(imageFilePath) ) {
+      if ( !validateFile(imageFilePath,"image file",{"png","mnc","mnc2","tif","tiff","h5","hdf5","hdf"}) ) {
+        exit(1);
+      }
     }
     obj["imagePath"] = imageFilePath;
   }
@@ -392,7 +452,9 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   obj["classPath"] = parser.value(classFileOption);
   {
     QString projectPath = parser.value(projectFileOption);
-    if ( !projectPath.isEmpty() ) {
+    if ( projectPath == "none" ) {
+      obj["projectNone"] = true;
+    } else if ( !projectPath.isEmpty() ) {
       // expand github:// shorthand
       if ( projectPath.startsWith("github://") )
         projectPath = EditorStyle::instance().githubBaseUrl() + "/" + projectPath.mid(9);
@@ -409,8 +471,8 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
       } else {
         if ( !validateFile(projectPath,"project",{"json"}) ) exit(1);
       }
+      obj["historyPath"] = projectPath;
     }
-    obj["historyPath"] = projectPath;
   }
   obj["saveJSONPath"] = parser.value(saveJSONOption);
   obj["configPath"] = parser.value(configFileOption);
@@ -451,22 +513,37 @@ static void printAuthors()
         std::cerr << "AUTHORS file not found in resources." << std::endl;
 }
 
-static void printVersionInfo( int argc, char* argv[] )
+// Prints build info — requires QCoreApplication to already exist (for SSL query).
+static void printBuildInfo()
 {
     const QString localVer = APP_VERSION;
     std::cout << "ImageEditor " << localVer.toStdString() << std::endl;
+    std::cout << "  Qt:              " << QT_VERSION_STR << std::endl;
     std::cout << "  BigTIFF support: yes (libtiff " << TIFFLIB_VERSION_STR_MAJ_MIN_MIC << ")" << std::endl;
 #ifdef HASHDF5
     std::cout << "  HDF5 support:    yes (" << H5_VERSION << ")" << std::endl;
 #else
     std::cout << "  HDF5 support:    no" << std::endl;
 #endif
+#ifdef HASITK
+    std::cout << "  ITK support:     yes ("
+              << ITK_VERSION_MAJOR << "." << ITK_VERSION_MINOR << "." << ITK_VERSION_PATCH
+              << ")" << std::endl;
+#else
+    std::cout << "  ITK support:     no" << std::endl;
+#endif
+    {
+        const QString sslVer = QSslSocket::sslLibraryVersionString();
+        std::cout << "  SSL:             "
+                  << ( sslVer.isEmpty() ? "not available" : sslVer.toStdString() )
+                  << std::endl;
+    }
+}
 
-    // Spin up a minimal core app so QNetworkAccessManager works
-    QCoreApplication app(argc, argv);
-    app.setApplicationName("ImageEditor");
-    app.setApplicationVersion(localVer);
-
+// Checks GitHub for a newer release — requires QCoreApplication to already exist.
+static void checkForUpdates()
+{
+    const QString localVer = APP_VERSION;
     QNetworkAccessManager nam;
     QUrl url("https://api.github.com/repos/hmohlberg/ImageEditor/releases/latest");
     QNetworkRequest req(url);
@@ -494,7 +571,6 @@ static void printVersionInfo( int argc, char* argv[] )
         return;
     }
 
-    // Normalise "v1.2.3" → ["1","2","3"] and compare component-wise
     auto normalise = [](const QString& v) -> QStringList {
         QString s = v.trimmed();
         if ( s.startsWith('v') || s.startsWith('V') ) s = s.mid(1);
@@ -523,9 +599,23 @@ static void printVersionInfo( int argc, char* argv[] )
         std::cout << "Status: Up to date. No update available." << std::endl;
 }
 
+static void printVersionInfo( int argc, char* argv[] )
+{
+    QCoreApplication app(argc, argv);
+    app.setApplicationName("ImageEditor");
+    app.setApplicationVersion(APP_VERSION);
+    printBuildInfo();
+    checkForUpdates();
+}
+
 static void printAbout( int argc, char* argv[] )
 {
-    printVersionInfo(argc, argv);
+    // One QCoreApplication shared by all three steps so Qt resources stay accessible.
+    QCoreApplication app(argc, argv);
+    app.setApplicationName("ImageEditor");
+    app.setApplicationVersion(APP_VERSION);
+    printBuildInfo();
+    checkForUpdates();
     std::cout << std::endl;
     printAuthors();
     std::cout << std::endl;
@@ -570,6 +660,20 @@ int main( int argc, char *argv[] )
     
     // --- check whether batch processing is requested ---
     if ( batchProcessing ) {
+      // file lists are not supported in batch mode — check before full parsing
+      for ( int i = 1; i < argc - 1; ++i ) {
+        if ( QString(argv[i]) == "--file" ) {
+          const QString val = QString(argv[i + 1]);
+          // strip github:// / https:// to get the path component for suffix check
+          const QString checkPath = val.startsWith("github://") || val.startsWith("http://") || val.startsWith("https://")
+              ? QUrl(val).path() : val;
+          if ( QFileInfo(checkPath).suffix().toLower() == "list" ) {
+            printError("File lists (.list) are not supported in batch mode.");
+            return 1;
+          }
+          break;
+        }
+      }
       QCoreApplication *app = new QCoreApplication(argc,argv);
       BatchMain batch;
       app->setApplicationName("ImageEditor");
@@ -577,7 +681,8 @@ int main( int argc, char *argv[] )
       QJsonObject parsedOptions = parser(app,argc);
       QString imagePath = parsedOptions.value("imagePath").toString("");
       QString historyPath = parsedOptions.value("historyPath").toString("");
-      if ( historyPath.isEmpty() ) {
+      const bool projectNone = parsedOptions.value("projectNone").toBool();
+      if ( historyPath.isEmpty() && !projectNone ) {
        printError("Invalid input. Missing required option '--project <filename>' in batch mode.");
        return 1;
       }
@@ -668,7 +773,19 @@ int main( int argc, char *argv[] )
       QString saveIntermediatePath = parsedOptions.value("save-intermediate").toString("");
       ImageLoader loader;
       QImage image;
-      if ( imagePath.isEmpty() ) {
+      if ( projectNone ) {
+       // --project none: load input and write copy without any processing
+       if ( imagePath.isEmpty() ) {
+        printError("--project none requires --file.");
+        return 1;
+       }
+       saveCurrentCall(argc, argv);
+       if ( !loader.load(imagePath, true) ) {
+        printError(QString("Malfunction in ImageLoader::load(%1).").arg(imagePath));
+        return 1;
+       }
+       image = loader.getImage();
+      } else if ( imagePath.isEmpty() ) {
        saveCurrentCall(argc, argv);
        ImageProcessor proc;
        proc.setIntermediatePath(saveIntermediatePath,outputPath);

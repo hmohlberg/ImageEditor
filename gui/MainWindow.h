@@ -217,10 +217,16 @@ class MainWindow : public QMainWindow, public IMainSystem
     QDoubleSpinBox* m_translateXLayerSpin = nullptr;
     QDoubleSpinBox* m_translateYLayerSpin = nullptr;
     
+    struct FileListEntry {
+        QString title;
+        QString imagePath;
+        QString projectPath;
+    };
+
     QString m_selectedLayerItemName;
     QString m_mainImageName;
     QString m_projectFileName;
-    QStringList m_fileList;
+    QList<FileListEntry> m_fileList;
     QString m_currentDisplayName;
     
     bool m_updatingLayerList = false;

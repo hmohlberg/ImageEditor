@@ -16,11 +16,12 @@
 
 #pragma once
 
-#include <QWidget>
+#include <QColor>
 #include <QHash>
 #include <QRgb>
 #include <QSize>
 #include <QVector>
+#include <QWidget>
 
 struct BigTiffLevel {
     uint32_t w = 0, h = 0;
@@ -49,6 +50,9 @@ public:
 
 signals:
     void closeRequested();
+    void scaleChanged(double scale);
+    void cursorPositionChanged(int x, int y);
+    void cursorColorChanged(const QColor& color);
 
 private slots:
     void zoomIn();
@@ -57,6 +61,7 @@ private slots:
     void saveAs();
 
 private:
+    bool openWebMode(const QString& url);
     void updateInfoLabel();
 
     BigTiffGraphicsView* m_view      = nullptr;
