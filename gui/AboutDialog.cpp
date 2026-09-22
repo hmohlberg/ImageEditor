@@ -159,8 +159,8 @@ QWidget* AboutDialog::buildAuthorsTab()
     else
         browser->setPlainText(tr("AUTHORS file not available."));
 
-    QFont mono = browser->font();
-    mono.setFamily("Courier, monospace");
+    QFont mono("Courier New");
+    mono.setStyleHint(QFont::Monospace);
     browser->setFont(mono);
 
     return browser;
@@ -178,8 +178,8 @@ QWidget* AboutDialog::buildLicenseTab()
     else
         browser->setPlainText(tr("License file not available."));
 
-    QFont mono = browser->font();
-    mono.setFamily("Courier, monospace");
+    QFont mono("Courier New");
+    mono.setStyleHint(QFont::Monospace);
     browser->setFont(mono);
 
     return browser;

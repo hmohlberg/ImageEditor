@@ -89,6 +89,7 @@
 #include <QNetworkReply>
 #include <QEventLoop>
 #include <QSslConfiguration>
+#include <QProgressDialog>
 #include <QVBoxLayout>
 #include <QFormLayout>
 #include <QDialog>
@@ -221,6 +222,10 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     createStatusbar();
     createToolbars();
     createDockWidgets();
+    if ( options.value("showDocks").toBool() ) {
+        m_layerDock->show();
+        m_historyDock->show();
+    }
 
     // >>>
     // Defer image/project loading and the optional project-assignment dialog until
@@ -298,6 +303,16 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
                     QNetworkReply* reply = nam.get(req);
                     connect(reply, &QNetworkReply::sslErrors,
                             reply, [reply](const QList<QSslError>&){ reply->ignoreSslErrors(); });
+                    QProgressDialog prog(tr("Downloading image…"), tr("Cancel"), 0, 0, this);
+                    prog.setWindowModality(Qt::WindowModal);
+                    prog.setMinimumDuration(400);
+                    prog.setMinimumWidth(420);
+                    connect(reply, &QNetworkReply::downloadProgress, &prog,
+                        [&prog](qint64 got, qint64 total) {
+                            prog.setMaximum(total > 0 ? static_cast<int>(total) : 0);
+                            prog.setValue(static_cast<int>(got));
+                        });
+                    connect(&prog, &QProgressDialog::canceled, reply, &QNetworkReply::abort);
                     QEventLoop loop;
                     connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
                     loop.exec();
@@ -413,6 +428,9 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
        resize(totalSize.width(), totalSize.height());
     } else {
        this->setMinimumSize(800, 600);
+       QSettings settings("FZJuelich", "ImageEditor");
+       if ( settings.contains("geometry") )
+           restoreGeometry(settings.value("geometry").toByteArray());
     }
     show();
     fitToWindow();
@@ -481,9 +499,11 @@ bool MainWindow::checkUnsavedData( bool isCloseProgram  )
   }
 }
 
-void MainWindow::closeEvent( QCloseEvent *event ) 
+void MainWindow::closeEvent( QCloseEvent *event )
 {
     if ( checkUnsavedData() ) {
+      QSettings settings("FZJuelich", "ImageEditor");
+      settings.setValue("geometry", saveGeometry());
       event->accept();
       return;
     }
@@ -762,8 +782,6 @@ void MainWindow::openImage()
 
     // --- download helper (used for URL → file and URL → .list → first entry) ---
     auto downloadUrl = [&](const QString& url) -> QString {
-      showMessage(tr("Downloading…"), 0);
-      QApplication::setOverrideCursor(Qt::WaitCursor);
       QNetworkAccessManager nam;
       QUrl qurl(url);
       QNetworkRequest req(qurl);
@@ -773,10 +791,19 @@ void MainWindow::openImage()
       QNetworkReply* reply = nam.get(req);
       connect(reply, &QNetworkReply::sslErrors,
               reply, [reply](const QList<QSslError>&) { reply->ignoreSslErrors(); });
+      QProgressDialog prog(tr("Downloading…"), tr("Cancel"), 0, 0, this);
+      prog.setWindowModality(Qt::WindowModal);
+      prog.setMinimumDuration(400);
+      prog.setMinimumWidth(420);
+      connect(reply, &QNetworkReply::downloadProgress, &prog,
+          [&prog](qint64 got, qint64 total) {
+              prog.setMaximum(total > 0 ? static_cast<int>(total) : 0);
+              prog.setValue(static_cast<int>(got));
+          });
+      connect(&prog, &QProgressDialog::canceled, reply, &QNetworkReply::abort);
       QEventLoop loop;
       connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
       loop.exec();
-      QApplication::restoreOverrideCursor();
       if ( reply->error() != QNetworkReply::NoError ) {
         QMessageBox::critical(this, tr("Download failed"), reply->errorString());
         reply->deleteLater();
@@ -1449,6 +1476,16 @@ void MainWindow::openHistory()
       QNetworkReply* reply = nam.get(req);
       QObject::connect(reply, &QNetworkReply::sslErrors, reply,
                        [reply](const QList<QSslError>&){ reply->ignoreSslErrors(); });
+      QProgressDialog prog(tr("Downloading project…"), tr("Cancel"), 0, 0, this);
+      prog.setWindowModality(Qt::WindowModal);
+      prog.setMinimumDuration(400);
+      prog.setMinimumWidth(420);
+      QObject::connect(reply, &QNetworkReply::downloadProgress, &prog,
+          [&prog](qint64 got, qint64 total) {
+              prog.setMaximum(total > 0 ? static_cast<int>(total) : 0);
+              prog.setValue(static_cast<int>(got));
+          });
+      QObject::connect(&prog, &QProgressDialog::canceled, reply, &QNetworkReply::abort);
       QEventLoop loop;
       QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
       loop.exec();
@@ -1981,9 +2018,59 @@ void MainWindow::showLayerContextMenu( const QPoint& pos )
         auto* bbox2 = new QDialogButtonBox(QDialogButtonBox::Close, dlg);
         connect(bbox2, &QDialogButtonBox::rejected, dlg, &QDialog::accept);
 
-        auto* vlay = new QVBoxLayout(dlg);
+        // Right side: form + buttons — built first so we can measure its height
+        auto* rightWidget = new QWidget(dlg);
+        auto* vlay = new QVBoxLayout(rightWidget);
+        vlay->setContentsMargins(0, 0, 0, 0);
         vlay->addLayout(form);
         vlay->addWidget(bbox2);
+
+        // Left side: thumbnail scaled to the natural height of the right side
+        auto* hlay = new QHBoxLayout(dlg);
+        // Prefer the LayerItem's actual image (composited sub-image for lasso/binary layers)
+        QImage srcImage;
+        if ( auto* li = dynamic_cast<LayerItem*>(layer->m_item) )
+            srcImage = li->image();
+        if ( srcImage.isNull() )
+            srcImage = layer->m_image;
+        if ( !srcImage.isNull() ) {
+            // Grayscale mask (Format_Grayscale8, no alpha): composite with the base image
+            // region so the thumbnail shows the actual image content, not just the mask shape.
+            if ( !srcImage.hasAlphaChannel() && m_layerItem && !layer->m_bounds.isNull() ) {
+                const QImage base = m_layerItem->image().copy(layer->m_bounds);
+                if ( !base.isNull() ) {
+                    QImage comp = base.convertToFormat(QImage::Format_ARGB32);
+                    const QImage grayMask = srcImage.convertToFormat(QImage::Format_Grayscale8);
+                    for ( int y = 0; y < comp.height() && y < grayMask.height(); ++y ) {
+                        QRgb*        row  = reinterpret_cast<QRgb*>(comp.scanLine(y));
+                        const uchar* mask = grayMask.constScanLine(y);
+                        for ( int x = 0; x < comp.width() && x < grayMask.width(); ++x )
+                            row[x] = qRgba(qRed(row[x]), qGreen(row[x]), qBlue(row[x]), mask[x]);
+                    }
+                    srcImage = comp;
+                }
+            }
+            const int thumbH = rightWidget->sizeHint().height();
+            const QPixmap scaled = QPixmap::fromImage(srcImage)
+                .scaledToHeight(thumbH > 0 ? thumbH : 200, Qt::SmoothTransformation);
+            // Composite onto checkerboard so transparent areas are recognisable
+            QPixmap thumb(scaled.size());
+            {
+                QPainter p(&thumb);
+                const int cs = 8;
+                for ( int y = 0; y < thumb.height(); y += cs )
+                    for ( int x = 0; x < thumb.width(); x += cs )
+                        p.fillRect(x, y, cs, cs,
+                            ((x/cs + y/cs) % 2) == 0 ? QColor(180,180,180) : QColor(220,220,220));
+                p.drawPixmap(0, 0, scaled);
+            }
+            auto* thumbLabel = new QLabel(dlg);
+            thumbLabel->setPixmap(thumb);
+            thumbLabel->setFixedSize(thumb.size());
+            thumbLabel->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
+            hlay->addWidget(thumbLabel, 0, Qt::AlignTop);
+        }
+        hlay->addWidget(rightWidget);
 
         dlg->show();
     });

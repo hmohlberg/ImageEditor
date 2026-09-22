@@ -346,6 +346,8 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(debugOption);
   QCommandLineOption verboseOption("verbose", "Enable verbose output to stdout.");
   parser.addOption(verboseOption);
+  QCommandLineOption docksOption("docks", "Show layer and history docks on startup.");
+  parser.addOption(docksOption);
   parser.process(*app);
   
   // --- history ---
@@ -496,6 +498,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   obj["force"] = parser.isSet(forceOption);
   obj["debug"] = parser.isSet(debugOption);
   obj["verbose"] = parser.isSet(verboseOption);
+  obj["showDocks"] = parser.isSet(docksOption);
   obj["scaleFactor"] = parser.isSet(scaleOption)
                        ? parser.value(scaleOption).toInt() : 20;
   
@@ -527,7 +530,11 @@ static void printBuildInfo()
     const QString localVer = APP_VERSION;
     std::cout << "ImageEditor " << localVer.toStdString() << std::endl;
     std::cout << "  Qt:              " << QT_VERSION_STR << std::endl;
+#ifdef TIFFLIB_VERSION_STR_MAJ_MIN_MIC
     std::cout << "  BigTIFF support: yes (libtiff " << TIFFLIB_VERSION_STR_MAJ_MIN_MIC << ")" << std::endl;
+#else
+    std::cout << "  BigTIFF support: yes (libtiff >= 4.0)" << std::endl;
+#endif
 #ifdef HASHDF5
     std::cout << "  HDF5 support:    yes (" << H5_VERSION << ")" << std::endl;
 #else
