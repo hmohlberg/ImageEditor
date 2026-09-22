@@ -20,7 +20,9 @@
 #include "ConfigDialog.h"
 #include "AboutDialog.h"
 #include "LayerEditorView.h"
+#ifdef HASTIFF
 #include "BigTiffViewer.h"
+#endif
 #ifdef HASHDF5
 #include "Hdf5Viewer.h"
 #endif
@@ -88,8 +90,10 @@
 #include <QEventLoop>
 #include <QSslConfiguration>
 #include <QVBoxLayout>
+#include <QFormLayout>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QTextEdit>
 #include <QTabWidget>
 #include <QTreeWidget>
 #include <QHeaderView>
@@ -153,9 +157,9 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
       QListWidget::indicator:checked { image: url(":/icons/icons/check.svg"); }
     )");
     if ( imagePath == "" ) {
-      setWindowTitle("ImageEditor - "+historyPath); 
+      setWindowTitle("ImageEditor - "+historyPath);
     } else {
-      setWindowTitle("ImageEditor - "+imagePath); 
+      setWindowTitle("ImageEditor - "+imagePath);
     }
     
     // >>>
@@ -188,16 +192,20 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
                     m_statusColorText->setText(QString("|  Color: %1").arg(text));
             });
 
+#ifdef HASTIFF
     m_bigTiffViewer = new BigTiffViewer(this);
     connect(m_bigTiffViewer, &BigTiffViewer::closeRequested, this, [this]{
         m_bigTiffViewer->closeTiff();
         m_centralStack->setCurrentIndex(0);
     });
+#endif
 
     m_centralStack = new QStackedWidget(this);
     m_centralStack->addWidget(m_imageView);       // index 0 — normal view
     m_centralStack->addWidget(m_layerEditorView); // index 1 — layer editor
+#ifdef HASTIFF
     m_centralStack->addWidget(m_bigTiffViewer);   // index 2 — BigTIFF viewer
+#endif
 #ifdef HASHDF5
     m_hdf5Viewer = new Hdf5Viewer(this);
     connect(m_hdf5Viewer, &Hdf5Viewer::closeRequested, this, [this]{
@@ -215,18 +223,23 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     createDockWidgets();
 
     // >>>
+    // Defer image/project loading and the optional project-assignment dialog until
+    // after the main window is shown, so the user sees a proper window first.
+    QTimer::singleShot(0, this, [this, imagePath, historyPath, classPath, options]() mutable {
+
     auto loadAnyImage = [this](const QString& path) -> bool {
-        // web BigTIFF tile service URL (has "resolution=" query param)
+        const QString ext = QFileInfo(path).suffix().toLower();
+#ifdef HASTIFF
         if ((path.startsWith("http://") || path.startsWith("https://"))
             && QUrlQuery(QUrl(path)).hasQueryItem("resolution")) {
             QTimer::singleShot(0, this, [this, path]{ openBigTiff(path); });
             return false;
         }
-        const QString ext = QFileInfo(path).suffix().toLower();
         if (ext == "tif" || ext == "tiff") {
             QTimer::singleShot(0, this, [this, path]{ openBigTiff(path); });
             return false;
         }
+#endif
 #ifdef HASHDF5
         if (ext == "h5" || ext == "hdf5" || ext == "hdf") {
             QTimer::singleShot(0, this, [this, path]{ openHdf5(path); });
@@ -236,6 +249,96 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
         return loadImage(path);
     };
 
+    // When --project was given on the CLI together with a filelist, ask which
+    // filelist entry the project belongs to (it is not always the first one).
+    int selectedFileListIdx = 0;
+    if ( options.value("projectFromCLI").toBool() && !historyPath.isEmpty()
+         && m_fileList.size() > 1 ) {
+        QDialog dlg(this);
+        dlg.setWindowTitle(tr("Assign Project to Image"));
+        dlg.setMinimumWidth(600);
+        auto* vlay = new QVBoxLayout(&dlg);
+        auto* lbl = new QLabel(
+            tr("The project file will be loaded for the selected image:"), &dlg);
+        lbl->setWordWrap(true);
+        vlay->addWidget(lbl);
+        auto* lw = new QListWidget(&dlg);
+        for ( const auto& e : m_fileList ) {
+            const QString title = e.title.isEmpty() ? e.imagePath : e.title;
+            const QString text  = (!e.imagePath.isEmpty() && title != e.imagePath)
+                                  ? title + "  —  " + e.imagePath
+                                  : title;
+            lw->addItem(text);
+        }
+        lw->setCurrentRow(0);
+        connect(lw, &QListWidget::itemDoubleClicked, &dlg, &QDialog::accept);
+        auto* bbox2 = new QDialogButtonBox(
+            QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        connect(bbox2, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        connect(bbox2, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+        vlay->addWidget(lw);
+        vlay->addWidget(bbox2);
+        if ( dlg.exec() == QDialog::Accepted ) {
+            const int idx = lw->currentRow();
+            if ( idx > 0 && idx < m_fileList.size() ) {
+                selectedFileListIdx = idx;
+                imagePath = m_fileList[idx].imagePath;
+                // HTTP/HTTPS URL: download to temp file so loadAnyImage can open it.
+                // BigTIFF tile URLs (with "resolution=" param) pass through as-is.
+                const bool isUrl = imagePath.startsWith("http://")
+                                   || imagePath.startsWith("https://");
+                const bool isBigTiffUrl = isUrl
+                    && QUrlQuery(QUrl(imagePath)).hasQueryItem("resolution");
+                if ( isUrl && !isBigTiffUrl ) {
+                    QNetworkAccessManager nam;
+                    QNetworkRequest req{ QUrl(imagePath) };
+                    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                                     QNetworkRequest::NoLessSafeRedirectPolicy);
+                    req.setSslConfiguration(QSslConfiguration::defaultConfiguration());
+                    QNetworkReply* reply = nam.get(req);
+                    connect(reply, &QNetworkReply::sslErrors,
+                            reply, [reply](const QList<QSslError>&){ reply->ignoreSslErrors(); });
+                    QEventLoop loop;
+                    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+                    loop.exec();
+                    if ( reply->error() == QNetworkReply::NoError ) {
+                        const QByteArray data = reply->readAll();
+                        // derive extension from Content-Type header, then URL, then default
+                        const QString ct = reply->header(
+                            QNetworkRequest::ContentTypeHeader).toString().toLower();
+                        QString useExt = "png";
+                        if      ( ct.contains("jpeg") || ct.contains("jpg") ) useExt = "jpg";
+                        else if ( ct.contains("tiff") )                        useExt = "tiff";
+                        else if ( ct.contains("bmp")  )                        useExt = "bmp";
+                        else {
+                            const QString urlExt =
+                                QFileInfo(QUrl(imagePath).path()).suffix().toLower();
+                            static const QStringList knownExts = {
+                                "png","jpg","jpeg","bmp","tif","tiff",
+                                "h5","hdf5","hdf","mnc","mnc2"};
+                            if ( knownExts.contains(urlExt) ) useExt = urlExt;
+                        }
+                        const QString tmpPath =
+                            QDir::tempPath() + "/imageeditor_url_download." + useExt;
+                        QFile f(tmpPath);
+                        if ( f.open(QIODevice::WriteOnly) ) {
+                            f.write(data);
+                            f.close();
+                            imagePath = tmpPath;
+                        }
+                    } else {
+                        // download failed — keep the URL and let loadAnyImage try
+                        // (e.g. tile server that doesn't serve raw images directly)
+                        showMessage(
+                            tr("Download failed (%1) — opening as tile URL")
+                                .arg(reply->errorString()), 0);
+                    }
+                    reply->deleteLater();
+                }
+            }
+        }
+    }
+
     bool hasMainImage = false;
     if ( !imagePath.isEmpty() && historyPath.isEmpty() ) {
      hasMainImage = loadAnyImage(imagePath);
@@ -243,12 +346,22 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
      hasMainImage = loadProject(historyPath, false);
     } else if ( !imagePath.isEmpty() && !historyPath.isEmpty() ) {
      hasMainImage = loadAnyImage(imagePath);
+     // When the user explicitly picked which filelist entry owns the project,
+     // the temp-file name will never match the project's stored filename.
+     // Skip the mismatch dialog to avoid confusing the user.
+     const bool savedSkipVal = Config::skipValidation;
+     if ( selectedFileListIdx > 0 ) Config::skipValidation = true;
      loadProject(historyPath, true);
+     Config::skipValidation = savedSkipVal;
     }
     // override title when the loaded file was a downloaded URL/filelist entry
     {
-     const QString dispName = options.value("imageDisplayName").toString("");
-     const QString origPath = options.value("imageOriginalPath").toString("");
+     const QString dispName = selectedFileListIdx > 0
+         ? m_fileList[selectedFileListIdx].title
+         : options.value("imageDisplayName").toString("");
+     const QString origPath = selectedFileListIdx > 0
+         ? m_fileList[selectedFileListIdx].imagePath
+         : options.value("imageOriginalPath").toString("");
      if ( !dispName.isEmpty() ) {
        // m_currentDisplayName tracks the original URL/path for filelist highlighting
        m_currentDisplayName = origPath.isEmpty() ? dispName : origPath;
@@ -265,14 +378,17 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
        const bool inList = std::any_of(m_fileList.begin(), m_fileList.end(),
            [&](const FileListEntry& e){ return e.imagePath == m_currentDisplayName; });
        if ( !inList )
-         m_fileList.prepend(FileListEntry{ dispName.isEmpty() ? m_currentDisplayName : dispName,
+         m_fileList.prepend(FileListEntry{ dispName.isEmpty() ? tr("Image") : dispName,
                                            m_currentDisplayName, {} });
      }
     }
     if ( !classPath.isEmpty() ) {
-     m_imageView->loadMaskImage(classPath); 
+     m_imageView->loadMaskImage(classPath);
     }
-    
+    fitToWindow();
+
+    }); // end QTimer::singleShot — deferred startup load
+
     // >>>
     if ( EditorStyle::instance().windowSize() == "maximum" ) {
        this->showMaximized();
@@ -295,7 +411,7 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
        QRect ScreenGeometry = QGuiApplication::screens().at(bestScreen)->geometry();
        move(ScreenGeometry.topLeft());
        resize(totalSize.width(), totalSize.height());
-    } else if ( hasMainImage == false) {
+    } else {
        this->setMinimumSize(800, 600);
     }
     show();
@@ -633,12 +749,16 @@ void MainWindow::openImage()
     if ( displayTitle.startsWith("github://") )
       displayTitle = EditorStyle::instance().githubBaseUrl() + "/" + displayTitle.mid(9);
 
-    const QString displayName  = displayTitle;
-    const QString originalPath = fileName;   // before download — used for m_fileList dedup
+    QString displayName  = displayTitle;
+    QString originalPath = fileName;   // before download — used for m_fileList dedup
 
     // URL has "resolution=" query param → web-based BigTIFF tile service, no download
+#ifdef HASTIFF
     const bool isWebBigTiff = (originalPath.startsWith("http://") || originalPath.startsWith("https://"))
                               && QUrlQuery(QUrl(originalPath)).hasQueryItem("resolution");
+#else
+    const bool isWebBigTiff = false;
+#endif
 
     // --- download helper (used for URL → file and URL → .list → first entry) ---
     auto downloadUrl = [&](const QString& url) -> QString {
@@ -693,6 +813,9 @@ void MainWindow::openImage()
       populateListWidget(listWidget, m_fileList);
       fileName = entries.first().imagePath;
       projPath = entries.first().projectPath;
+      // update dedup key to first entry so the .list URL/path is not added to m_fileList
+      originalPath = fileName;
+      displayName  = entries.first().title.isEmpty() ? fileName : entries.first().title;
       if ( fileName.startsWith("http://") || fileName.startsWith("https://") ) {
         fileName = downloadUrl(fileName);
         if ( fileName.isEmpty() ) return;
@@ -702,7 +825,7 @@ void MainWindow::openImage()
     // build window title: "ImageEditor - <displayName> : <full path/URL>" when they differ
     auto makeWinTitle = [&]() -> QString {
         if ( displayName == originalPath || originalPath.isEmpty() )
-            return "ImageEditor - " + displayName;
+            return "ImageEditor - " + originalPath;
         return "ImageEditor - " + displayName + " : " + originalPath;
     };
 
@@ -711,7 +834,8 @@ void MainWindow::openImage()
         const bool inList = std::any_of(m_fileList.begin(), m_fileList.end(),
             [&](const FileListEntry& e){ return e.imagePath == originalPath; });
         if ( !inList )
-            m_fileList.prepend(FileListEntry{ displayName, originalPath, projPath });
+            m_fileList.prepend(FileListEntry{ displayName == originalPath ? tr("Image") : displayName,
+                                              originalPath, projPath });
     };
 
     // helper: load associated project after image is loaded
@@ -731,7 +855,9 @@ void MainWindow::openImage()
       m_imageView->loadMaskImage(fileName);
     } else {
       const QString ext = QFileInfo(fileName).suffix().toLower();
-      if ( isWebBigTiff ) {
+      if (false) { }
+#ifdef HASTIFF
+      else if ( isWebBigTiff ) {
         openBigTiff(fileName);   // fileName is still the URL (no download was done)
         m_currentDisplayName = originalPath;
         setWindowTitle(makeWinTitle());
@@ -743,15 +869,18 @@ void MainWindow::openImage()
         setWindowTitle(makeWinTitle());
         ensureInList();
         loadAssociatedProject();
+      }
+#endif
 #ifdef HASHDF5
-      } else if ( ext == "h5" || ext == "hdf5" || ext == "hdf" ) {
+      else if ( ext == "h5" || ext == "hdf5" || ext == "hdf" ) {
         openHdf5(fileName);
         m_currentDisplayName = originalPath;
         setWindowTitle(makeWinTitle());
         ensureInList();
         loadAssociatedProject();
+      }
 #endif
-      } else {
+      else {
         if ( loadImage(fileName) ) {
           m_currentDisplayName = originalPath;
           setWindowTitle(makeWinTitle());
@@ -764,6 +893,7 @@ void MainWindow::openImage()
   }
 }
 
+#ifdef HASTIFF
 void MainWindow::openBigTiff(const QString& filePath)
 {
     if (!m_bigTiffViewer->open(filePath)) {
@@ -784,6 +914,7 @@ void MainWindow::openBigTiff(const QString& filePath)
         resize(winContent.width() + extraW, winContent.height() + extraH);
     }
 }
+#endif
 
 #ifdef HASHDF5
 void MainWindow::openHdf5(const QString& filePath)
@@ -1802,22 +1933,59 @@ void MainWindow::showLayerContextMenu( const QPoint& pos )
     menu.addAction("Layer Info", [this, item]() {
         Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
         if ( !layer || !layer->m_item ) return;
-        QRectF bbox = layer->m_item->boundingRect();
-        int polygonPoints = 0;
-        if ( !layer->m_polygon.isEmpty() )
-            polygonPoints = layer->m_polygon.size();
+        const QRectF  bbox   = layer->m_item->boundingRect();
+        const QPointF pos    = layer->m_item->pos();
+        const int polyPts    = layer->m_polygon.isEmpty() ? 0 : layer->m_polygon.size();
         QSize pixmapSize;
-        if ( auto pixmapItem = dynamic_cast<QGraphicsPixmapItem*>(layer->m_item) )
-            pixmapSize = pixmapItem->pixmap().size();
-        qInfo() << "Layer Info:";
-        qInfo() << " Name:" << layer->name();
-        qInfo() << " Visible:" << layer->m_visible;
-        qInfo() << " Linked to Image:" << layer->m_linkedToImage;
-        qInfo() << " Bounding Box:" << bbox;
-        qInfo() << " Position:" << layer->m_item->pos();
-        qInfo() << " Polygon Points:" << polygonPoints;
+        if ( auto* pix = dynamic_cast<QGraphicsPixmapItem*>(layer->m_item) )
+            pixmapSize = pix->pixmap().size();
+
+        auto* dlg = new QDialog(this);
+        dlg->setAttribute(Qt::WA_DeleteOnClose);
+        dlg->setWindowTitle(tr("LayerInfo - %1").arg(layer->name()));
+        dlg->setMinimumWidth(340);
+
+        auto* form = new QFormLayout;
+        form->setLabelAlignment(Qt::AlignRight);
+        auto addRow = [&](const QString& label, const QString& value) {
+            auto* val = new QLabel(value, dlg);
+            val->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            form->addRow(label + ":", val);
+        };
+        addRow(tr("Name"),            layer->name());
+        addRow(tr("ID"),              QString::number(layer->m_id));
+        if ( !layer->m_creator.isEmpty() )
+            addRow(tr("Creator"),     layer->m_creator);
+        addRow(tr("Opacity"),         QString::number(layer->m_opacity, 'f', 2));
+        addRow(tr("Visible"),         layer->m_visible ? tr("yes") : tr("no"));
+        addRow(tr("Active"),          layer->m_active ? tr("yes") : tr("no"));
+        addRow(tr("Binary mask"),     layer->m_binaryMask ? tr("yes") : tr("no"));
+        addRow(tr("Deleted"),         layer->m_deleted ? tr("yes") : tr("no"));
+        addRow(tr("Linked to image"), layer->m_linkedToImage ? tr("yes") : tr("no"));
+        addRow(tr("Position"),        QString("%1, %2").arg(pos.x(), 0, 'f', 1).arg(pos.y(), 0, 'f', 1));
+        addRow(tr("Bounding box"),    QString("%1, %2  –  %3 × %4")
+                                          .arg(bbox.x(), 0, 'f', 1).arg(bbox.y(), 0, 'f', 1)
+                                          .arg(bbox.width(), 0, 'f', 1).arg(bbox.height(), 0, 'f', 1));
+        if ( !layer->m_bounds.isNull() )
+            addRow(tr("Stored bounds"), QString("%1, %2  –  %3 × %4")
+                                            .arg(layer->m_bounds.x()).arg(layer->m_bounds.y())
+                                            .arg(layer->m_bounds.width()).arg(layer->m_bounds.height()));
+        if ( !layer->m_image.isNull() )
+            addRow(tr("Image size"),  QString("%1 × %2")
+                                          .arg(layer->m_image.width()).arg(layer->m_image.height()));
+        if ( polyPts > 0 )
+            addRow(tr("Polygon points"), QString::number(polyPts));
         if ( !pixmapSize.isEmpty() )
-            qInfo() << " Pixmap Size:" << pixmapSize;
+            addRow(tr("Pixmap size"), QString("%1 × %2").arg(pixmapSize.width()).arg(pixmapSize.height()));
+
+        auto* bbox2 = new QDialogButtonBox(QDialogButtonBox::Close, dlg);
+        connect(bbox2, &QDialogButtonBox::rejected, dlg, &QDialog::accept);
+
+        auto* vlay = new QVBoxLayout(dlg);
+        vlay->addLayout(form);
+        vlay->addWidget(bbox2);
+
+        dlg->show();
     });
     menu.exec(m_layerList->viewport()->mapToGlobal(pos));
   }
@@ -2299,7 +2467,9 @@ void MainWindow::createToolbars()
                        {192,20,90,140},{255,0,30,100}});
 
        m_imageView->setColorTable(lut);
+#ifdef HASTIFF
        m_bigTiffViewer->setColorTable(lut);
+#endif
 #ifdef HASHDF5
        m_hdf5Viewer->setColorTable(lut);
 #endif
@@ -2859,6 +3029,7 @@ void MainWindow::createStatusbar()
                                         .arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha()));
     });
 
+#ifdef HASTIFF
     connect(m_bigTiffViewer, &BigTiffViewer::scaleChanged, this, [this](double scale){
         m_statusScaleLabel->setText(QString("Scale: %1×").arg(scale, 0, 'f', 4));
     });
@@ -2873,6 +3044,7 @@ void MainWindow::createStatusbar()
         m_statusColorSwatch->setToolTip(QString("R:%1 G:%2 B:%3 A:%4")
                                         .arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha()));
     });
+#endif
   }
 }
 

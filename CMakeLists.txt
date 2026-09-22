@@ -49,7 +49,27 @@ configure_file(
     "${CMAKE_BINARY_DIR}/core/version.h"
 )
 include_directories("${CMAKE_BINARY_DIR}")
-find_package(TIFF REQUIRED)
+# libtiff find (optional — needed for BigTIFF support)
+find_package(TIFF QUIET)
+if(TIFF_FOUND)
+  include(CheckSymbolExists)
+  get_target_property(_tiff_inc TIFF::TIFF INTERFACE_INCLUDE_DIRECTORIES)
+  set(_saved_req_inc "${CMAKE_REQUIRED_INCLUDES}")
+  set(_saved_req_lib "${CMAKE_REQUIRED_LIBRARIES}")
+  set(CMAKE_REQUIRED_INCLUDES "${_tiff_inc}")
+  set(CMAKE_REQUIRED_LIBRARIES TIFF::TIFF)
+  check_symbol_exists(TIFFIsBigTIFF "tiffio.h" HAVE_TIFF_BIGTIFF)
+  set(CMAKE_REQUIRED_INCLUDES "${_saved_req_inc}")
+  set(CMAKE_REQUIRED_LIBRARIES "${_saved_req_lib}")
+  if(HAVE_TIFF_BIGTIFF)
+    message(STATUS "Found libtiff with BigTIFF support — BigTIFF support enabled")
+  else()
+    message(WARNING "libtiff found but TIFFIsBigTIFF missing (libtiff < 4.0?) — BigTIFF support disabled")
+    set(TIFF_FOUND FALSE)
+  endif()
+else()
+  message(STATUS "libtiff not found — BigTIFF support will not be built")
+endif()
 
 # itk find
 if(APPLE)
@@ -79,14 +99,11 @@ set(SOURCES
     core/ImageLoader.cpp
     core/ImageProcessor.cpp
     core/Updater.cpp
-    core/BigTiffIO.cpp
-    core/BigTiffProjectApply.cpp
     gui/MainWindow.cpp
     gui/ImageView.cpp
     gui/AboutDialog.cpp
     gui/ConfigDialog.cpp
     gui/LayerEditorView.cpp
-    gui/BigTiffViewer.cpp
     layer/LayerItem.cpp
     layer/CageMesh.cpp
     layer/CageControlPointItem.cpp
@@ -176,35 +193,39 @@ qt_add_executable(${PROJECT_NAME}
    resources.qrc
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets Qt6::Svg Qt6::Network TIFF::TIFF)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets Qt6::Svg Qt6::Network)
 if(ITK_FOUND)
     include(${ITK_USE_FILE})
     target_include_directories(ImageEditor PRIVATE ${ITK_INCLUDE_DIRS})
     target_link_libraries(ImageEditor PRIVATE ${ITK_LIBRARIES})
     target_compile_definitions(ImageEditor PRIVATE HASITK)
 endif()
+if(TIFF_FOUND)
+    target_sources(ImageEditor PRIVATE
+        core/BigTiffIO.cpp
+        core/BigTiffProjectApply.cpp
+        gui/BigTiffViewer.cpp
+    )
+    target_link_libraries(ImageEditor PRIVATE TIFF::TIFF)
+    target_compile_definitions(ImageEditor PRIVATE HASTIFF)
+    if(APPLE)
+        get_target_property(_tiff_lib TIFF::TIFF IMPORTED_LOCATION)
+        if(_tiff_lib)
+            get_filename_component(_tiff_dir "${_tiff_lib}" DIRECTORY)
+        else()
+            set(_tiff_dir "/opt/homebrew/lib")
+        endif()
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+            BUILD_RPATH "${_tiff_dir}"
+            INSTALL_RPATH "${_tiff_dir}")
+        message(STATUS "libtiff rpath: ${_tiff_dir}")
+    endif()
+endif()
 if(HDF5_FOUND)
     target_sources(ImageEditor PRIVATE gui/Hdf5Viewer.cpp)
     target_include_directories(ImageEditor PRIVATE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(ImageEditor PRIVATE ${HDF5_LIBRARIES})
     target_compile_definitions(ImageEditor PRIVATE HASHDF5)
-endif()
-
-# Embed Homebrew lib dir as rpath so libtiff.dylib (and libhdf5.dylib) are
-# found at runtime without requiring DYLD_LIBRARY_PATH to be set.
-if(APPLE)
-    # Resolve the actual path from the TIFF::TIFF imported target so the rpath
-    # stays correct even if libtiff moves to a versioned keg directory.
-    get_target_property(_tiff_lib TIFF::TIFF IMPORTED_LOCATION)
-    if(_tiff_lib)
-        get_filename_component(_tiff_dir "${_tiff_lib}" DIRECTORY)
-    else()
-        set(_tiff_dir "/opt/homebrew/lib")
-    endif()
-    set_target_properties(${PROJECT_NAME} PROPERTIES
-        BUILD_RPATH "${_tiff_dir}"
-        INSTALL_RPATH "${_tiff_dir}")
-    message(STATUS "libtiff rpath: ${_tiff_dir}")
 endif()
 
 # Automatische Suche nach Plugins ermöglichen

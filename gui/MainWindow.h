@@ -35,7 +35,9 @@
 
 class ImageView;
 class LayerEditorView;
+#ifdef HASTIFF
 class BigTiffViewer;
+#endif
 #ifdef HASHDF5
 class Hdf5Viewer;
 #endif
@@ -110,7 +112,9 @@ class MainWindow : public QMainWindow, public IMainSystem
     void showConfig();
     void editLayer(Layer* layer);
     void onLayerUpdateRequested(const QImage& modifiedImage);
+#ifdef HASTIFF
     void openBigTiff(const QString& filePath);
+#endif
 #ifdef HASHDF5
     void openHdf5(const QString& filePath);
 #endif
@@ -139,7 +143,9 @@ class MainWindow : public QMainWindow, public IMainSystem
     
     ImageView*       m_imageView       = nullptr;
     LayerEditorView* m_layerEditorView = nullptr;
+#ifdef HASTIFF
     BigTiffViewer*   m_bigTiffViewer   = nullptr;
+#endif
 #ifdef HASHDF5
     Hdf5Viewer*      m_hdf5Viewer      = nullptr;
 #endif

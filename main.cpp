@@ -47,8 +47,10 @@
 #include "core/BatchMain.h"
 #include "core/ImageLoader.h"
 #include "core/ImageProcessor.h"
+#ifdef HASTIFF
 #include "core/BigTiffIO.h"
 #include "core/BigTiffProjectApply.h"
+#endif
 
 #include "gui/MainWindow.h"
 #include "core/version.h"
@@ -384,13 +386,15 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
     if ( imageFilePath.startsWith("github://") )
       imageFilePath = EditorStyle::instance().githubBaseUrl()
                       + "/" + imageFilePath.mid(9);
+#ifdef HASTIFF
     auto isWebBigTiffUrl = [](const QString& url) -> bool {
         return (url.startsWith("http://") || url.startsWith("https://"))
                && QUrlQuery(QUrl(url)).hasQueryItem("resolution");
     };
+#else
+    auto isWebBigTiffUrl = [](const QString&) -> bool { return false; };
+#endif
     if ( imageFilePath.startsWith("http://") || imageFilePath.startsWith("https://") ) {
-      obj["imageDisplayName"]  = imageFilePath;
-      obj["imageOriginalPath"] = imageFilePath;
       if ( !isWebBigTiffUrl(imageFilePath) ) {
         std::cout << "Downloading image from URL: " << imageFilePath.toStdString() << std::endl;
         imageFilePath = downloadImageFromUrl(imageFilePath);
@@ -472,6 +476,10 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
         if ( !validateFile(projectPath,"project",{"json"}) ) exit(1);
       }
       obj["historyPath"] = projectPath;
+      // flag that --project was given explicitly on the CLI so MainWindow can ask
+      // which filelist entry it belongs to (only relevant when a filelist is loaded)
+      if ( obj.contains("fileList") )
+          obj["projectFromCLI"] = true;
     }
   }
   obj["saveJSONPath"] = parser.value(saveJSONOption);
@@ -726,6 +734,7 @@ int main( int argc, char *argv[] )
       // BigTIFF input with TIFF output: use the tile-based BigTIFF pipeline
       // instead of loading the whole image into a QImage (which would fail
       // for large files and never produce BigTIFF output).
+#ifdef HASTIFF
       {
         const QString outExt = QFileInfo(outputPath).suffix().toLower();
         if (!imagePath.isEmpty()
@@ -739,7 +748,6 @@ int main( int argc, char *argv[] )
           bool ok = false;
 
           if (!historyPath.isEmpty()) {
-            // Load the project JSON and apply it tile-by-tile
             QFile pf(historyPath);
             if (!pf.open(QIODevice::ReadOnly)) {
               printError(QString("Cannot open project file: %1").arg(historyPath));
@@ -769,6 +777,7 @@ int main( int argc, char *argv[] )
           return 0;
         }
       }
+#endif
 
       QString saveIntermediatePath = parsedOptions.value("save-intermediate").toString("");
       ImageLoader loader;
