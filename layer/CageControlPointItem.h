@@ -25,8 +25,9 @@ class CageControlPointItem : public QGraphicsRectItem
 {
 
  public:
- 
+
     CageControlPointItem( LayerItem* layer, int index );
+    void refreshStyle();
 
  protected:
  

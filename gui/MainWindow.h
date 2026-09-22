@@ -124,7 +124,8 @@ class MainWindow : public QMainWindow, public IMainSystem
     void updatePolygonEnabledState( bool isToggled );
 
  private:
-    
+
+    void setEditorToolbarsEnabled( bool enabled );
     bool checkUnsavedData( bool isCloseProgram = true );
     bool loadImage( const QString&, bool askForNewLoad=false );
     void loadHistory( const QString& );
@@ -160,6 +161,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     QDockWidget* m_historyDock;
     QListWidget* m_layerList;
     
+    QToolBar* m_controlToolbar = nullptr;
     QToolBar* m_editToolbar = nullptr;
     QToolBar* m_lassoToolbar = nullptr;
     QToolBar* m_layerToolbar = nullptr;

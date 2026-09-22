@@ -78,5 +78,6 @@ class LassoCutCommand : public AbstractCommand
     QString m_name;
     QRect m_bounds;
     QImage m_backup;
+    QImage m_originalImageBackup; // snapshot of m_originalLayer->originalImage() before the cut
     
 };

@@ -342,12 +342,12 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
       "BigTIFF resolution (default: 20, i.e. project at 20 µm, BigTIFF at 1 µm).",
       "factor");
   parser.addOption(scaleOption);
+  QCommandLineOption docksOption("docks", "Show layer and history docks on startup.");
+  parser.addOption(docksOption);
   QCommandLineOption debugOption("debug", "Enable debug output to stdout.");
   parser.addOption(debugOption);
   QCommandLineOption verboseOption("verbose", "Enable verbose output to stdout.");
   parser.addOption(verboseOption);
-  QCommandLineOption docksOption("docks", "Show layer and history docks on startup.");
-  parser.addOption(docksOption);
   parser.process(*app);
   
   // --- history ---
@@ -738,50 +738,74 @@ int main( int argc, char *argv[] )
         return 1;
       }
 
-      // BigTIFF input with TIFF output: use the tile-based BigTIFF pipeline
-      // instead of loading the whole image into a QImage (which would fail
-      // for large files and never produce BigTIFF output).
+      // BigTIFF input: use specialised pipelines instead of QImage::load()
+      // which would try to load the full-resolution image into RAM.
 #ifdef HASTIFF
       {
         const QString outExt = QFileInfo(outputPath).suffix().toLower();
-        if (!imagePath.isEmpty()
-            && (outExt == "tif" || outExt == "tiff")
-            && bigTiffIsBigTiff(imagePath))
-        {
+        const bool isTiffOut = (outExt == "tif" || outExt == "tiff");
+        if (!imagePath.isEmpty() && bigTiffIsBigTiff(imagePath)) {
           if (QFile::exists(outputPath)) QFile::remove(outputPath);
           saveCurrentCall(argc, argv);
 
+          const int scaleFactor = parsedOptions.value("scaleFactor").toInt(20);
           QString errMsg;
-          bool ok = false;
 
-          if (!historyPath.isEmpty()) {
-            QFile pf(historyPath);
-            if (!pf.open(QIODevice::ReadOnly)) {
-              printError(QString("Cannot open project file: %1").arg(historyPath));
-              return 1;
+          if (isTiffOut) {
+            // ── tile-based BigTIFF → BigTIFF pipeline ──────────────────────
+            bool ok = false;
+            if (!historyPath.isEmpty()) {
+              QFile pf(historyPath);
+              if (!pf.open(QIODevice::ReadOnly)) {
+                printError(QString("Cannot open project file: %1").arg(historyPath));
+                return 1;
+              }
+              QJsonObject proj = QJsonDocument::fromJson(pf.readAll()).object();
+              pf.close();
+              qInfo() << "Applying project to BigTIFF (scale factor" << scaleFactor << ")…";
+              ok = bigTiffApplyProject(imagePath, outputPath, proj,
+                                       scaleFactor, {}, &errMsg);
+              if (!ok) {
+                printError(QString("BigTIFF project apply failed: %1").arg(errMsg));
+                return 1;
+              }
+            } else {
+              qInfo() << "BigTIFF input detected — copying pyramid to" << outputPath;
+              ok = bigTiffCopyPyramid(imagePath, outputPath, {}, &errMsg);
+              if (!ok) {
+                printError(QString("BigTIFF copy failed: %1").arg(errMsg));
+                return 1;
+              }
             }
-            QJsonObject proj = QJsonDocument::fromJson(pf.readAll()).object();
-            pf.close();
+            qInfo() << "Saved BigTIFF to" << outputPath;
+            return 0;
 
-            int scaleFactor = parsedOptions.value("scaleFactor").toInt(20);
-            qInfo() << "Applying project to BigTIFF (scale factor" << scaleFactor << ")…";
-            ok = bigTiffApplyProject(imagePath, outputPath, proj,
-                                     scaleFactor, {}, &errMsg);
-            if (!ok) {
-              printError(QString("BigTIFF project apply failed: %1").arg(errMsg));
-              return 1;
-            }
           } else {
-            qInfo() << "BigTIFF input detected — copying pyramid to" << outputPath;
-            ok = bigTiffCopyPyramid(imagePath, outputPath, {}, &errMsg);
-            if (!ok) {
-              printError(QString("BigTIFF copy failed: %1").arg(errMsg));
+            // ── BigTIFF → raster image (PNG, …) via pyramid level ──────────
+            QImage img = bigTiffReadLevel(imagePath, scaleFactor, &errMsg);
+            if (img.isNull()) {
+              printError(QString("BigTIFF read failed: %1").arg(errMsg));
               return 1;
             }
+            if (!projectNone && !historyPath.isEmpty()) {
+              ImageProcessor proc(img);
+              proc.setIntermediatePath(
+                  parsedOptions.value("save-intermediate").toString(""), outputPath);
+              if (!proc.process(historyPath, forcedAlphaMasking, true)) {
+                printError(QString("Processing failed for BigTIFF level."));
+                return 1;
+              }
+              img = proc.getOutputImage();
+            }
+            img.setColorSpace(QColorSpace(QColorSpace::SRgb));
+            ImageLoader saver;
+            if (saver.saveAs(img, outputPath)) {
+              qInfo() << "Saved" << outputPath;
+              return 0;
+            }
+            printError(QString("Could not save output file: %1").arg(outputPath));
+            return 1;
           }
-
-          qInfo() << "Saved BigTIFF to" << outputPath;
-          return 0;
         }
       }
 #endif

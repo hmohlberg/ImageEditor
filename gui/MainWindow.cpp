@@ -33,6 +33,8 @@
 
 #include "../layer/LayerItem.h"
 #include "../layer/Layer.h"
+#include "../layer/CageControlPointItem.h"
+#include "../layer/CageOverlayItem.h"
 #include "../undo/AbstractCommand.h"
 #include "../undo/PaintStrokeCommand.h"
 #include "../undo/TransformLayerCommand.h"
@@ -197,6 +199,7 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     m_bigTiffViewer = new BigTiffViewer(this);
     connect(m_bigTiffViewer, &BigTiffViewer::closeRequested, this, [this]{
         m_bigTiffViewer->closeTiff();
+        setEditorToolbarsEnabled(true);
         m_centralStack->setCurrentIndex(0);
     });
 #endif
@@ -211,6 +214,7 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     m_hdf5Viewer = new Hdf5Viewer(this);
     connect(m_hdf5Viewer, &Hdf5Viewer::closeRequested, this, [this]{
         m_hdf5Viewer->closeFile();
+        setEditorToolbarsEnabled(true);
         m_centralStack->setCurrentIndex(0);
     });
     m_centralStack->addWidget(m_hdf5Viewer);      // index 3 — HDF5 viewer
@@ -222,7 +226,7 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     createStatusbar();
     createToolbars();
     createDockWidgets();
-    if ( options.value("showDocks").toBool() ) {
+    if ( options.value("showDocks").toBool() || EditorStyle::instance().showDocksAtStartup() ) {
         m_layerDock->show();
         m_historyDock->show();
     }
@@ -920,6 +924,26 @@ void MainWindow::openImage()
   }
 }
 
+void MainWindow::setEditorToolbarsEnabled( bool enabled )
+{
+    const std::initializer_list<QToolBar*> bars = {
+        m_controlToolbar,
+        m_editToolbar,
+        m_lassoToolbar,
+        m_layerToolbar,
+        m_maskToolbar,
+        m_polygonToolbar,
+        m_canvasWarpLayerToolbar,
+        m_rotateLayerToolbar,
+        m_scaleLayerToolbar,
+        m_mirrorLayerToolbar,
+        m_perspectiveLayerToolbar,
+        m_translateLayerToolbar,
+    };
+    for ( QToolBar* bar : bars )
+        if ( bar ) bar->setEnabled(enabled);
+}
+
 #ifdef HASTIFF
 void MainWindow::openBigTiff(const QString& filePath)
 {
@@ -927,6 +951,7 @@ void MainWindow::openBigTiff(const QString& filePath)
         showMessage(tr("Could not open TIFF file: %1").arg(filePath), 1);
         return;
     }
+    setEditorToolbarsEnabled(false);
     m_centralStack->setCurrentIndex(2);
 
     // Resize window to match image aspect ratio, up to 80% of available screen
@@ -950,6 +975,7 @@ void MainWindow::openHdf5(const QString& filePath)
         showMessage(tr("Could not open HDF5 file: %1").arg(filePath), 1);
         return;
     }
+    setEditorToolbarsEnabled(false);
     m_centralStack->setCurrentIndex(3);
 
     const QSize imgSize = m_hdf5Viewer->imageSize();
@@ -2589,7 +2615,8 @@ void MainWindow::createToolbars()
     // ============================================================
     // create second toolbar
     // ============================================================
-    QToolBar* controlToolbar = addToolBar(tr("Control"));
+    m_controlToolbar = addToolBar(tr("Control"));
+    QToolBar* controlToolbar = m_controlToolbar;
     controlToolbar->setFixedHeight(34);
 
     controlToolbar->setStyleSheet(("QToolBar { background-color: #303030; border-bottom: 1px solid #1e1e1e; spacing: 4px; }"));
@@ -3185,6 +3212,15 @@ void MainWindow::showConfig()
   qCDebug(logEditor) << "MainWindow::showConfig(): Processing...";
   ConfigDialog dlg(this);
   dlg.exec();
+  // Refresh all cage control points and overlay items so size/colour changes take effect immediately.
+  if ( m_imageView && m_imageView->getScene() ) {
+    for ( QGraphicsItem* item : m_imageView->getScene()->items() ) {
+      if ( auto* cp = dynamic_cast<CageControlPointItem*>(item) )
+        cp->refreshStyle();
+      else if ( auto* ov = dynamic_cast<CageOverlayItem*>(item) )
+        ov->update();
+    }
+  }
 }
 
 void MainWindow::editLayer(Layer* layer)

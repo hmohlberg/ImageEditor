@@ -62,6 +62,7 @@ private:
     QCheckBox*  m_perspective       = nullptr;
     QCheckBox*  m_binaryMasking     = nullptr;
     QCheckBox*  m_crosshair         = nullptr;
+    QCheckBox*  m_showDocksAtStartup = nullptr;
     QSpinBox*   m_cursorSize        = nullptr;
     QLineEdit*  m_cursorFillColor   = nullptr;
     QPushButton* m_cursorFillBtn    = nullptr;

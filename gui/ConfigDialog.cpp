@@ -132,6 +132,7 @@ QWidget* ConfigDialog::buildMainTab()
     m_perspective   = new QCheckBox; f->addRow(tr("Perspective mode"),  m_perspective);
     m_binaryMasking = new QCheckBox; f->addRow(tr("Binary masking"),    m_binaryMasking);
     m_crosshair     = new QCheckBox; f->addRow(tr("Crosshair"),         m_crosshair);
+    m_showDocksAtStartup = new QCheckBox; f->addRow(tr("Show docks at startup"), m_showDocksAtStartup);
     m_cursorSize    = new QSpinBox;  m_cursorSize->setRange(0, 128);
     f->addRow(tr("Cursor size"), m_cursorSize);
 
@@ -281,6 +282,7 @@ void ConfigDialog::loadFromStyle()
     m_perspective->setChecked(s.hasPerspective());
     m_binaryMasking->setChecked(s.binaryMasking());
     m_crosshair->setChecked(s.crosshair());
+    m_showDocksAtStartup->setChecked(s.showDocksAtStartup());
     m_cursorSize->setValue(s.cursorSize());
     m_cursorFillColor->setText(s.cursorFillColor().name());
     styleColorButton(m_cursorFillBtn, s.cursorFillColor().name());
@@ -346,6 +348,7 @@ void ConfigDialog::applyToStyle()
     s.setHasPerspective(m_perspective->isChecked());
     s.setBinaryMasking(m_binaryMasking->isChecked());
     s.setCrosshair(m_crosshair->isChecked());
+    s.setShowDocksAtStartup(m_showDocksAtStartup->isChecked());
     s.setCursorSize(m_cursorSize->value());
     { QColor c(m_cursorFillColor->text());   if (c.isValid()) s.setCursorFillColor(c); }
     { QColor c(m_cursorBorderColor->text()); if (c.isValid()) s.setCursorBorderColor(c); }

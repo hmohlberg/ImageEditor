@@ -90,7 +90,11 @@ QWidget* AboutDialog::buildAboutTab()
     };
     QString libInfo = "<center><table cellspacing='3'>";
     libInfo += libRow(tr("Qt:"),              QT_VERSION_STR);
+#ifdef TIFFLIB_VERSION_STR_MAJ_MIN_MIC
     libInfo += libRow(tr("BigTIFF support:"), QString("libtiff %1").arg(TIFFLIB_VERSION_STR_MAJ_MIN_MIC));
+#else
+    libInfo += libRow(tr("BigTIFF support:"), QString("libtiff %1").arg(TIFFLIB_VERSION_STR));
+#endif
 #ifdef HASHDF5
     libInfo += libRow(tr("HDF5 support:"),   QString("HDF5 %1").arg(H5_VERSION));
 #else

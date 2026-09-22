@@ -34,6 +34,7 @@ LassoCutCommand::LassoCutCommand( LayerItem* originalLayer, LayerItem* newLayer,
           m_newLayer(newLayer),
           m_bounds(bounds),
           m_backup(originalBackup),
+          m_originalImageBackup(originalLayer->originalImage().copy()),
           m_name(name)
 {
   qCDebug(logEditor) << "LassoCutCommand::LassoCutCommand(): Processing...";
@@ -80,6 +81,7 @@ void LassoCutCommand::undo()
      }
     p.end();
     m_originalLayer->setImage(tempImage);
+    m_originalLayer->setOriginalImage(m_originalImageBackup);
     m_originalLayer->update();
     if ( m_newLayer->scene() ) {
       m_newLayer->scene()->removeItem(m_newLayer);
@@ -102,8 +104,20 @@ void LassoCutCommand::redo()
   qCDebug(logEditor) << "LassoCutCommand::redo(): Processing...";
   {
     if ( m_silent ) return;
-    QColor color = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
     QImage tempImage = m_originalLayer->image();
+    // Detect the actual background colour from the image corners so colourmap
+    // changes (e.g. Invert: white→black) are respected.
+    QColor color = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
+    if ( !tempImage.isNull() && tempImage.width() > 1 && tempImage.height() > 1 ) {
+        int r = 0, g = 0, b = 0;
+        for ( const QPoint& p : { QPoint{0,0}, QPoint{tempImage.width()-1,0},
+                                   QPoint{0,tempImage.height()-1}, QPoint{tempImage.width()-1,tempImage.height()-1} } )
+        {
+            QColor c(tempImage.pixel(p));
+            r += c.red(); g += c.green(); b += c.blue();
+        }
+        color = QColor(r/4, g/4, b/4);
+    }
     for ( int y = 0; y < m_backup.height(); ++y ) {
       for ( int x = 0; x < m_backup.width(); ++x ) {
         QColor maskPixel = m_backup.pixelColor(x, y);
@@ -113,6 +127,19 @@ void LassoCutCommand::redo()
       }
     }
     m_originalLayer->setImage(tempImage);
+    // Keep m_originalImage in sync: InvertLayerCommand applies LUT from originalImage(),
+    // so we fill the cut region there too (with the raw-colorspace background).
+    {
+        QImage origImg = m_originalLayer->originalImage().copy();
+        const QColor origBg = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
+        for ( int y = 0; y < m_backup.height(); ++y ) {
+            for ( int x = 0; x < m_backup.width(); ++x ) {
+                if ( m_backup.pixelColor(x, y).alpha() > 128 )
+                    origImg.setPixelColor(m_bounds.x()+x, m_bounds.y()+y, origBg);
+            }
+        }
+        m_originalLayer->setOriginalImage(origImg);
+    }
     if ( !m_newLayer->scene() && m_originalLayer->scene() ) {
       m_originalLayer->scene()->addItem(m_newLayer);
     }

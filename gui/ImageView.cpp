@@ -774,9 +774,16 @@ void ImageView::setActiveLayer( const QString &name, bool initialize )
 // ------------------------ Colortable tools -------------------------------------
 void ImageView::setColorTable( const QVector<QRgb> &lut )
 {
-  LayerItem* layer = currentLayer();
-  if ( !layer ) return;
-  m_undoStack->push(new InvertLayerCommand(layer,lut));
+  QList<LayerItem*> allLayers;
+  for ( QGraphicsItem* item : m_scene->items() ) {
+    if ( auto* li = dynamic_cast<LayerItem*>(item) )
+      allLayers << li;
+  }
+  if ( allLayers.isEmpty() ) return;
+  m_undoStack->beginMacro("Apply colormap");
+  for ( LayerItem* li : allLayers )
+    m_undoStack->push(new InvertLayerCommand(li, lut));
+  m_undoStack->endMacro();
 }
 
 void ImageView::enablePipette( bool enabled ) {
@@ -1748,7 +1755,20 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
         return nullptr;
     QImage& src = base->image();
     // --- prepare ---
-    QColor backgroundColor = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
+    // Sample corners to detect the actual background colour (works after colormap changes
+    // like Invert, where white background becomes black and vice-versa).
+    auto sampleBg = [](const QImage& img) -> QColor {
+        if ( img.isNull() || img.width() < 2 || img.height() < 2 )
+            return Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
+        int r = 0, g = 0, b = 0;
+        for ( const QPoint& p : { QPoint{0,0}, QPoint{img.width()-1,0},
+                                   QPoint{0,img.height()-1}, QPoint{img.width()-1,img.height()-1} } ) {
+            QColor c(img.pixel(p));
+            r += c.red(); g += c.green(); b += c.blue();
+        }
+        return QColor(r/4, g/4, b/4);
+    };
+    QColor backgroundColor = sampleBg(src);
     QPolygonF polyF = QPolygonF(polygon.begin(), polygon.end());
     QRectF boundsF = polyF.boundingRect();
     QRect bounds = boundsF.toAlignedRect();

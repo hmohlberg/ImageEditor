@@ -17,11 +17,17 @@
 #pragma once
 
 #include <QString>
+#include <QImage>
 #include <functional>
 
 // Returns true when the file at `path` is a BigTIFF (libtiff "w8" type).
 // Opens and immediately closes the file; no pixel data is read.
 bool bigTiffIsBigTiff(const QString& path);
+
+// Reads the pyramid level whose width is closest to finest_width / scaleFactor
+// and returns it as a QImage (Format_ARGB32).
+// On failure returns a null QImage and sets *errorOut when non-null.
+QImage bigTiffReadLevel(const QString& path, int scaleFactor, QString* errorOut = nullptr);
 
 // Copies a (Big)TIFF pyramid from inputPath to outputPath as a BigTIFF.
 // All pyramid levels (IFDs) are copied, decoded with the source codec and

@@ -77,6 +77,7 @@
       m_hasPerspective = settings.value("Main/perspective", true).toBool();
       m_binaryMasking = settings.value("Main/binaryMasking", true).toBool();
       m_crosshair = settings.value("Main/crosshair", true).toBool();
+      m_showDocksAtStartup = settings.value("Main/showDocksAtStartup", false).toBool();
       
       // cursor stuff
       m_cursorSize = settings.value("Main/cursorSize",0).toInt();
@@ -186,6 +187,7 @@
     int controlPointRadius() const { return m_controlPointRadius; }
     double handleRadius() const { return m_handleRadius; }
     bool crosshair() const { return m_crosshair; }
+    bool showDocksAtStartup() const { return m_showDocksAtStartup; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
     bool useGPU() const { return m_usegpu; }
@@ -208,6 +210,7 @@
     void setHasPerspective(bool v) { m_hasPerspective = v; }
     void setBinaryMasking(bool v) { m_binaryMasking = v; }
     void setCrosshair(bool v) { m_crosshair = v; }
+    void setShowDocksAtStartup(bool v) { m_showDocksAtStartup = v; }
     void setCursorSize(int v) { m_cursorSize = v; }
     void setCursorFillColor(const QColor& v) { m_cursorFillColor = v; }
     void setCursorBorderColor(const QColor& v) { m_cursorBorderColor = v; }
@@ -260,6 +263,7 @@
       m_hasPerspective    = true;
       m_binaryMasking     = true;
       m_crosshair         = true;
+      m_showDocksAtStartup = false;
       m_windowSize        = "default";
       m_version           = "public";
       m_githubBaseUrl     = "https://raw.githubusercontent.com/hmohlberg/ImageEditor/main/samples";
@@ -277,6 +281,7 @@
       s.setValue("Main/perspective",       m_hasPerspective);
       s.setValue("Main/binaryMasking",     m_binaryMasking);
       s.setValue("Main/crosshair",         m_crosshair);
+      s.setValue("Main/showDocksAtStartup", m_showDocksAtStartup);
       s.setValue("Main/cursorSize",        m_cursorSize);
       s.setValue("Main/cursorFillColor",   m_cursorFillColor.name());
       s.setValue("Main/cursorBorderColor", m_cursorBorderColor.name());
@@ -338,6 +343,7 @@
           m_hasPerspective(true),
           m_binaryMasking(true),
           m_crosshair(true),
+          m_showDocksAtStartup(false),
           m_windowSize("default"),
           m_version("public"),
           m_cageWarpColor(Qt::green),
@@ -369,6 +375,7 @@
     InterpolationMode m_interpolationMode;
     
     bool m_crosshair;
+    bool m_showDocksAtStartup;
     bool m_loggingIsEnabled;
     bool m_useCageQuads;
     bool m_useClaudeQuads;

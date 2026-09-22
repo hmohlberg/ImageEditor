@@ -26,13 +26,22 @@
 #include <iostream>
 
 CageControlPointItem::CageControlPointItem( LayerItem* layer, int index )
-    : QGraphicsRectItem(-4, -4, 8, 8),
+    : QGraphicsRectItem(),
       m_layer(layer), m_index(index)
 {
-	setBrush(EditorStyle::instance().controlPointColor());
     setZValue(10001);
+    refreshStyle();
     setFlag(ItemIsMovable);
     setFlag(ItemSendsScenePositionChanges);
+}
+
+void CageControlPointItem::refreshStyle()
+{
+    const int r = EditorStyle::instance().controlPointRadius();
+    prepareGeometryChange();
+    setRect(-r, -r, r * 2, r * 2);
+    setBrush(EditorStyle::instance().controlPointColor());
+    update();
 }
 
 void CageControlPointItem::mousePressEvent( QGraphicsSceneMouseEvent *e )

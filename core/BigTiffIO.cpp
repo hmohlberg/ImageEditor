@@ -19,10 +19,13 @@
 #include <tiffio.h>
 
 #include <QFile>
+#include <QImage>
+#include <QtDebug>
 
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <cmath>
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -59,6 +62,60 @@ static QVector<TiffLevel> scanLevels(TIFF* tif)
 }
 
 // ── public API ────────────────────────────────────────────────────────────────
+
+QImage bigTiffReadLevel(const QString& path, int scaleFactor, QString* errorOut)
+{
+    auto fail = [&](const QString& msg) -> QImage {
+        if (errorOut) *errorOut = msg;
+        return {};
+    };
+
+    TIFFSetWarningHandler(nullptr);
+    TIFF* tif = TIFFOpen(path.toLocal8Bit().constData(), "r");
+    if (!tif) return fail("Cannot open: " + path);
+
+    QVector<TiffLevel> levels = scanLevels(tif);
+    if (levels.isEmpty()) {
+        TIFFClose(tif);
+        return fail("No valid IFDs found in: " + path);
+    }
+
+    // Pick the level whose width is closest to finest_width / scaleFactor.
+    const double targetW = (double)levels[0].w / qMax(1, scaleFactor);
+    int bestIdx = 0;
+    double bestDiff = std::abs((double)levels[0].w - targetW);
+    for (int i = 1; i < levels.size(); ++i) {
+        double diff = std::abs((double)levels[i].w - targetW);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+    }
+
+    const TiffLevel& lvl = levels[bestIdx];
+    TIFFSetDirectory(tif, (uint16_t)lvl.dirIdx);
+
+    qInfo() << "BigTIFF: reading level" << bestIdx
+            << "(" << lvl.w << "x" << lvl.h << "px)"
+            << "for scale factor" << scaleFactor
+            << "(finest:" << levels[0].w << "x" << levels[0].h << ")";
+
+    // TIFFReadRGBAImage decodes to ABGR uint32, stored bottom-to-top.
+    std::vector<uint32_t> buf((size_t)lvl.w * lvl.h);
+    if (!TIFFReadRGBAImage(tif, lvl.w, lvl.h, buf.data(), 0)) {
+        TIFFClose(tif);
+        return fail("TIFFReadRGBAImage failed for level " + QString::number(bestIdx));
+    }
+    TIFFClose(tif);
+
+    // Flip vertically and convert ABGR → ARGB for QImage.
+    QImage img(int(lvl.w), int(lvl.h), QImage::Format_ARGB32);
+    for (int y = 0; y < (int)lvl.h; ++y) {
+        const uint32_t* src = buf.data() + ((size_t)(lvl.h - 1 - y) * lvl.w);
+        QRgb*           dst = reinterpret_cast<QRgb*>(img.scanLine(y));
+        for (int x = 0; x < (int)lvl.w; ++x)
+            dst[x] = qRgba(TIFFGetR(src[x]), TIFFGetG(src[x]),
+                           TIFFGetB(src[x]), TIFFGetA(src[x]));
+    }
+    return img;
+}
 
 bool bigTiffIsBigTiff(const QString& path)
 {
