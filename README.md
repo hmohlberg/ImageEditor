@@ -295,18 +295,6 @@ HDF5 files containing image datasets are opened in a dedicated viewer using the 
 - Chunk dimensions from the HDF5 dataset are used as the tile size (typically 2048 × 2048).
 - For non-identity color LUTs, RGB images are converted to luminance first, then the LUT is applied.
 
-### Cross-Platform Compatibility
-
-The codebase automatically handles the transition from `mirrored()` (older Qt6) to `flipped()` (Qt 6.7+) to ensure warning-free compilation:
-
-```cpp
-#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
-    image = image.flipped(Qt::Vertical);
-#else
-    image = image.mirrored(false, true);
-#endif
-```
-
 ---
 
 ## Acknowledgements
