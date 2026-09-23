@@ -38,6 +38,8 @@
 #include <QSslConfiguration>
 #include <QSslSocket>
 #include <QUrlQuery>
+#include <QGuiApplication>
+#include "util/GpuInfo.h"
 
 #include <iostream>
 #include <unistd.h>
@@ -623,18 +625,47 @@ static void printVersionInfo( int argc, char* argv[] )
     checkForUpdates();
 }
 
+static void printGpuInfo()
+{
+    const GpuInfo info = GpuInfo::query();
+    if ( !info.available ) {
+        std::cout << "  GPU:             not available (no OpenGL context)" << std::endl;
+        return;
+    }
+    std::cout << "  GPU:             " << info.terminalSummary().toStdString() << std::endl;
+    std::cout << "  GPU driver:      " << info.version.toStdString() << std::endl;
+}
+
 static void printAbout( int argc, char* argv[] )
 {
-    // One QCoreApplication shared by all three steps so Qt resources stay accessible.
-    QCoreApplication app(argc, argv);
-    app.setApplicationName("ImageEditor");
-    app.setApplicationVersion(APP_VERSION);
-    printBuildInfo();
-    checkForUpdates();
-    std::cout << std::endl;
-    printAuthors();
-    std::cout << std::endl;
-    printLicense();
+    // On headless systems QT_QPA_PLATFORM=offscreen is set (see top of main).
+    // QGuiApplication with an offscreen platform may crash if the offscreen plugin
+    // is missing, so fall back to QCoreApplication and skip the GPU query there.
+    const bool headless = (qgetenv("QT_QPA_PLATFORM").toLower() == "offscreen");
+    if ( headless ) {
+        QCoreApplication app(argc, argv);
+        app.setApplicationName("ImageEditor");
+        app.setApplicationVersion(APP_VERSION);
+        printBuildInfo();
+        std::cout << "  GPU:             not available (offscreen/headless mode)" << std::endl;
+        checkForUpdates();
+        std::cout << std::endl;
+        printAuthors();
+        std::cout << std::endl;
+        printLicense();
+    } else {
+        // QGuiApplication is required for QOffscreenSurface / OpenGL context creation.
+        QGuiApplication app(argc, argv);
+        app.setApplicationName("ImageEditor");
+        app.setApplicationVersion(APP_VERSION);
+        printBuildInfo();
+        printGpuInfo();
+        checkForUpdates();
+        std::cout << std::endl;
+        printAuthors();
+        std::cout << std::endl;
+        printLicense();
+    }
 }
 
 // ---------------------- Main ----------------------

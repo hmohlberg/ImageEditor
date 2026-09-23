@@ -53,15 +53,16 @@ void CageControlPointItem::mousePressEvent( QGraphicsSceneMouseEvent *e )
     // distance between the mouse click position and the center of
     // the control point. This gives a smooth motion of the cage.
     if( m_index >=0 && m_index < m_layer->cageMesh().points().size() ) {
-      QPointF local = m_layer->mapFromScene(e->scenePos());
       QList<QPointF> pts = m_layer->cageMesh().points();
-      m_clickOffset = local - pts[m_index];
+      // Store scene position of cage point at drag start (used for status message delta).
+      m_clickOffset = m_layer->mapToScene(pts[m_index]);
     } else {
       std::cout << "CLAUDE: m_index not defined when moving cage control point." << std::endl;
     }
     m_lastPos = e->scenePos();
     if ( m_index >= 0 && m_index < m_layer->cageMesh().points().size() )
       m_startPoint = m_layer->cageMesh().points()[m_index];
+    m_layer->snapshotCageState();
     m_layer->setCageEditing(true);
     if ( e->modifiers() & Qt::ControlModifier ) {
       m_layer->setOpacity(EditorStyle::instance().layerOverlayOpacity());
@@ -78,15 +79,22 @@ void CageControlPointItem::mouseMoveEvent( QGraphicsSceneMouseEvent* e )
   qCDebug(logEditor) << "CageControlPointItem::mouseMoveEvent((): Processing...";
   {
     if ( m_layer == nullptr ) return;
-    m_layer->setCagePoint(m_index, e->scenePos() - m_clickOffset);
-    if ( auto* ms = IMainSystem::instance() ) {
-      QPointF localPos = m_layer->mapFromScene(e->scenePos() - m_clickOffset);
-      if ( EditorStyle::instance().allowIntegerMoveOnly() )
-        localPos = QPointF(qRound(localPos.x()), qRound(localPos.y()));
-      QPointF delta = localPos - m_startPoint;
-      ms->showMessage(QString("Layer %1: cage point %2 moved by (%3, %4) px")
-          .arg(m_layer->name()).arg(m_index)
-          .arg(qRound(delta.x())).arg(qRound(delta.y())));
+    const QVector<QPointF>& pts = m_layer->cageMesh().points();
+    if (m_index >= 0 && m_index < pts.size()) {
+      // Incremental delta avoids stale m_clickOffset after setCagePoint normalization
+      // shifts the item pos (happens when left/top edge points go negative).
+      QPointF delta = e->scenePos() - m_lastPos;
+      m_lastPos = e->scenePos();
+      QPointF newScenePos = m_layer->mapToScene(pts[m_index]) + delta;
+      m_layer->setCagePoint(m_index, newScenePos);
+      if ( auto* ms = IMainSystem::instance() ) {
+        QPointF disp = newScenePos - m_clickOffset;  // m_clickOffset = scene pos at drag start
+        if ( EditorStyle::instance().allowIntegerMoveOnly() )
+          disp = QPointF(qRound(disp.x()), qRound(disp.y()));
+        ms->showMessage(QString("Layer %1: cage point %2 moved by (%3, %4) px")
+            .arg(m_layer->name()).arg(m_index)
+            .arg(qRound(disp.x())).arg(qRound(disp.y())));
+      }
     }
     e->accept();
   }

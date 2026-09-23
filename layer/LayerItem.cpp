@@ -29,6 +29,7 @@
 #include "../undo/MirrorLayerCommand.h"
 #include "../undo/MoveLayerCommand.h"
 #include "../undo/CageWarpCommand.h"
+#include "../undo/CageEditCommand.h"
 #include "../util/Interpolation.h"
 #include "../util/GeometryUtils.h"
 #include "../util/TriangleWarp.h"
@@ -74,6 +75,11 @@ LayerItem::LayerItem( const QString& name, const QImage& image, QGraphicsItem* p
      init();
    }
   }
+}
+
+LayerItem::~LayerItem()
+{
+    delete m_cageEditStack;
 }
 
 // >>>
@@ -518,7 +524,7 @@ void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option
     if ( m_operationMode == OperationMode::Perspective ) {
       return;
     }
-    if ( isSelected() ) {
+    if ( isSelected() || m_isMultiSelected ) {
       painter->setPen(m_selectedPen);
       painter->setBrush(Qt::NoBrush);
       painter->drawRect(boundingRect());
@@ -574,7 +580,7 @@ void LayerItem::paintStrokeSegment( const QPoint& p0, const QPoint& p1, const QC
 
 QImage LayerItem::applyCageWarp( const QString &caller )
 {
-  qDebug() << "LayerItem::applyCageWarp(" << caller << "): name =" << name() << ", meshActive =" << m_cageMesh.isActive()
+  qCDebug(logEditor) << "LayerItem::applyCageWarp(" << caller << "): name =" << name() << ", meshActive =" << m_cageMesh.isActive()
         << ", activeCagePointId =" << m_cageMesh.activeCagePointId()
         << ", cageEnabled =" << m_cageEnabled << ", cageEditing =" << m_cageEditing << ", intialized =" << m_cageMesh.isInitialized();
   {
@@ -588,14 +594,16 @@ QImage LayerItem::applyCageWarp( const QString &caller )
       m_cageMesh.setImage(m_image);
     }
     if ( Config::gpuCageWarpProcessing || EditorStyle::instance().useGPU() ) {
-      qDebug() << "LayerItem::applyCageWarp(): GPU cage warp processing...";
+      qCDebug(logEditor) << "LayerItem::applyCageWarp(): GPU cage warp processing...";
       if  ( m_cageWarpRenderer == nullptr ) {
         m_cageWarpRenderer = new CageWarpRenderer();
         m_cageWarpRenderer->setSourceImage(m_cageMesh.image());
       }
       m_cageWarpRenderer->setGridSize(m_cageMesh.cols(), m_cageMesh.rows());
       CageWarpRenderer::WarpOptions options;
-      options.cageInterpolation = CageWarpRenderer::CageInterpolation::CatmullRom;
+      options.cageInterpolation = EditorStyle::instance().gpuCatmullRom()
+          ? CageWarpRenderer::CageInterpolation::CatmullRom
+          : CageWarpRenderer::CageInterpolation::Bilinear;
       options.inverseMapping = CageWarpRenderer::InverseMapping::Newton;
       options.inverseIterations = 10;
       QImage warped = m_cageWarpRenderer->warp(m_cageMesh.points(),nullptr,options);
@@ -664,6 +672,7 @@ QImage LayerItem::applyCageWarp( const QString &caller )
         }
       }
 
+      setOffset(QPointF(0, 0));   // reset pixmap offset accumulated during drag normalization
       setPixmap(QPixmap::fromImage(warped));
       m_image = warped;
       QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
@@ -675,6 +684,7 @@ QImage LayerItem::applyCageWarp( const QString &caller )
       m_cageMesh.setActiveCagePointId(-1);
       m_cageMesh.setOffset(0,0);   // CLAUDE reset after each drawing
       if ( !warped.image.isNull() ) {
+       setOffset(QPointF(0, 0));   // reset pixmap offset accumulated during drag normalization
        setPixmap(QPixmap::fromImage(warped.image));
        m_image = warped.image;
        QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos());
@@ -715,7 +725,7 @@ void LayerItem::enableCage( int cols, int rows )
       h->setParentItem(this);
       h->setPos(m_cageMesh.point(i));
       int col = i % m_cageMesh.cols();
-      int row = i / m_cageMesh.rows();
+      int row = i / m_cageMesh.cols();
       int dx = ( col == 0 ) ? 0 : ( ( col == m_cageMesh.cols()-1 ) ? -2*m_cageMesh.getRadius() : -m_cageMesh.getRadius() );
       int dy = ( row == 0 ) ? 0 : ( ( row == m_cageMesh.rows()-1 ) ? -2*m_cageMesh.getRadius() : -m_cageMesh.getRadius() );
       h->setRect(dx, dy, 2*m_cageMesh.getRadius(), 2*m_cageMesh.getRadius() );
@@ -732,7 +742,7 @@ void LayerItem::initCage( const QVector<QPointF>& pts, const QRectF &rect, int n
                           << ", rect =" << rect << ", rows =" << nrows << ", ncolumns =" << ncolumns;
   {
     m_cageMesh.setIsInitialized();
-    m_cageMesh.create(rect,nrows,ncolumns);  
+    m_cageMesh.create(rect,ncolumns,nrows);  
     // m_cageMesh.setImage(m_image);  // ADDED by CLAUDE 
     //   04.01.2026: REMOVED by Hartmut: 
     //       Multiple undo/redo operations result in cumulative distortions
@@ -845,17 +855,33 @@ int LayerItem::changeNumberOfActiveCagePoints( int step )
 {
   qCDebug(logEditor) << "LayerItem::changeNumberOfActiveCagePoints(): cage =" << m_cageMesh.cols() << ", step =" << step;
   {
-     int expo = std::log2(m_cageMesh.cols()-1);
-     expo -= step > 0 ? 0 : 1;
-     int ds = pow(2,expo);
-     int columns = m_cageMesh.cols();
-     columns += step*ds;
-     int rows = m_cageMesh.rows();
-     rows += step*ds;
+     int expo_c = std::log2(m_cageMesh.cols()-1);
+     expo_c -= step > 0 ? 0 : 1;
+     int ds_c = pow(2, expo_c);
+     int columns = m_cageMesh.cols() + step * ds_c;
+     int rows;
+     if (EditorStyle::instance().squareCageQuads()) {
+       const QRectF br = boundingRect();
+       rows = (br.width() > 0 && columns > 1)
+            ? qMax(3, qRound(br.height() * (columns - 1) / br.width()) + 1)
+            : qMax(3, m_cageMesh.rows() + step * ds_c);
+     } else {
+       int expo_r = std::log2(qMax(2, m_cageMesh.rows()) - 1);
+       expo_r -= step > 0 ? 0 : 1;
+       int ds_r = pow(2, expo_r);
+       rows = m_cageMesh.rows() + step * ds_r;
+     }
      if ( rows >= 3 && columns >= 3 ) {
-      // update cage
+      // Snapshot state before resize for cage edit undo
+      const QVector<QPointF> ptsBefore   = m_cageMesh.points();
+      const QVector<QPointF> origBefore  = m_cageMesh.originalPoints();
+      const int colsBefore               = m_cageMesh.cols();
+      const int rowsBefore               = m_cageMesh.rows();
+
+      // resize() uses general bilinear interpolation and handles arbitrary size
+      // changes (including non-power-of-2 steps for squareCageQuads).
       m_cageMesh.needUpdate();
-      m_cageMesh.update(boundingRect(),std::max(3,rows),std::max(3,columns));
+      m_cageMesh.update(boundingRect(), std::max(3,columns), std::max(3,rows));
       // update handles
       qDeleteAll(m_handles);
       m_handles.clear();
@@ -870,6 +896,11 @@ int LayerItem::changeNumberOfActiveCagePoints( int step )
        h->setRect(dx, dy, 2*m_cageMesh.getRadius(), 2*m_cageMesh.getRadius() );
        m_handles << h;
       }
+      // Grid resize never shifts the layer position, so posBefore == posAfter == pos().
+      cageEditStack()->push(new CageEditCommand(this,
+          ptsBefore, origBefore, colsBefore, rowsBefore, pos(),
+          m_cageMesh.points(), m_cageMesh.originalPoints(), m_cageMesh.cols(), m_cageMesh.rows(), pos(),
+          step > 0 ? "Increase cage grid" : "Decrease cage grid"));
       return rows;
      }
      return 0;
@@ -913,32 +944,97 @@ void LayerItem::updateCagePoint( TransformHandleItem* handle, const QPointF& loc
   }
 }
 
+// -------------- cage edit undo/redo (separate per-layer stack) --------------
+
+QUndoStack* LayerItem::cageEditStack()
+{
+    if ( !m_cageEditStack ) {
+        m_cageEditStack      = new QUndoStack();
+        // Capture the cage state at the very beginning of this editing session.
+        // resetCageToPixmap() uses this to restore in one step instead of
+        // iterating through the whole undo history.
+        m_cageInitialPts     = m_cageMesh.points();
+        m_cageInitialOrigPts = m_cageMesh.originalPoints();
+        m_cageInitialCols    = m_cageMesh.cols();
+        m_cageInitialRows    = m_cageMesh.rows();
+        m_cageInitialPos     = pos();
+    }
+    return m_cageEditStack;
+}
+
+void LayerItem::snapshotCageState()
+{
+    m_cageSnapPts     = m_cageMesh.points();
+    m_cageSnapOrigPts = m_cageMesh.originalPoints();
+    m_cageSnapCols    = m_cageMesh.cols();
+    m_cageSnapRows    = m_cageMesh.rows();
+    m_cageSnapPos     = pos();
+}
+
+void LayerItem::restoreCageState( const QVector<QPointF>& pts,
+                                  const QVector<QPointF>& origPts,
+                                  int cols, int rows,
+                                  const QPointF& scenePos )
+{
+    setPos(scenePos);
+    m_cageMesh.restore(pts, origPts, cols, rows);
+
+    // Rebuild cage control point handles (same pattern as changeNumberOfActiveCagePoints)
+    const int radius = m_cageMesh.getRadius();
+    qDeleteAll(m_handles);
+    m_handles.clear();
+    for ( int i = 0; i < m_cageMesh.pointCount(); ++i ) {
+        auto* h = new CageControlPointItem(this, i);
+        h->setParentItem(this);
+        h->setPos(m_cageMesh.point(i));
+        int col = i % cols;
+        int row = i / cols;
+        int dx = (col == 0) ? 0 : ((col == cols - 1) ? -2 * radius : -radius);
+        int dy = (row == 0) ? 0 : ((row == rows - 1) ? -2 * radius : -radius);
+        h->setRect(dx, dy, 2 * radius, 2 * radius);
+        m_handles << h;
+    }
+
+    applyCageWarp("restoreCageState");
+}
+
+// ----------------------------------------------------------------------------
+
 void LayerItem::resetCageToPixmap()
 {
   qCDebug(logEditor) << "LayerItem::resetCageToPixmap(): size =" << m_handles.size();
   {
-    prepareGeometryChange();
-    qreal w = pixmap().width();
-    qreal h = pixmap().height();
-    setOffset(0, 0);
-    QList<QPointF> resetPoints;
-    int nrc = qSqrt(m_handles.size());
-    qreal dx = w/(nrc-1);
-    qreal dy = h/(nrc-1);
-    for ( int i=0 ; i<nrc ; i++ ) {
-      qreal y = i*dy;
-      for ( int j=0 ; j<nrc ; j++ ) {
-        qreal x = j*dx;
-        resetPoints << QPointF(x, y);
-      }
-    }
-    m_cageMesh.setPoints(resetPoints);
-    for ( int i = 0; i < m_handles.size(); ++i ) {
-        if ( i < resetPoints.size() ) {
-            m_handles[i]->setPos(resetPoints[i]);
+    if ( m_cageInitialCols > 0 ) {
+        // Restore the cage to the state before the first edit in this session.
+        // This reverses all point moves AND all grid resizes in one step.
+        restoreCageState(m_cageInitialPts, m_cageInitialOrigPts,
+                         m_cageInitialCols, m_cageInitialRows, m_cageInitialPos);
+    } else {
+        // No edit history yet: reset all points to a uniform grid over the pixmap.
+        prepareGeometryChange();
+        const qreal w = pixmap().width();
+        const qreal h = pixmap().height();
+        setOffset(0, 0);
+        const int ncols = m_cageMesh.cols();
+        const int nrows = m_cageMesh.rows();
+        const qreal dx = w / (ncols - 1);
+        const qreal dy = h / (nrows - 1);
+        QList<QPointF> resetPoints;
+        for ( int i = 0; i < nrows; ++i ) {
+            for ( int j = 0; j < ncols; ++j )
+                resetPoints << QPointF(j * dx, i * dy);
         }
+        m_cageMesh.setPoints(resetPoints);
+        for ( int i = 0; i < m_handles.size(); ++i ) {
+            if ( i < resetPoints.size() )
+                m_handles[i]->setPos(resetPoints[i]);
+        }
+        applyCageWarp("LayerItem");
     }
-    applyCageWarp("LayerItem");
+    // Clear edit history — the cage is back to its starting state.
+    // Keep m_cageInitialCols so repeated Reset presses are idempotent.
+    if ( m_cageEditStack )
+        m_cageEditStack->clear();
   }
 }
 
@@ -1019,7 +1115,7 @@ void LayerItem::setCagePoint( int idx, const QPointF& pos )
         prepareGeometryChange();
         setPos(mapToScene(QPointF(dx, dy)));
         m_cageMesh.addOffset(dx,dy);
-        // setOffset(offset() - QPointF(dx, dy));
+        setOffset(offset() - QPointF(dx, dy));  // counter-shift pixmap to keep image visually stable during drag
         QList<QPointF> pts = m_cageMesh.points();
         for ( int i = 0; i < pts.size(); ++i ) {
             pts[i] -= QPointF(dx, dy);
@@ -1161,7 +1257,7 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
           MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
           if ( parent && parent->getViewer() != nullptr ) {
             parent->getViewer()->setActiveCageLayer(this);
-            enableCage(m_cageMesh.rows(),m_cageMesh.cols());
+            enableCage(m_cageMesh.cols(),m_cageMesh.rows());
             return;
           }
         } else {
@@ -1178,7 +1274,7 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
 {
-  qDebug() << "LayerItem::mousePressEvent(): layer =" << name() << ", selected =" 
+  qCDebug(logEditor) << "LayerItem::mousePressEvent(): layer =" << name() << ", selected =" 
                << isSelected() << ", zValue =" << zValue() << ", operationMode =" << m_operationMode 
                << ", active =" << m_mouseOperationActive << ", event_modifiers =" << event->modifiers();
   {
@@ -1186,7 +1282,22 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
       QGraphicsPixmapItem::mousePressEvent(event);
       return;
     }
-    if ( isSelected() || event->modifiers() & Qt::AltModifier || event->modifiers() & Qt::MetaModifier || event->modifiers() & Qt::ControlModifier ) {
+    if ( event->modifiers() & Qt::AltModifier ) {
+      // Multi-select (Alt/Option): toggle this layer in/out of the co-move group
+      ImageView* view = getParentImageView();
+      if ( view ) {
+        if ( view->isInLayerSelection(this) )
+          view->removeLayerFromSelection(this);
+        else
+          view->addLayerToSelection(this);
+        for ( LayerItem* l : view->selectedLayers() )
+          l->resetDragStartPos();
+      }
+      QGraphicsPixmapItem::mousePressEvent(event);
+      return;
+    }
+
+    if ( isSelected() || event->modifiers() & Qt::ControlModifier ) {
       MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
       if ( isValidMouseEventOperation() && parent != nullptr ) {
         parent->updateLayerOperationParameter("LayerItem::mousePressEvent",m_name,LayerItem::OperationMode::Rotate,m_currentRotation);
@@ -1195,37 +1306,31 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
           m_mouseOperationActive = true;
           m_startTransform = transform();
           QGraphicsPixmapItem::mousePressEvent(event);
+          // Clear multi-selection group on normal drag start (primary layer tracked via isSelected())
+          ImageView* view = getParentImageView();
+          if ( view )
+            view->clearLayerSelection();
         } else if ( m_operationMode == OperationMode::Rotate ) {
           m_startLayerRotation = m_currentRotation;
-          m_mouseOperationActive = true; 
+          m_mouseOperationActive = true;
           m_startPos = pos();
           QGraphicsPixmapItem::mousePressEvent(event);
         } else {
-         // m_operationMode = OperationMode::None;
          m_mouseOperationActive = false;
         }
         // --- updating ---
         parent->setSelectedLayer(7,QString("Layer %1").arg(m_index));
         // to ensure that message is shown even layer is already selected
         parent->showMessage(QString("Select layer %1").arg(m_index));
-        // set opacity if Alt key pressed
-        if ( ( event->modifiers() & Qt::AltModifier ) || ( event->modifiers() & Qt::ControlModifier ) ) {
-         if ( 1 == 1 ) {
-          // setOpacity(EditorStyle::instance().layerOverlayOpacity());
-          if ( event->modifiers() & Qt::ControlModifier ) {
-            // color effect
-            qDebug() << "setup color effect...";
-            setOpacity(EditorStyle::instance().layerOverlayOpacity());
-            QGraphicsColorizeEffect* colorEffect = new QGraphicsColorizeEffect();
-            colorEffect->setColor(Qt::red);
-            colorEffect->setStrength(1.0);
-            setGraphicsEffect(colorEffect);
-          }
-         }
+        // Ctrl: transparent red overlay (see-through mode)
+        if ( event->modifiers() & Qt::ControlModifier ) {
+          setOpacity(EditorStyle::instance().layerOverlayOpacity());
+          QGraphicsColorizeEffect* colorEffect = new QGraphicsColorizeEffect();
+          colorEffect->setColor(Qt::red);
+          colorEffect->setStrength(1.0);
+          setGraphicsEffect(colorEffect);
         }
       }
-    } else if ( event->modifiers() & Qt::ControlModifier  ) {
-     qDebug() << "LayerItem::mousePressEvent(): Pressed control modifier...";
     }
   }
 }
@@ -1236,7 +1341,17 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
   {
     if ( isSelected() ) {
       if ( m_operationMode == OperationMode::Translate ) {
+       QPointF posBefore = pos();
        QGraphicsPixmapItem::mouseMoveEvent(event);
+       QPointF delta = pos() - posBefore;
+       if ( !delta.isNull() ) {
+         ImageView* view = getParentImageView();
+         if ( view ) {
+           for ( LayerItem* l : view->selectedLayers() )
+             if ( l != this )
+               l->setPos( l->pos() + delta );
+         }
+       }
       } else if ( m_operationMode == OperationMode::Rotate ) {
        MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
        if ( parent != nullptr ) {
@@ -1253,7 +1368,7 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
 {
-  qDebug() << "LayerItem::mouseReleaseEvent(): index =" << m_index << ", name =" << name();
+  qCDebug(logEditor) << "LayerItem::mouseReleaseEvent(): index =" << m_index << ", name =" << name();
   {
     setOpacity(1.0);
     setGraphicsEffect(nullptr);
@@ -1265,11 +1380,29 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
       return;
     }
     if ( m_operationMode == OperationMode::Translate ) {
-        if ( pos() != m_startPos ) {
-            QPointF newPos = EditorStyle::instance().allowIntegerMoveOnly() ? QPointF(qRound(pos().x()),qRound(pos().y())) : pos();
-            m_undoStack->push(
-                new MoveLayerCommand(this, m_startPos, newPos, m_index)
-            );
+        // Build group: primary (this) + co-selected layers
+        ImageView* view = getParentImageView();
+        QList<LayerItem*> group;
+        group.append(this);
+        if ( view ) {
+            for ( LayerItem* l : view->selectedLayers() )
+                if ( l != this ) group.append(l);
+        }
+
+        struct Move { LayerItem* layer; QPointF from; QPointF to; };
+        QList<Move> moves;
+        for ( LayerItem* l : group ) {
+            QPointF from = l->dragStartPos();
+            QPointF to = EditorStyle::instance().allowIntegerMoveOnly() ? QPointF(qRound(l->pos().x()), qRound(l->pos().y())) : l->pos();
+            if ( to != from )
+                moves.append(Move{l, from, to});
+        }
+
+        if ( !moves.isEmpty() ) {
+            if ( moves.size() > 1 ) m_undoStack->beginMacro("Move Layers");
+            for ( const auto& mv : moves )
+                m_undoStack->push(new MoveLayerCommand(mv.layer, mv.from, mv.to, mv.layer->id()));
+            if ( moves.size() > 1 ) m_undoStack->endMacro();
         }
     } else if ( m_operationMode == OperationMode::Rotate ) {
         if ( EditorStyle::instance().allowIntegerMoveOnly() && m_undoStack->index() > 0 ) {

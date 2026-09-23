@@ -61,7 +61,9 @@ class TransformLayerCommand : public AbstractCommand
 
     void undo() override;
     void redo() override;
-    
+
+    void shiftPositions( const QPointF& d ) { m_oldPos += d; m_newPos += d; }
+
     bool mergeWith( const QUndoCommand *other ) override;
     
     QJsonObject toJson() const override;

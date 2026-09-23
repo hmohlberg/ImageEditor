@@ -98,32 +98,88 @@ void EditablePolygon::smooth()
   emit changed();
 }
 
-// --- reduce number of points (Douglas-Peucker-Algorithmus) ---
+// Douglas-Peucker helpers (file-local)
+namespace {
+
+static qreal dpDist( const QPointF& p, const QPointF& a, const QPointF& b )
+{
+    const qreal dx = b.x() - a.x();
+    const qreal dy = b.y() - a.y();
+    const qreal len2 = dx*dx + dy*dy;
+    if ( len2 < 1e-12 )
+        return QLineF(p, a).length();
+    const qreal t = qBound(0.0, ((p.x()-a.x())*dx + (p.y()-a.y())*dy) / len2, 1.0);
+    return QLineF(p, QPointF(a.x()+t*dx, a.y()+t*dy)).length();
+}
+
+static void dpRecurse( const QPolygonF& pts, int first, int last, qreal eps, QVector<bool>& keep )
+{
+    if ( last <= first + 1 ) return;
+    qreal dmax = 0.0;
+    int   idx  = first;
+    for ( int i = first + 1; i < last; ++i ) {
+        qreal d = dpDist(pts[i], pts[first], pts[last]);
+        if ( d > dmax ) { dmax = d; idx = i; }
+    }
+    if ( dmax > eps ) {
+        keep[idx] = true;
+        dpRecurse(pts, first, idx,  eps, keep);
+        dpRecurse(pts, idx,   last, eps, keep);
+    }
+}
+
+} // anonymous namespace
+
+// --- reduce number of points (Douglas-Peucker) ---
 void EditablePolygon::reduce( qreal tolerance )
 {
-  qCDebug(logEditor) << "EditablePolygon::reduce(): tolerance=" << tolerance;
-  {
-    if ( m_polygon.size() > 3 ) {
-      QPainterPath path;
-      path.addPolygon(m_polygon);
-      QPainterPath simplifiedPath = path.simplified();
-      m_polygon = simplifiedPath.toFillPolygon();
-      emit changed();
-    }
-    // does not work
-    if ( m_polygon.size() > 3 ) {
-      QPolygonF result;
-      result << m_polygon.first();
-      for ( int i = 1; i < m_polygon.size(); ++i ) {
-        qreal dist = QLineF(result.last(), m_polygon[i]).length();
-        if ( dist > tolerance ) {
-            result << m_polygon[i];
+    qCDebug(logEditor) << "EditablePolygon::reduce(): tolerance=" << tolerance;
+    if ( m_polygon.size() < 4 ) return;
+
+    // Work on open polygon (remove duplicate closing point if present)
+    QPolygonF pts = m_polygon;
+    const bool wasClosed = (pts.first() == pts.last());
+    if ( wasClosed )
+        pts.removeLast();
+    const int sz = pts.size();
+    if ( sz < 3 ) return;
+
+    // For a closed polygon we split at the two endpoints of the longest chord
+    // so neither seam endpoint distorts the simplification.
+    int splitAt = sz / 2;
+    {
+        qreal best = 0.0;
+        for ( int i = 1; i < sz; ++i ) {
+            qreal d = QLineF(pts[0], pts[i]).length();
+            if ( d > best ) { best = d; splitAt = i; }
         }
-      }
-      m_polygon = result;
-      emit changed();
     }
-  }
+
+    // Build a linearised sequence: [splitAt .. end] + [0 .. splitAt]
+    QPolygonF seq;
+    seq.reserve(sz + 1);
+    for ( int i = splitAt; i < sz; ++i ) seq << pts[i];
+    for ( int i = 0;       i <= splitAt; ++i ) seq << pts[i];
+    // seq[0] == seq[sz] == pts[splitAt]
+
+    QVector<bool> keep(sz + 1, false);
+    keep[0]  = true;
+    keep[sz] = true;
+    dpRecurse(seq, 0, sz, tolerance, keep);
+
+    QPolygonF result;
+    for ( int i = 0; i <= sz; ++i )
+        if ( keep[i] ) result << seq[i];
+
+    // Remove the duplicate junction point at the seam
+    if ( result.size() > 1 && result.first() == result.last() )
+        result.removeLast();
+
+    if ( wasClosed && !result.isEmpty() )
+        result << result.first();
+
+    m_polygon = result;
+    emit changed();
 }
 
 void EditablePolygon::remove()

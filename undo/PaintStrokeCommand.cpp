@@ -26,6 +26,14 @@
 
 #include <iostream>
 
+// Paintbrush icon: diagonal handle + tapered bristle tip + paint stroke at bottom
+const QByteArray PaintStrokeCommand::s_brushSvg =
+    "<svg viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'>"
+    "<line x1='48' y1='8' x2='30' y2='26' stroke='white' stroke-width='5' stroke-linecap='round'/>"
+    "<path d='M26 30 L14 46 Q18 54 24 50 L36 34 Z' fill='white'/>"
+    "<path d='M8 58 Q22 50 38 56 Q50 62 56 50' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round'/>"
+    "</svg>";
+
 // -------------------------------- Constructor --------------------------------
 PaintStrokeCommand::PaintStrokeCommand( LayerItem* layer,
         const QPoint& pos, const QColor& color, int radius,qreal hardness, QUndoCommand* parent )
@@ -39,6 +47,7 @@ PaintStrokeCommand::PaintStrokeCommand( LayerItem* layer,
 {
     setText(QString("PaintStroke at (%1,%2)").arg(pos.x()).arg(pos.y()));
     m_layerId = layer->id();
+    setIcon(AbstractCommand::getIconFromSvg(s_brushSvg));
     redo(); // sofort ausführen
 }
 
@@ -54,6 +63,7 @@ PaintStrokeCommand::PaintStrokeCommand( LayerItem* layer,
     Q_ASSERT(m_layer);
     Q_ASSERT(!m_points.isEmpty());
     setText(QString("PaintStroke %1").arg(strokePoints.size()));
+    setIcon(AbstractCommand::getIconFromSvg(s_brushSvg));
     m_dirtyRect = QRect(m_points.first(), QSize(1,1));
     for ( const QPoint& p : m_points )
         m_dirtyRect |= QRect(p, QSize(1,1));

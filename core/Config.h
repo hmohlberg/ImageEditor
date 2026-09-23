@@ -95,10 +95,13 @@
       // Cage quads
       m_useCageQuads = settings.value("Cage/quads", true).toBool();
       m_usegpu = settings.value("Cage/gpu", false).toBool();
+      m_gpuCatmullRom = settings.value("Cage/gpuCatmullRom", true).toBool();
       // Live warp during drag (GPU only, experimental)
       m_liveWarp = settings.value("Cage/liveWarp", false).toBool();
       // Prevent self-intersection of cage quad edges
       m_noSelfIntersection = settings.value("Cage/noSelfIntersection", true).toBool();
+      m_cageGridCols   = settings.value("Cage/gridCols",    3).toInt();
+      m_squareCageQuads = settings.value("Cage/squareQuads", false).toBool();
       // Cage control point radius
       m_controlPointRadius = settings.value("Cage/controlPointRadius", 4).toInt();
       // Cage control point color
@@ -140,6 +143,12 @@
       if ( polygonWidth >= 0 ) {
         m_polygonWidth = polygonWidth;
       }
+      int polygonHandleSize = settings.value("Polygon/handleSize", 10).toInt();
+      if ( polygonHandleSize >= 0 ) {
+        m_polygonHandleSize = polygonHandleSize;
+      }
+      { QColor c(settings.value("Polygon/handleColor", "#ff0000").toString());
+        if ( c.isValid() ) m_polygonHandleColor = c; }
       
       // github:// shorthand base URL
       m_githubBaseUrl = settings.value("Network/githubBaseUrl",
@@ -184,6 +193,8 @@
     QColor cursorBorderColor() const { return m_cursorBorderColor; }
     int lassoWidth() const { return m_lassoWidth; }
     int polygonWidth() const { return m_polygonWidth; }
+    int polygonHandleSize() const { return m_polygonHandleSize; }
+    QColor polygonHandleColor() const { return m_polygonHandleColor; }
     int controlPointRadius() const { return m_controlPointRadius; }
     double handleRadius() const { return m_handleRadius; }
     bool crosshair() const { return m_crosshair; }
@@ -191,8 +202,11 @@
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
     bool useGPU() const { return m_usegpu; }
+    bool gpuCatmullRom() const { return m_gpuCatmullRom; }
     bool liveWarp() const { return m_liveWarp; }
     bool noSelfIntersection() const { return m_noSelfIntersection; }
+    int  cageGridCols() const { return m_cageGridCols; }
+    bool squareCageQuads() const { return m_squareCageQuads; }
     bool useClaudeQuads() const { return m_useClaudeQuads; }
     bool hasPerspective() const { return m_hasPerspective; }
     bool binaryMasking() const { return m_binaryMasking; }
@@ -217,8 +231,11 @@
     void setUseClaudeQuads(bool v) { m_useClaudeQuads = v; }
     void setUseCageQuads(bool v) { m_useCageQuads = v; }
     void setUseGPU(bool v) { m_usegpu = v; }
+    void setGpuCatmullRom(bool v) { m_gpuCatmullRom = v; }
     void setLiveWarp(bool v) { m_liveWarp = v; }
     void setNoSelfIntersection(bool v) { m_noSelfIntersection = v; }
+    void setCageGridCols(int v) { m_cageGridCols = v; }
+    void setSquareCageQuads(bool v) { m_squareCageQuads = v; }
     void setControlPointRadius(int v) { m_controlPointRadius = v; }
     void setControlPointColor(const QColor& v) { m_controlPointColor = v; }
     void setCageGridColor(const QColor& v) { m_gridColor = v; }
@@ -228,6 +245,8 @@
     void setLassoColor(const QColor& v) { m_lassoColor = v; }
     void setLassoWidth(int v) { m_lassoWidth = v; }
     void setPolygonWidth(int v) { m_polygonWidth = v; }
+    void setPolygonHandleSize(int v) { m_polygonHandleSize = v; }
+    void setPolygonHandleColor(const QColor& v) { m_polygonHandleColor = v; }
     void setAllowIntegerMoveOnly(bool v) { m_allowIntegerMoveOnly = v; }
     void setLayerOverlayOpacity(double v) { m_layerOverlayOpacity = v; }
     void setRotationSingleStep(double v) { m_rotationSingleStep = v; }
@@ -243,6 +262,8 @@
       m_handleSize        = 10;
       m_lassoWidth        = 3;
       m_polygonWidth      = 10;
+      m_polygonHandleSize = 10;
+      m_polygonHandleColor= Qt::red;
       m_handleRadius      = 4.0;
       m_cursorSize        = 0;
       m_controlPointRadius= 4;
@@ -256,8 +277,11 @@
       m_loggingIsEnabled  = false;
       m_useCageQuads      = true;
       m_usegpu            = false;
+      m_gpuCatmullRom     = true;
       m_liveWarp          = false;
       m_noSelfIntersection= true;
+      m_cageGridCols    = 3;
+      m_squareCageQuads = false;
       m_allowIntegerMoveOnly = true;
       m_useClaudeQuads    = true;
       m_hasPerspective    = true;
@@ -288,8 +312,11 @@
       s.setValue("Cage/claudeQuads",          m_useClaudeQuads);
       s.setValue("Cage/quads",               m_useCageQuads);
       s.setValue("Cage/gpu",                 m_usegpu);
+      s.setValue("Cage/gpuCatmullRom",       m_gpuCatmullRom);
       s.setValue("Cage/liveWarp",            m_liveWarp);
       s.setValue("Cage/noSelfIntersection",  m_noSelfIntersection);
+      s.setValue("Cage/gridCols",            m_cageGridCols);
+      s.setValue("Cage/squareQuads",         m_squareCageQuads);
       s.setValue("Cage/controlPointRadius",  m_controlPointRadius);
       s.setValue("Cage/controlPointColor",   m_controlPointColor.name());
       s.setValue("Cage/gridColor",           m_gridColor.name());
@@ -299,6 +326,8 @@
       s.setValue("Lasso/color", m_lassoColor.name());
       s.setValue("Lasso/width", m_lassoWidth);
       s.setValue("Polygon/width", m_polygonWidth);
+      s.setValue("Polygon/handleSize", m_polygonHandleSize);
+      s.setValue("Polygon/handleColor", m_polygonHandleColor.name());
       s.setValue("ImageLayer/integerMoveOnly",    m_allowIntegerMoveOnly);
       s.setValue("ImageLayer/overlayOpacity",     m_layerOverlayOpacity);
       s.setValue("ImageLayer/rotationSingleStep", m_rotationSingleStep);
@@ -324,6 +353,8 @@
           m_handleSize(10),
           m_lassoWidth(3), 
           m_polygonWidth(10),
+          m_polygonHandleSize(10),
+          m_polygonHandleColor(Qt::red),
           m_handleRadius(4.0),
           m_cursorSize(0),
           m_controlPointRadius(4),
@@ -336,8 +367,11 @@
           m_loggingIsEnabled(false), 
           m_useCageQuads(true),
           m_usegpu(false),
+          m_gpuCatmullRom(true),
           m_liveWarp(false),
           m_noSelfIntersection(true),
+          m_cageGridCols(3),
+          m_squareCageQuads(false),
           m_allowIntegerMoveOnly(true),
           m_useClaudeQuads(true), 
           m_hasPerspective(true),
@@ -383,13 +417,18 @@
     bool m_binaryMasking;
     bool m_allowIntegerMoveOnly;
     bool m_usegpu;
+    bool m_gpuCatmullRom;
     bool m_liveWarp;
     bool m_noSelfIntersection;
-    
+    bool m_squareCageQuads;
+
     int m_lassoWidth;
     int m_polygonWidth;
+    int m_polygonHandleSize;
+    QColor m_polygonHandleColor;
     int m_controlPointRadius;
     int m_handleSize;
+    int m_cageGridCols;
     int m_cursorSize;
     
     double m_handleRadius;

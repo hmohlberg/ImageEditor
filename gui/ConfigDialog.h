@@ -74,6 +74,7 @@ private:
     QCheckBox* m_claudeQuads        = nullptr;
     QCheckBox* m_cageQuads          = nullptr;
     QCheckBox* m_gpu                = nullptr;
+    QCheckBox* m_gpuCatmullRom      = nullptr;
     QCheckBox* m_liveWarp           = nullptr;
     QCheckBox* m_noSelfIntersection = nullptr;
     QSpinBox*  m_cpRadius           = nullptr;
@@ -83,6 +84,8 @@ private:
     QPushButton* m_gridColorBtn     = nullptr;
     QLineEdit* m_cageColor          = nullptr;
     QPushButton* m_cageColorBtn     = nullptr;
+    QSpinBox*  m_cageGridCols       = nullptr;
+    QCheckBox* m_squareCageQuads    = nullptr;
 
     // ---- Scale ----
     QLineEdit*  m_handleColor       = nullptr;
@@ -95,7 +98,10 @@ private:
     QSpinBox*   m_lassoWidth        = nullptr;
 
     // ---- Polygon ----
-    QSpinBox*   m_polygonWidth      = nullptr;
+    QSpinBox*    m_polygonWidth         = nullptr;
+    QSpinBox*    m_polygonHandleSize    = nullptr;
+    QLineEdit*   m_polygonHandleColor   = nullptr;
+    QPushButton* m_polygonHandleColorBtn= nullptr;
 
     // ---- ImageLayer ----
     QCheckBox*      m_integerMoveOnly    = nullptr;

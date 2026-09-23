@@ -54,7 +54,7 @@ namespace QuadWarp
     int cols = cageMesh.cols();
     
     int gx = cageMesh.activeCagePointId() % cols;
-    int gy = cageMesh.activeCagePointId() / rows;
+    int gy = cageMesh.activeCagePointId() / cols;
     
     int xStart = std::max(0, gx - 1);
     int xEnd   = std::min(cols - 2, gx);

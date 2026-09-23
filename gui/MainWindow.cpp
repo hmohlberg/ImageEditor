@@ -35,6 +35,7 @@
 #include "../layer/Layer.h"
 #include "../layer/CageControlPointItem.h"
 #include "../layer/CageOverlayItem.h"
+#include "../layer/EditablePolygonItem.h"
 #include "../undo/AbstractCommand.h"
 #include "../undo/PaintStrokeCommand.h"
 #include "../undo/TransformLayerCommand.h"
@@ -44,6 +45,7 @@
 #include "../undo/MirrorLayerCommand.h"
 #include "../undo/MoveLayerCommand.h"
 #include "../undo/CageWarpCommand.h"
+#include "../undo/DuplicateLayerCommand.h"
 
 #include "../util/MaskUtils.h"
 #include "../util/ItemDelegate.h"
@@ -1645,6 +1647,15 @@ void MainWindow::createDockWidgets()
      int i = index.row();
      m_imageView->undoStack()->setIndex(i);
    });
+   // Switch the control toolbar whenever the undo-stack index changes
+   // (single click in history list, Undo, Redo).
+   connect(m_imageView->undoStack(), &QUndoStack::indexChanged, this, [this](int idx){
+     if ( idx <= 0 ) return;
+     const QUndoCommand* cmd = m_imageView->undoStack()->command(idx - 1);
+     if ( dynamic_cast<const PaintStrokeCommand*>(cmd) ) {
+         m_paintControlAction->setChecked(true);
+     }
+   });
    connect(m_undoView, &QUndoView::customContextMenuRequested, this, [this](const QPoint &pos) {
     QModelIndex index = m_undoView->indexAt(pos);
     if ( !index.isValid() ) return;
@@ -1876,7 +1887,7 @@ void MainWindow::onLayerItemClicked( QListWidgetItem* item )
   bool ok = false;
   int layerNumber = item->text().section(' ', 1, 1).toInt(&ok);
   layerNumber = ok ? layerNumber : -1;
-  qDebug() << "MainWindow::onLayerItemClicked(): name =" << item->text() << ", number =" << layerNumber;
+  qCDebug(logEditor) << "MainWindow::onLayerItemClicked(): name =" << item->text() << ", number =" << layerNumber;
   {
     int selectedLayerId = -1;
     void* ptr = item->data(Qt::UserRole).value<void*>();
@@ -2146,16 +2157,35 @@ void MainWindow::duplicateLayer()
   {
     QListWidgetItem* item = m_layerList->currentItem();
     if ( !item ) return;
-    Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
-    if ( !layer || !layer->m_item ) return;
-    Layer* newLayer = new Layer(100);  // !!! WARNING !!!
-    newLayer->m_name = layer->name() + " Copy";
-    newLayer->m_visible = layer->m_visible;
-    newLayer->m_item = m_imageView->getScene()->addPixmap(
-        static_cast<QGraphicsPixmapItem*>(layer->m_item)->pixmap());
-    newLayer->m_item->setPos(layer->m_item->pos());
-    newLayer->m_item->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+    Layer* srcLayer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
+    if ( !srcLayer || !srcLayer->m_item ) return;
+
+    LayerItem* srcItem = dynamic_cast<LayerItem*>(srcLayer->m_item);
+    if ( !srcItem ) return;
+
+    int nidx = 0;
+    for ( const Layer* l : m_imageView->layers() )
+      nidx = qMax(nidx, l->id());
+    nidx += 1;
+
+    Layer* newLayer       = new Layer(nidx);
+    newLayer->m_name      = QString("Layer %1").arg(nidx);
+    newLayer->m_visible   = true;
+    LayerItem* newItem    = new LayerItem(newLayer->m_name, srcItem->pixmap());
+    newItem->setParent(this);
+    newItem->setIndex(nidx);
+    newItem->setLayer(newLayer);
+    newItem->setUndoStack(m_imageView->undoStack());
+    newItem->setPos(srcItem->pos() + QPointF(12, 12));
+    newItem->setZValue(srcItem->zValue() + 1);
+    newItem->setVisible(false);
+    m_imageView->getScene()->addItem(newItem);
+    newLayer->m_item = newItem;
     m_imageView->layers().append(newLayer);
+
+    DuplicateLayerCommand* cmd = new DuplicateLayerCommand(newItem, nidx);
+    m_imageView->undoStack()->push(cmd);
+
     rebuildLayerList();
   }
 }
@@ -2171,13 +2201,14 @@ void MainWindow::renameLayer()
     if ( !item ) return;
     Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
     if ( !layer ) return;
-    bool ok;
-    QString newName = QInputDialog::getText(this, "Rename Layer",
-                                            "New name:", QLineEdit::Normal,
-                                            layer->name(), &ok);
-    if ( ok && !newName.isEmpty() ) {
-        layer->m_name = newName;
-        item->setText(newName);
+    QInputDialog dlg(this);
+    dlg.setWindowTitle(tr("Rename Layer"));
+    dlg.setLabelText(tr("New name:"));
+    dlg.setTextValue(layer->name());
+    dlg.setMinimumWidth(480);
+    if ( dlg.exec() == QDialog::Accepted && !dlg.textValue().isEmpty() ) {
+        layer->m_name = dlg.textValue();
+        item->setText(dlg.textValue());
     }
 }
 
@@ -2326,7 +2357,8 @@ void MainWindow::hideAllLayerToolbars()
 
 void MainWindow::updatePolygonEnabledState( bool isToggled )
 {
-  // m_polygonIndexBox->setEnabled(!isToggled);
+  if ( isToggled && m_polygonOperationItem )
+    m_polygonOperationItem->setEnabled(false);
 }
 
 void MainWindow::updateControlButtonState() 
@@ -2412,8 +2444,9 @@ void MainWindow::updateControlButtonState()
      m_maskToolbar->setVisible(true);   
      m_operationMode = MainOperationMode::Mask;
     } else if ( m_polygonControlAction->isChecked() ) {
-     m_polygonToolbar->setVisible(true);   
+     m_polygonToolbar->setVisible(true);
      m_operationMode = MainOperationMode::Polygon;
+     m_imageView->setPolygonIndex( static_cast<quint8>(activePolygon("")), true );
     } else if ( m_layerControlAction->isChecked() ) {
      m_layerToolbar->setVisible(true);  
      m_operationMode = MainOperationMode::ImageLayer; 
@@ -2444,7 +2477,7 @@ void MainWindow::updateButtonState()
 }
 
 // --- Default Colors ---
-QComboBox* MainWindow::buildDefaultColorComboBox( const QString& name )
+QComboBox* MainWindow::buildDefaultColorComboBox( const QString& name, int maxItems )
 {
     QComboBox* colorComboBox = new QComboBox();
     colorComboBox->setItemDelegate(new QStyledItemDelegate(colorComboBox));
@@ -2452,8 +2485,10 @@ QComboBox* MainWindow::buildDefaultColorComboBox( const QString& name )
     colorComboBox->setIconSize(QSize(20, 20));
     colorComboBox->setMinimumWidth(110);
     unsigned int i = 0;
+    int added = 0;
     for ( const auto& color : colors ) {
       if ( i!=0 ) {
+        if ( maxItems > 0 && added >= maxItems ) break;
         QPixmap pixmap(24,24);
         pixmap.fill(Qt::transparent);
         QPainter painter(&pixmap);
@@ -2463,6 +2498,7 @@ QComboBox* MainWindow::buildDefaultColorComboBox( const QString& name )
          painter.drawRoundedRect(2, 2, 20, 20, 4, 4);
         painter.end();
         colorComboBox->addItem(QIcon(pixmap),QString("%1 %2").arg(name).arg(i));
+        ++added;
       }
       i += 1;
     }
@@ -2640,6 +2676,10 @@ void MainWindow::createToolbars()
     // create edit toolbar
     // ============================================================
     m_editToolbar = addToolBar(tr("Edit"));
+    // When the edit toolbar is hidden (mode switch away from Paint),
+    // disable the paint tool so the brush preview circle disappears.
+    connect(m_editToolbar, &QToolBar::visibilityChanged, m_imageView,
+            [this](bool visible){ if ( !visible ) m_imageView->setPaintToolEnabled(false); });
     m_editToolbar->addAction(m_pipetteAction);
     QLabel* pipetteColorLabel = new QLabel(" Color ");
     m_editToolbar->addWidget(pipetteColorLabel);
@@ -2689,7 +2729,10 @@ void MainWindow::createToolbars()
       m_imageView->setBrushHardness(val/100.0);
       hardnessValueLabel->setText(QString::number(val) + "%");
     });
-    
+    m_editToolbar->addSeparator();
+    m_editToolbar->addAction(m_undoAction);
+    m_editToolbar->addAction(m_redoAction);
+
     // ============================================================
     // create layer toolbar
     // ============================================================
@@ -2913,6 +2956,17 @@ void MainWindow::createToolbars()
     stiffnessSpin->setValue(0.0);
     m_canvasWarpLayerToolbar->addWidget(stiffnessSpin);
     connect(stiffnessSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), m_imageView, &ImageView::setCageWarpStiffness);
+    // --- Cage edit undo/redo ---
+    m_canvasWarpLayerToolbar->addSeparator();
+    QAction* cageUndoAction = new QAction(tr("Undo"), this);
+    cageUndoAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    connect(cageUndoAction, &QAction::triggered, m_imageView, &ImageView::undoCageWarpOperation);
+    m_canvasWarpLayerToolbar->addAction(cageUndoAction);
+    QAction* cageRedoAction = new QAction(tr("Redo"), this);
+    cageRedoAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    connect(cageRedoAction, &QAction::triggered, m_imageView, &ImageView::redoCageWarpOperation);
+    m_canvasWarpLayerToolbar->addAction(cageRedoAction);
+    m_canvasWarpLayerToolbar->addSeparator();
     // --- Reset cage ---
     QPushButton *resetCageAction = new QPushButton("Reset");
     resetCageAction->setFocusPolicy(Qt::ClickFocus);
@@ -3034,7 +3088,16 @@ void MainWindow::createToolbars()
     // --- Polygon selection stuff ---
     QLabel* polygonColorLabel = new QLabel("  Index:");
     m_polygonToolbar->addWidget(polygonColorLabel);
-    m_polygonIndexBox = buildDefaultColorComboBox("Polygon");
+    m_polygonIndexBox = buildDefaultColorComboBox("Polygon", 10);
+    {
+        QFontMetrics fm(m_polygonIndexBox->font());
+        const int w = m_polygonIndexBox->iconSize().width() + 6
+                    + fm.horizontalAdvance("Polygon 999") + 4
+                    + m_polygonIndexBox->style()->pixelMetric(
+                          QStyle::PM_MenuButtonIndicator, nullptr, m_polygonIndexBox)
+                    + 8;
+        m_polygonIndexBox->setMinimumWidth(w);
+    }
     connect(m_polygonIndexBox, &QComboBox::currentTextChanged, this, [this](const QString& text){
       qCDebug(logEditor) << "MainWindow::createToolbars(): New polygon index name =" << text;
       QString numOnly;
@@ -3052,7 +3115,8 @@ void MainWindow::createToolbars()
     m_polygonOperationItem = new QComboBox();
     m_polygonOperationItem->setPlaceholderText("Select operation mode");
     m_polygonOperationItem->setCurrentIndex(-1);
-    m_polygonOperationItem->addItems({"Select","Move polygon point","Add new polygon point","Delete polygon point","Translate polygon","Smooth polygon","Reduce polygon","Delete polygon","Information"});  
+    m_polygonOperationItem->addItems({"Select","Move polygon point","Add new polygon point","Delete polygon point","Translate polygon","Smooth polygon","Reduce polygon","Delete polygon","Information"});
+    m_polygonOperationItem->setEnabled(false);
     m_polygonToolbar->addWidget(m_polygonOperationItem);
     connect(m_polygonOperationItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
       LayerItem::OperationMode polygonOperationMode = LayerItem::OperationMode::Select;
@@ -3081,6 +3145,8 @@ void MainWindow::createToolbars()
             hasLayer ? tr("Update polygon layer") : tr("Create new polygon layer"));
         if ( !hasLayer )
             m_polygonCreateLayerAction->setEnabled(true);
+        if ( hasLayer )
+            extendPolygonComboBox();
     });
     connect(m_imageView, &ImageView::polygonNeedsUpdate, this, [this](bool needsUpdate){
         m_polygonCreateLayerAction->setEnabled(needsUpdate);
@@ -3219,6 +3285,8 @@ void MainWindow::showConfig()
         cp->refreshStyle();
       else if ( auto* ov = dynamic_cast<CageOverlayItem*>(item) )
         ov->update();
+      else if ( auto* ep = dynamic_cast<EditablePolygonItem*>(item) )
+        ep->refreshStyle();
     }
   }
 }
@@ -3326,6 +3394,10 @@ void MainWindow::setPolygonOperationMode( int mode )
     } else if ( mode == -2 ) {
      m_polygonCreateLayerAction->setEnabled(true);
      m_polygonAction->setEnabled(false);
+    } else if ( mode == -3 ) {
+     if ( m_polygonOperationItem ) m_polygonOperationItem->setEnabled(false);
+    } else if ( mode == -4 ) {
+     if ( m_polygonOperationItem ) m_polygonOperationItem->setEnabled(true);
     } else {
      m_polygonOperationItem->setCurrentIndex(mode-10);
     }
@@ -3346,6 +3418,7 @@ void MainWindow::setMainOperationMode( MainOperationMode mode )
       m_polygonAction->blockSignals(true);
       m_polygonAction->setChecked(false);
       m_polygonAction->blockSignals(false);
+      if ( m_polygonOperationItem ) m_polygonOperationItem->setEnabled(true);
     } else if ( mode == MainOperationMode::Polygon ) {
       m_polygonControlAction->setChecked(true);
     }
@@ -3378,6 +3451,37 @@ void MainWindow::newLassoLayerCreated()
 {
   m_lassoAction->setChecked(false);
   rebuildLayerList();
+}
+
+void MainWindow::extendPolygonComboBox()
+{
+    if ( !m_polygonIndexBox ) return;
+    // Only extend when the just-completed polygon is the last entry in the box.
+    const int completedIdx = activePolygon("");
+    if ( completedIdx != m_polygonIndexBox->count() ) return;
+    // Don't exceed the total number of available colors.
+    const QVector<QColor> colors = defaultMaskColors();
+    const int nextIdx = completedIdx + 1;
+    if ( nextIdx >= colors.size() ) return;
+    const QColor& color = colors[nextIdx];
+    QPixmap pixmap(24, 24);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setBrush(color);
+    painter.setPen(QPen(Qt::black, 1));
+    painter.drawRoundedRect(2, 2, 20, 20, 4, 4);
+    painter.end();
+    m_polygonIndexBox->addItem(QIcon(pixmap), QString("Polygon %1").arg(nextIdx));
+    if ( nextIdx > 999 ) {
+        QFontMetrics fm(m_polygonIndexBox->font());
+        const int w = m_polygonIndexBox->iconSize().width() + 6
+                    + fm.horizontalAdvance(QString("Polygon %1").arg(nextIdx)) + 4
+                    + m_polygonIndexBox->style()->pixelMetric(
+                          QStyle::PM_MenuButtonIndicator, nullptr, m_polygonIndexBox)
+                    + 8;
+        m_polygonIndexBox->setMinimumWidth(w);
+    }
 }
 
 /* =================== View Helpers =================== */

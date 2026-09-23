@@ -27,12 +27,15 @@
 #include "../undo/EditablePolygonCommand.h"
 #include "../undo/PaintCommand.h"
 #include "../undo/CageWarpCommand.h"
+#include "../undo/CageEditCommand.h"
 #include "../undo/MaskStrokeCommand.h"
 #include "../undo/PaintStrokeCommand.h"
 #include "../undo/InvertLayerCommand.h"
 #include "../undo/DeleteLayerCommand.h"
 #include "../undo/LassoCutCommand.h"
 #include "../undo/UpdatePolygonLayerCommand.h"
+#include "../undo/MoveLayerCommand.h"
+#include "../undo/TransformLayerCommand.h"
 
 #include "../util/GeometryUtils.h"
 #include "../util/QUndoSortDialog.h"
@@ -193,7 +196,8 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
             if ( m_transformOverlay != nullptr ) {
               m_transformOverlay->setVisible(true);
             }
-          } else if ( justFinishedCommand->text().startsWith("Delete Layer") ) {
+          } else if ( justFinishedCommand->text().startsWith("Delete Layer") ||
+                      justFinishedCommand->text().startsWith("Duplicate Layer") ) {
             if ( mainWindow != nullptr ) {
               mainWindow->updateLayerList();
             }
@@ -312,10 +316,21 @@ void ImageView::forcedUpdate()
 
 // ------------------------ Setter -------------------------------------
 
-void ImageView::setCrosshairVisible( bool visible ) 
-{ 
-  m_crosshairVisible = visible; 
-  viewport()->update(); 
+void ImageView::setCrosshairVisible( bool visible )
+{
+  m_crosshairVisible = visible;
+  viewport()->update();
+}
+
+void ImageView::setPaintToolEnabled( bool enabled )
+{
+    m_paintToolEnabled = enabled;
+    if ( !enabled ) {
+        m_painting = false;
+        m_paintLayer = nullptr;
+        m_currentStroke.clear();
+    }
+    viewport()->update();
 }
 
 void ImageView::setLassoEnabled( bool enabled ) 
@@ -421,9 +436,13 @@ void ImageView::rebuildUndoStack()
       const QUndoCommand* base = m_undoStack->command(sortedLayerIdents[i]);
       auto* cmd = dynamic_cast<const AbstractCommand*>(base);
       if ( cmd && cmd->layer() ) {
-        qDebug() << " cloning " << cmd->text();
         sortedCommands.append(cmd->clone());
       }
+    }
+    // Remove orphaned polygon items before clearing the stack (clear() does not call undo).
+    for ( QGraphicsItem* item : m_scene->items() ) {
+      if ( dynamic_cast<EditablePolygonItem*>(item) )
+        m_scene->removeItem(item);
     }
     m_undoStack->clear();
     for ( auto* base : sortedCommands ) {
@@ -438,7 +457,9 @@ void ImageView::rebuildUndoStack()
     // re-run the complete undo stack
     m_undoStack->setIndex(0);
     m_undoStack->setIndex(m_undoStack->count());
-    
+
+    MainWindow *mw = dynamic_cast<MainWindow*>(m_parent);
+    if ( mw ) mw->updateLayerList();
   }
 }
 
@@ -448,7 +469,7 @@ void ImageView::rebuildUndoStack()
 
 void ImageView::removeOperationsByIndexUndoStack(const QString& name, int index)
 {
-  qDebug() << "ImageView::removeOperationsByIndexUndoStack(): name =" << name << ", index =" << index;
+  qCDebug(logEditor) << "ImageView::removeOperationsByIndexUndoStack(): name =" << name << ", index =" << index;
   {
    if ( !m_undoStack ) {
     return;
@@ -487,7 +508,7 @@ void ImageView::removeOperationsByIndexUndoStack(const QString& name, int index)
 
 void ImageView::removeOperationsByIdUndoStack( int layerId )
 {
-  qDebug() << "ImageView::removeOperationsByIdUndoStack(): layerId =" << layerId;
+  qCDebug(logEditor) << "ImageView::removeOperationsByIdUndoStack(): layerId =" << layerId;
   {
    if ( !m_undoStack ) {
     return;
@@ -724,6 +745,7 @@ void ImageView::deleteLayer( Layer* layer )
 
 void ImageView::setSelectedLayer( int caller, LayerItem* layer  )
 {
+  clearLayerSelection();
   m_selectedLayer = layer;
 }
 
@@ -734,6 +756,7 @@ void ImageView::setSelectedLayer( int caller, const QString &name )
     if ( m_selectedLayer == nullptr || !m_selectedLayer->name().endsWith(name) ) {
       clearLayerColorEffects();
     }
+    clearLayerSelection();
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow == nullptr ) return;
     mainWindow->setSelectedLayer(3,name);
@@ -745,6 +768,27 @@ void ImageView::setSelectedLayer( int caller, const QString &name )
       }
     }
   }
+}
+
+void ImageView::addLayerToSelection( LayerItem* layer )
+{
+  if ( layer && !m_selectedLayers.contains(layer) ) {
+    m_selectedLayers.append(layer);
+    layer->setMultiSelected(true);
+  }
+}
+
+void ImageView::removeLayerFromSelection( LayerItem* layer )
+{
+  m_selectedLayers.removeAll(layer);
+  if ( layer ) layer->setMultiSelected(false);
+}
+
+void ImageView::clearLayerSelection()
+{
+  for ( LayerItem* l : m_selectedLayers )
+    l->setMultiSelected(false);
+  m_selectedLayers.clear();
 }
 
 void ImageView::setActiveLayer( const QString &name, bool initialize )
@@ -1019,6 +1063,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         for ( auto* item : itemsUnderCursor ) {
             auto* layer = dynamic_cast<LayerItem*>(item);
             if ( !layer ) continue;
+            if ( layer->getType() != LayerItem::MainImage ) continue;
             QPoint localPos = layer->mapFromScene(scenePos).toPoint();
             if ( !layer->image().rect().contains(localPos) ) continue;
             m_painting = true;
@@ -1189,22 +1234,13 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
     }
 
     // --- Painting ---
-    if ( m_painting && m_paintToolEnabled ) {
-        auto itemsUnderCursor = m_scene->items(scenePos);
-        for ( auto* item : itemsUnderCursor ) {
-          auto* layer = dynamic_cast<LayerItem*>(item);
-          if ( !layer || !layer->isVisible() ) continue;
-          QPoint localPos = layer->mapFromScene(scenePos).toPoint();
-          if ( !layer->image().rect().contains(localPos) ) continue;
-          // PaintCommand jetzt auf Layer
-          if ( m_currentStroke.isEmpty() || m_currentStroke.last() != localPos ) {
+    if ( m_painting && m_paintToolEnabled && m_paintLayer ) {
+        QPoint localPos = m_paintLayer->mapFromScene(scenePos).toPoint();
+        if ( m_currentStroke.isEmpty() || m_currentStroke.last() != localPos ) {
             m_currentStroke << localPos;
-            layer->paintStrokeSegment(m_currentStroke[m_currentStroke.size()-2],localPos,m_brushColor,m_brushRadius,m_brushHardness);
+            m_paintLayer->paintStrokeSegment(m_currentStroke[m_currentStroke.size()-2], localPos,
+                                             m_brushColor, m_brushRadius, m_brushHardness);
             viewport()->update();
-          }
-          //ALT: m_undoStack->push(new PaintStrokeCommand(layer, localPos, m_brushColor, m_brushRadius, m_brushHardness));
-          //ALT: viewport()->update();
-          break; // nur oberstes Layer malen
         }
         return;
     }
@@ -1296,7 +1332,7 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
            qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): Creating new cage layer undo/redo instance...";
            int rows = selectedCageLayer->cageMesh().rows();
            int columns = selectedCageLayer->cageMesh().cols();
-           m_undoStack->push( new CageWarpCommand(selectedCageLayer, cageBefore, cageAfter, 
+           m_undoStack->push( new CageWarpCommand(selectedCageLayer, cageBefore, cageAfter,
                                                         selectedCageLayer->sceneBoundingRect(), selectedCageLayer->pos(),
                                                         rows, columns ) );
          } else {
@@ -1305,6 +1341,17 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
          if( selectedCageLayer ) {
            selectedCageLayer->applyCageWarp("ImageView::1");
          }
+         // Push cage-edit undo entry (per-layer stack, keeps cage session open)
+         selectedCageLayer->cageEditStack()->push(new CageEditCommand(
+             selectedCageLayer,
+             selectedCageLayer->cageSnapPts(), selectedCageLayer->cageSnapOrigPts(),
+             selectedCageLayer->cageSnapCols(), selectedCageLayer->cageSnapRows(),
+             selectedCageLayer->cageSnapPos(),
+             cageAfter,
+             selectedCageLayer->cageMesh().originalPoints(),
+             selectedCageLayer->cageMesh().cols(), selectedCageLayer->cageMesh().rows(),
+             selectedCageLayer->pos(),
+             tr("Move cage point")));
         }
         m_cageBefore.clear();
      }
@@ -1417,6 +1464,20 @@ bool ImageView::scaleScene( int direction )
   return false;
 }
 
+void ImageView::leaveEvent( QEvent* event )
+{
+    m_mouseInCanvas = false;
+    viewport()->update();
+    QGraphicsView::leaveEvent(event);
+}
+
+void ImageView::enterEvent( QEnterEvent* event )
+{
+    m_mouseInCanvas = true;
+    viewport()->update();
+    QGraphicsView::enterEvent(event);
+}
+
 // --------------------------------- drawing ---------------------------------
 void ImageView::drawForeground( QPainter* painter, const QRectF& )
 {
@@ -1439,7 +1500,7 @@ void ImageView::drawForeground( QPainter* painter, const QRectF& )
     // ----------------------------
     // CROSSHAIR
     // ----------------------------
-    if ( m_crosshairVisible ) {
+    if ( m_crosshairVisible && m_mouseInCanvas ) {
         QPen pen(Qt::red, 0);   // 0 = kosmetisch
         painter->setPen(pen);
         QRectF r = scene()->sceneRect();
@@ -1452,7 +1513,7 @@ void ImageView::drawForeground( QPainter* painter, const QRectF& )
     // ----------------------------
     // BRUSH-VORSCHAU
     // ----------------------------
-    if ( m_showBrushPreview && m_paintToolEnabled ) {
+    if ( m_showBrushPreview && m_paintToolEnabled && m_mouseInCanvas ) {
         QPen outerPen(Qt::green, 0);
         outerPen.setCosmetic(true);
         painter->setPen(outerPen);
@@ -1617,7 +1678,17 @@ void ImageView::initCageWarpForLayer( LayerItem *layerItem )
     if ( layerItem->cageMesh().isInitialized() ) return;
     // --- initialize ---
     m_selectedLayer = layerItem;
-    layerItem->enableCage();
+    {
+      const int cfgCols = EditorStyle::instance().cageGridCols();
+      const int cols = qMax(3, cfgCols);
+      int rows = cols;
+      if (EditorStyle::instance().squareCageQuads()) {
+        const QRectF br = layerItem->boundingRect();
+        if (br.width() > 0 && cols > 1)
+          rows = qMax(3, qRound(br.height() * (cols - 1) / br.width()) + 1);
+      }
+      layerItem->enableCage(cols, rows);
+    }
     // --- setup ---
     if ( layerItem->hasActiveCage() ) {
       m_selectedCageLayer = layerItem;
@@ -1939,7 +2010,9 @@ void ImageView::setIncreaseNumberOfCageControlPoints()
      auto* command = m_selectedLayer->getCageWarpCommand();
      if ( command ) {
        int n = m_selectedLayer->changeNumberOfActiveCagePoints(+1);
-       m_selectedLayer->getCageWarpCommand()->setNumberOfRowsAndColumns(n);
+       if (n != 0)
+         m_selectedLayer->getCageWarpCommand()->setNumberOfRowsAndColumns(
+             m_selectedLayer->cageMesh().cols(), m_selectedLayer->cageMesh().rows());
      } else {
       qCritical() << "ImageView::setIncreaseNumberOfCageControlPoints(): No CageWarpCommand available!";
      }
@@ -1953,8 +2026,11 @@ void ImageView::setDecreaseNumberOfCageControlPoints()
    auto* command = m_selectedLayer->getCageWarpCommand();
    if ( command ) {
     int n = m_selectedLayer->changeNumberOfActiveCagePoints(-1);
-    m_selectedLayer->getCageWarpCommand()->setNumberOfRowsAndColumns(n);
-    if ( n != 0 ) m_selectedLayer->applyCageWarp("ImageView::3");
+    if (n != 0) {
+      m_selectedLayer->getCageWarpCommand()->setNumberOfRowsAndColumns(
+          m_selectedLayer->cageMesh().cols(), m_selectedLayer->cageMesh().rows());
+      m_selectedLayer->applyCageWarp("ImageView::3");
+    }
    }
 }
 
@@ -2039,8 +2115,10 @@ void ImageView::setPolygonIndex( quint8 index, bool doUpdate )
        mainWindow->showMessage(QString("No selectable polygon %1 found").arg(index));
      }
      mainWindow->setPolygonOperationMode(visIndex);
+     if ( !m_polygonEnabled )
+       mainWindow->setPolygonOperationMode( foundAnyPolygon ? -4 : -3 );
     }
-   
+
     // find polygon
     
      for ( auto* item : m_scene->items() ) {
@@ -2130,6 +2208,20 @@ void ImageView::redoPolygonOperation()
      polygon->undoStack()->redo();
     }
   }
+}
+
+void ImageView::undoCageWarpOperation()
+{
+    LayerItem* layer = m_selectedCageLayer ? m_selectedCageLayer : getSelectedItem(true);
+    if ( layer && layer->cageEditStack() )
+        layer->cageEditStack()->undo();
+}
+
+void ImageView::redoCageWarpOperation()
+{
+    LayerItem* layer = m_selectedCageLayer ? m_selectedCageLayer : getSelectedItem(true);
+    if ( layer && layer->cageEditStack() )
+        layer->cageEditStack()->redo();
 }
 
 void ImageView::createPolygonLayer()
@@ -2311,7 +2403,28 @@ void ImageView::updatePolygonLayer()
 
     // Update the stored backup so that undoing the LassoCutCommand later
     // correctly restores the new cut content.
+    // Save old bounds (by value) before updateData() overwrites m_bounds.
+    const QRect preDeltaBounds = lassoCmd->rect();
     lassoCmd->updateData(newCutImage, newBounds);
+
+    // If the bounding box shifted, fix the cut layer's position and update all
+    // subsequent commands that store absolute scene positions for this layer so
+    // that undo/redo navigation does not shift the layer.
+    const QPointF posDelta = srcLayer->mapToScene(QPointF(newBounds.topLeft()))
+                           - srcLayer->mapToScene(QPointF(preDeltaBounds.topLeft()));
+    if ( !posDelta.isNull() ) {
+        cutLayer->setPos(srcLayer->mapToScene(QPointF(newBounds.topLeft())));
+        for ( int i = lassoCmdIdx + 1; i < m_undoStack->count(); ++i ) {
+            const QUndoCommand* base = m_undoStack->command(i);
+            if ( auto* mc = const_cast<MoveLayerCommand*>(
+                        dynamic_cast<const MoveLayerCommand*>(base)) ) {
+                if ( mc->layer() == cutLayer ) mc->shiftPositions(posDelta);
+            } else if ( auto* tc = const_cast<TransformLayerCommand*>(
+                        dynamic_cast<const TransformLayerCommand*>(base)) ) {
+                if ( tc->layer() == cutLayer ) tc->shiftPositions(posDelta);
+            }
+        }
+    }
 
     // Hide the editable polygon overlay — same as LassoCutCommand::redo() does.
     polyCmd->setVisible(false);
@@ -2391,6 +2504,7 @@ void ImageView::setPolygonEnabled( bool enabled )
     if ( m_polygonEnabled ) {
      MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
      if ( mainWindow == nullptr ) return;
+     mainWindow->setPolygonOperationMode(-3);
      int polygonIndex = mainWindow->activePolygon("");
      // check whether index is already in use
      for ( EditablePolygon* polygon : m_editablePolygons ) {

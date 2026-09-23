@@ -130,7 +130,9 @@ set(SOURCES
     layer/CenterHandleItem.cpp
     undo/AbstractCommand.cpp
     undo/CageWarpCommand.cpp
+    undo/CageEditCommand.cpp
     undo/DeleteLayerCommand.cpp
+    undo/DuplicateLayerCommand.cpp
     undo/DeleteUndoEntryCommand.cpp
     undo/LassoCutCommand.cpp
     undo/PaintCommand.cpp
@@ -151,6 +153,7 @@ set(SOURCES
     undo/MaskStrokeCommand.cpp
     undo/MaskPaintCommand.cpp
     util/QUndoSortDialog.cpp
+    util/GpuInfo.cpp
 )
 
 set(HEADERS
@@ -177,6 +180,7 @@ set(HEADERS
     undo/AbstractCommand.h
     undo/CageWarpCommand.h
     undo/DeleteLayerCommand.h
+    undo/DuplicateLayerCommand.h
     undo/DeleteUndoEntryCommand.h
     undo/PaintCommand.h
     undo/PaintStrokeCommand.h
@@ -195,6 +199,8 @@ set(HEADERS
     undo/PolygonReduceCommand.h
     util/QUndoSortDialog.h
     util/GeometryUtils.h
+    util/GpuInfo.h
+    undo/CageEditCommand.h
 )
 
 # Qt6 Executable

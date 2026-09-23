@@ -94,9 +94,12 @@ class CageMesh
     
     void printself();
     
+    void restore( const QVector<QPointF>& pts, const QVector<QPointF>& origPts, int cols, int rows );
+
   private:
-  
+
     bool isBoundaryPoint( int index ) const;
+    void resize( const QRectF& bounds, int cols, int rows );
     void coarsen( const QRectF& bounds, int cols, int rows );
     void refine( const QRectF& bounds, int cols, int rows );
     void addNewSpring( int idxA, int idxB );

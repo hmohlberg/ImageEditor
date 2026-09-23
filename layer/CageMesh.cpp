@@ -75,85 +75,67 @@ void CageMesh::create( const QRectF& bounds, int cols, int rows )
   }
 }
 
-void CageMesh::update( const QRectF& bounds, int cols, int rows ) 
+void CageMesh::update( const QRectF& bounds, int cols, int rows )
 {
-  if ( cols > m_cols ) {
-    refine(bounds,cols,rows);
-  } else {
-    coarsen(bounds,cols,rows);
+  resize(bounds, cols, rows);
+}
+
+void CageMesh::resize( const QRectF& bounds, int newCols, int newRows )
+{
+  qCDebug(logEditor) << "CageMesh::resize(): " << m_cols << "x" << m_rows << " -> " << newCols << "x" << newRows;
+  {
+    const int oldCols = m_cols;
+    const int oldRows = m_rows;
+    QVector<QPointF> nextPoints;
+    QVector<QPointF> nextOriginalPoints;
+    nextPoints.reserve(newCols * newRows);
+    nextOriginalPoints.reserve(newCols * newRows);
+    const qreal gdx = (newCols > 1) ? bounds.width()  / (newCols - 1) : 0;
+    const qreal gdy = (newRows > 1) ? bounds.height() / (newRows - 1) : 0;
+    for ( int newY = 0; newY < newRows; ++newY ) {
+        for ( int newX = 0; newX < newCols; ++newX ) {
+            // General bilinear mapping: works for any old->new size, not just factor-of-2.
+            qreal oldX_f = (newCols > 1) ? newX * qreal(oldCols - 1) / (newCols - 1) : 0;
+            qreal oldY_f = (newRows > 1) ? newY * qreal(oldRows - 1) / (newRows - 1) : 0;
+            int x0 = int(oldX_f);
+            int x1 = qMin(x0 + 1, oldCols - 1);
+            int y0 = int(oldY_f);
+            int y1 = qMin(y0 + 1, oldRows - 1);
+            qreal tx = oldX_f - x0;
+            qreal ty = oldY_f - y0;
+            QPointF p00 = m_points[y0 * oldCols + x0];
+            QPointF p10 = m_points[y0 * oldCols + x1];
+            QPointF p01 = m_points[y1 * oldCols + x0];
+            QPointF p11 = m_points[y1 * oldCols + x1];
+            nextPoints.push_back((1-tx)*(1-ty)*p00 + tx*(1-ty)*p10 + (1-tx)*ty*p01 + tx*ty*p11);
+            nextOriginalPoints.push_back(QPointF(bounds.left() + newX * gdx, bounds.top() + newY * gdy));
+        }
+    }
+    m_points = nextPoints;
+    m_originalPoints = nextOriginalPoints;
+    m_cols = newCols;
+    m_rows = newRows;
+    rebuildSprings();
   }
+}
+
+void CageMesh::restore( const QVector<QPointF>& pts, const QVector<QPointF>& origPts, int cols, int rows )
+{
+    m_cols           = cols;
+    m_rows           = rows;
+    m_points         = pts;
+    m_originalPoints = origPts;
+    rebuildSprings();
 }
 
 void CageMesh::coarsen( const QRectF& bounds, int newCols, int newRows )
 {
-  qCDebug(logEditor) << "CageMesh::coarsen(): newCols=" << newCols << ", newRows=" << newRows;
-  {
-    QVector<QPointF> nextPoints;
-    QVector<QPointF> nextOriginalPoints;
-    nextPoints.reserve(newCols * newRows);
-    nextOriginalPoints.reserve(newCols * newRows);
-    for ( int y = 0; y < newRows; ++y ) {
-        for ( int x = 0; x < newCols; ++x ) {
-            int oldIndex = (y * 2) * m_cols + (x * 2);
-            nextPoints.push_back(m_points[oldIndex]);
-            nextOriginalPoints.push_back(m_originalPoints[oldIndex]);
-        }
-    }
-    // Daten aktualisieren
-    m_points = nextPoints;
-    m_originalPoints = nextOriginalPoints;
-    m_cols = newCols;
-    m_rows = newRows;
-    // Wichtig: Federn müssen komplett neu aufgebaut werden!
-    rebuildSprings();
-  }
+  resize(bounds, newCols, newRows);
 }
 
-void CageMesh::refine( const QRectF& bounds, int newCols, int newRows ) 
+void CageMesh::refine( const QRectF& bounds, int newCols, int newRows )
 {
-  qCDebug(logEditor)  << "CageMesh::refine(): newCols=" << newCols << ", newRows=" << newRows;
-  {
-    QVector<QPointF> nextPoints;
-    QVector<QPointF> nextOriginalPoints;
-    nextPoints.reserve(newCols * newRows);
-    nextOriginalPoints.reserve(newCols * newRows);
-    // Hilfsfunktion zur Interpolation von m_points
-    auto getPoint = [&]( int oldX, int oldY ) {
-        return m_points[oldY * m_cols + oldX];
-    };
-    const qreal dx = bounds.width()  / (newCols - 1);
-    const qreal dy = bounds.height() / (newRows - 1);
-    for ( int y = 0; y < newRows; ++y ) {
-        for ( int x = 0; x < newCols; ++x ) {
-            // Berechne die Position im alten Gitter (0.0, 0.5, 1.0, 1.5...)
-            qreal oldX_f = x / 2.0;
-            qreal oldY_f = y / 2.0;
-            int x0 = std::floor(oldX_f);
-            int x1 = std::ceil(oldX_f);
-            int y0 = std::floor(oldY_f);
-            int y1 = std::ceil(oldY_f);
-            // Bilineare Interpolation für m_points
-            qreal tx = oldX_f - x0;
-            qreal ty = oldY_f - y0;
-            QPointF p00 = getPoint(x0, y0);
-            QPointF p10 = getPoint(x1, y0);
-            QPointF p01 = getPoint(x0, y1);
-            QPointF p11 = getPoint(x1, y1);
-            QPointF interpolatedPoint = (1-tx)*(1-ty)*p00 + tx*(1-ty)*p10 + (1-tx)*ty*p01 + tx*ty*p11;
-            nextPoints.push_back(interpolatedPoint);
-            // Für OriginalPoints berechnen wir einfach das neue regelmäßige Gitter
-            // (Oder nutzen dieselbe Interpolation auf m_originalPoints)
-            QPointF p( bounds.left() + x * dx, bounds.top()  + y * dy );
-            nextOriginalPoints.push_back(p);
-        }
-    }
-    m_originalPoints = nextOriginalPoints;
-    m_points = nextPoints;
-    m_cols = newCols;
-    m_rows = newRows;
-    // Federn: horizontal + vertikal
-    rebuildSprings();
-  }  
+  resize(bounds, newCols, newRows);
 }
 
 void CageMesh::rebuildSprings()

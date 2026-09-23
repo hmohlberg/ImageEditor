@@ -18,6 +18,7 @@
 #pragma once
 
 #include <QUndoCommand>
+#include <QByteArray>
 #include <QColor>
 
 #include "AbstractCommand.h"
@@ -46,7 +47,9 @@ public:
     
 private:
 
-	void paint( QImage& img );
+    void paint( QImage& img );
+
+    static const QByteArray s_brushSvg;
 
 private:
 

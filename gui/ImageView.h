@@ -107,7 +107,7 @@ class ImageView : public QGraphicsView
     void setMaskBrushRadius( int r ) { m_maskBrushRadius = r; }
     void setBrushColor( const QColor& c ) { m_brushColor = c; }
     void setBrushHardness( qreal h ) { m_brushHardness = qBound(0.0, h, 1.0); }
-    void setPaintToolEnabled( bool enabled ) { m_paintToolEnabled = enabled; }
+    void setPaintToolEnabled( bool enabled );
     void setBrushPreviewVisible( bool visible ) { m_showBrushPreview = visible; viewport()->update(); }
     void setMaskOpacity( qreal value ) { if ( m_maskItem ) m_maskItem->setOpacityFactor(value); }
     void setMaskLabel( quint8 index ) { m_currentMaskLabel = index; }
@@ -116,6 +116,11 @@ class ImageView : public QGraphicsView
     void setActiveLayer( const QString& name, bool initialize = true );
     void setSelectedLayer( int caller, const QString& name );
     void setSelectedLayer( int caller, LayerItem* layer );
+    void addLayerToSelection( LayerItem* layer );
+    void removeLayerFromSelection( LayerItem* layer );
+    void clearLayerSelection();
+    bool isInLayerSelection( LayerItem* layer ) const { return m_selectedLayers.contains(layer); }
+    const QList<LayerItem*>& selectedLayers() const { return m_selectedLayers; }
     void setLayerOperationMode( LayerItem::OperationMode mode );
     void setOnlySelectedPolygon( const QString& name );
     void setPolygonOperationMode( LayerItem::OperationMode mode );
@@ -142,6 +147,8 @@ class ImageView : public QGraphicsView
     
     void undoPolygonOperation();
     void redoPolygonOperation();
+    void undoCageWarpOperation();
+    void redoCageWarpOperation();
     void updatePolygonLayer();
     
     void printself();
@@ -167,6 +174,8 @@ class ImageView : public QGraphicsView
     void mouseDoubleClickEvent( QMouseEvent* event ) override;
     void wheelEvent( QWheelEvent* event ) override;
     void drawForeground( QPainter* painter, const QRectF& rect ) override;
+    void leaveEvent( QEvent* event ) override;
+    void enterEvent( QEnterEvent* event ) override;
 
  private:
 
@@ -185,6 +194,7 @@ class ImageView : public QGraphicsView
     LayerItem* m_selectedLayer = nullptr;
     LayerItem* m_selectedCageLayer = nullptr;
     LayerItem* m_paintLayer = nullptr;
+    QList<LayerItem*> m_selectedLayers;
     
     LayerItem::OperationMode m_layerOperationMode = LayerItem::OperationMode::Translate;
     LayerItem::OperationMode m_polygonOperationMode = LayerItem::OperationMode::MovePoint;
@@ -208,6 +218,7 @@ class ImageView : public QGraphicsView
 
     bool m_maskStrokeActive = false;
     bool m_crosshairVisible = true;
+    bool m_mouseInCanvas = false;
     bool m_lassoEnabled = false;
     bool m_selecting = false;
     bool m_panning = false;

@@ -50,7 +50,7 @@ class EditablePolygon : public QObject
     // --- Modifikation (NUR über Commands aufrufen!) ---
     void smooth();
     void remove();
-    void reduce( qreal tolerance = 0.5 );
+    void reduce( qreal tolerance = 2.0 );
     void translate( const QPointF& d );
     void addPoint( const QPointF& p );
     void setPoint( int idx, const QPointF& p );

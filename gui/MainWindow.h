@@ -140,7 +140,8 @@ class MainWindow : public QMainWindow, public IMainSystem
     
     void hideAllLayerToolbars();
     
-    QComboBox* buildDefaultColorComboBox( const QString& name = "Label" );
+    QComboBox* buildDefaultColorComboBox( const QString& name = "Label", int maxItems = -1 );
+    void extendPolygonComboBox();
     
     ImageView*       m_imageView       = nullptr;
     LayerEditorView* m_layerEditorView = nullptr;

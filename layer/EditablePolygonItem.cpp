@@ -39,7 +39,8 @@ EditablePolygonItem::EditablePolygonItem( EditablePolygon* poly, QGraphicsItem* 
   qCDebug(logEditor) << "EditablePolygonItem::EditablePolygonItem(): Processing...";
   {
     Q_ASSERT(m_poly);
-    m_handleRadius = EditorStyle::instance().polygonWidth();
+    m_handleRadius = EditorStyle::instance().polygonHandleSize();
+    m_handleColor  = EditorStyle::instance().polygonHandleColor();
     m_layer = dynamic_cast<LayerItem*>(parent);
     Q_ASSERT(m_layer);
     setParentItem(nullptr);
@@ -51,6 +52,18 @@ EditablePolygonItem::EditablePolygonItem( EditablePolygon* poly, QGraphicsItem* 
     connect(m_poly, &EditablePolygon::selectionChanged, this, &EditablePolygonItem::onSelectionChanged);
     rebuildHandles();
   }
+}
+
+void EditablePolygonItem::refreshStyle()
+{
+    prepareGeometryChange();
+    m_handleRadius = EditorStyle::instance().polygonHandleSize();
+    m_handleColor  = EditorStyle::instance().polygonHandleColor();
+    for ( auto* h : m_handles ) {
+        h->setRect(-m_handleRadius, -m_handleRadius, 2*m_handleRadius, 2*m_handleRadius);
+        h->setBrush(m_handleColor);
+    }
+    update();
 }
 
 QRectF EditablePolygonItem::boundingRect() const

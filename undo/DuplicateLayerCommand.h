@@ -1,4 +1,4 @@
-/* 
+/*
 * Copyright 2026 Forschungszentrum Jülich
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,35 +23,27 @@
 #include "AbstractCommand.h"
 #include "../layer/LayerItem.h"
 
-class MoveLayerCommand : public AbstractCommand
+class DuplicateLayerCommand : public AbstractCommand
 {
 
-public:
+ public:
 
-    MoveLayerCommand( LayerItem* layer, const QPointF& oldPos, const QPointF& newPos, const int idx=0, QUndoCommand* parent = nullptr );
-    
-    AbstractCommand* clone() const override { return new MoveLayerCommand(m_layer,m_oldPos,m_newPos,m_layerId); }
-    
-    QString type() const override { return "MoveLayer"; }
+    DuplicateLayerCommand( LayerItem* duplicate, const int idx, QUndoCommand* parent = nullptr );
+
+    AbstractCommand* clone() const override { return new DuplicateLayerCommand(m_layer, m_layerId); }
+
+    QString type() const override { return "DuplicateLayer"; }
     LayerItem* layer() const override { return m_layer; }
-    int id() const override { return 1005; }
-    bool mergeWith( const QUndoCommand* other ) override;
-    void printMessage( bool isUndo=false );
-    
+    int id() const override { return 1056; }
+
     void undo() override;
     void redo() override;
 
-    void shiftPositions( const QPointF& d ) { m_oldPos += d; m_newPos += d; }
-
     QJsonObject toJson() const override;
-    static MoveLayerCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers );
 
-private:
+ private:
 
-    int m_layerId;
-    LayerItem* m_layer;
-    
-    QPointF m_oldPos;
-    QPointF m_newPos;
-    
+    int m_layerId = 0;
+    LayerItem* m_layer = nullptr;
+
 };

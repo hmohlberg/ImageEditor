@@ -54,6 +54,7 @@ class LayerItem : public QGraphicsPixmapItem
 
     LayerItem( const QString& name, const QPixmap& pixmap, QGraphicsItem* parent = nullptr );
     LayerItem( const QString& name, const QImage& image, QGraphicsItem* parent = nullptr );
+    ~LayerItem();
     
     QRectF boundingRect() const override;
     
@@ -104,6 +105,7 @@ class LayerItem : public QGraphicsPixmapItem
 
     int id() const { return m_index; }
     bool isDeleted() const { return m_isDeleted; }
+    void setMultiSelected( bool v ) { m_isMultiSelected = v; update(); }
     bool isEditing() const { return m_cageEditing; }
     bool isCageWarp() const { return m_operationMode == OperationMode::CageWarp ? true : false; }
     
@@ -111,8 +113,21 @@ class LayerItem : public QGraphicsPixmapItem
     QWidget* parent() const { return m_parent; }
     ImageView* getParentImageView();
     void setCageEditing( bool isEditing ) { m_cageEditing = isEditing; }
+
+    // Cage edit undo/redo (separate per-layer stack, does not close the cage session)
+    QUndoStack* cageEditStack();
+    void snapshotCageState();
+    void restoreCageState( const QVector<QPointF>& pts, const QVector<QPointF>& origPts, int cols, int rows,
+                           const QPointF& scenePos );
+    const QVector<QPointF>& cageSnapPts()     const { return m_cageSnapPts; }
+    const QVector<QPointF>& cageSnapOrigPts() const { return m_cageSnapOrigPts; }
+    int     cageSnapCols() const { return m_cageSnapCols; }
+    int     cageSnapRows() const { return m_cageSnapRows; }
+    QPointF cageSnapPos()  const { return m_cageSnapPos; }
     void setParent( QWidget *parent ) { m_parent = parent; }
     void setUndoStack( QUndoStack* stack );
+    QPointF dragStartPos() const { return m_startPos; }
+    void resetDragStartPos() { m_startPos = pos(); }
     void setIndex( const int index ) { m_index = index; }
     void setName( const QString& name ) { m_name = name; }
     LayerType getType() const { return m_type; }
@@ -195,6 +210,19 @@ class LayerItem : public QGraphicsPixmapItem
     CageWarpCommand* m_cageWarpCommand = nullptr;
     CageWarpRenderer* m_cageWarpRenderer = nullptr;
 
+    QUndoStack*      m_cageEditStack       = nullptr;
+    QVector<QPointF> m_cageSnapPts;
+    QVector<QPointF> m_cageSnapOrigPts;
+    int              m_cageSnapCols        = 0;
+    int              m_cageSnapRows        = 0;
+    QPointF          m_cageSnapPos;
+    // Initial cage state at start of editing session (for Reset)
+    QVector<QPointF> m_cageInitialPts;
+    QVector<QPointF> m_cageInitialOrigPts;
+    int              m_cageInitialCols     = 0;
+    int              m_cageInitialRows     = 0;
+    QPointF          m_cageInitialPos;
+
     Layer* m_layer = nullptr;
 	
     bool m_nogui = false; 
@@ -206,6 +234,7 @@ class LayerItem : public QGraphicsPixmapItem
     bool m_cageApplied = false;
     bool m_mouseOperationActive = false;
     bool m_isDeleted = false;
+    bool m_isMultiSelected = false;
 	
     QPen m_lassoPen;
     QPen m_selectedPen;

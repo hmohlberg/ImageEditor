@@ -40,6 +40,8 @@
 
 #include <QSslSocket>
 
+#include "../util/GpuInfo.h"
+
 AboutDialog::AboutDialog( QWidget* parent )
     : QDialog(parent)
 {
@@ -110,6 +112,7 @@ QWidget* AboutDialog::buildAboutTab()
         const QString sslVer = QSslSocket::sslLibraryVersionString();
         libInfo += libRow(tr("SSL:"), sslVer.isEmpty() ? tr("not available") : sslVer);
     }
+    libInfo += libRow(tr("GPU:"), GpuInfo::query().htmlSummary());
     libInfo += "</table></center>";
     auto* libLabel = new QLabel(libInfo);
     libLabel->setTextFormat(Qt::RichText);

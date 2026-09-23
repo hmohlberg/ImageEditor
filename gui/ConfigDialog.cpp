@@ -17,6 +17,7 @@
 
 #include "ConfigDialog.h"
 #include "../core/Config.h"
+#include "../util/GpuInfo.h"
 
 #include <QTabWidget>
 #include <QCheckBox>
@@ -170,6 +171,7 @@ QWidget* ConfigDialog::buildCageTab()
     m_claudeQuads = new QCheckBox; f->addRow(tr("Claude quads"),           m_claudeQuads);
     m_cageQuads   = new QCheckBox; f->addRow(tr("Cage quads"),             m_cageQuads);
     m_gpu         = new QCheckBox; f->addRow(tr("Use GPU"),                m_gpu);
+    m_gpuCatmullRom      = new QCheckBox; f->addRow(tr("GPU Catmull-Rom interpolation"), m_gpuCatmullRom);
     m_liveWarp           = new QCheckBox; f->addRow(tr("Live warp (GPU only)"),       m_liveWarp);
     m_noSelfIntersection = new QCheckBox; f->addRow(tr("No self-intersection"),        m_noSelfIntersection);
     m_cpRadius    = new QSpinBox;  m_cpRadius->setRange(1, 32);
@@ -185,6 +187,18 @@ QWidget* ConfigDialog::buildCageTab()
     makeColorRow(tr("Control point color"), m_cpColor,    m_cpColorBtn);
     makeColorRow(tr("Grid color"),           m_gridColor,  m_gridColorBtn);
     makeColorRow(tr("Cage warp color"),      m_cageColor,  m_cageColorBtn);
+    m_cageGridCols = new QSpinBox; m_cageGridCols->setRange(3, 33); m_cageGridCols->setSingleStep(1);
+    f->addRow(tr("Grid columns"), m_cageGridCols);
+    m_squareCageQuads = new QCheckBox; f->addRow(tr("Square quads (auto rows)"), m_squareCageQuads);
+
+    if ( !GpuInfo::query().available ) {
+        const QString tip = tr("No OpenGL context available on this system");
+        for ( QWidget* w : { (QWidget*)m_gpu, (QWidget*)m_gpuCatmullRom, (QWidget*)m_liveWarp } ) {
+            w->setEnabled(false);
+            w->setToolTip(tip);
+        }
+    }
+
     return w;
 }
 
@@ -231,6 +245,18 @@ QWidget* ConfigDialog::buildPolygonTab()
 
     m_polygonWidth = new QSpinBox; m_polygonWidth->setRange(0, 50);
     f->addRow(tr("Polygon width"), m_polygonWidth);
+
+    m_polygonHandleSize = new QSpinBox; m_polygonHandleSize->setRange(1, 64);
+    f->addRow(tr("Handle size"), m_polygonHandleSize);
+
+    m_polygonHandleColor    = new QLineEdit;
+    m_polygonHandleColorBtn = new QPushButton;
+    connect(m_polygonHandleColorBtn, &QPushButton::clicked, this, [this]{ pickColor(m_polygonHandleColor, m_polygonHandleColorBtn); });
+    {
+        QHBoxLayout* hl = new QHBoxLayout; hl->setContentsMargins(0,0,0,0); hl->addWidget(m_polygonHandleColor); hl->addWidget(m_polygonHandleColorBtn);
+        QWidget* cw = new QWidget; cw->setLayout(hl);
+        f->addRow(tr("Handle color"), cw);
+    }
     return w;
 }
 
@@ -294,8 +320,11 @@ void ConfigDialog::loadFromStyle()
     m_claudeQuads->setChecked(s.useClaudeQuads());
     m_cageQuads->setChecked(s.useCageQuads());
     m_gpu->setChecked(s.useGPU());
+    m_gpuCatmullRom->setChecked(s.gpuCatmullRom());
     m_liveWarp->setChecked(s.liveWarp());
     m_noSelfIntersection->setChecked(s.noSelfIntersection());
+    m_cageGridCols->setValue(s.cageGridCols());
+    m_squareCageQuads->setChecked(s.squareCageQuads());
     m_cpRadius->setValue(s.controlPointRadius());
     m_cpColor->setText(s.controlPointColor().name());
     styleColorButton(m_cpColorBtn,   s.controlPointColor().name());
@@ -316,6 +345,9 @@ void ConfigDialog::loadFromStyle()
 
     // Polygon
     m_polygonWidth->setValue(s.polygonWidth());
+    m_polygonHandleSize->setValue(s.polygonHandleSize());
+    m_polygonHandleColor->setText(s.polygonHandleColor().name());
+    styleColorButton(m_polygonHandleColorBtn, s.polygonHandleColor().name());
 
     // ImageLayer
     m_integerMoveOnly->setChecked(s.allowIntegerMoveOnly());
@@ -358,8 +390,11 @@ void ConfigDialog::applyToStyle()
     s.setUseClaudeQuads(m_claudeQuads->isChecked());
     s.setUseCageQuads(m_cageQuads->isChecked());
     s.setUseGPU(m_gpu->isChecked());
+    s.setGpuCatmullRom(m_gpuCatmullRom->isChecked());
     s.setLiveWarp(m_liveWarp->isChecked());
     s.setNoSelfIntersection(m_noSelfIntersection->isChecked());
+    s.setCageGridCols(m_cageGridCols->value());
+    s.setSquareCageQuads(m_squareCageQuads->isChecked());
     s.setControlPointRadius(m_cpRadius->value());
     { QColor c(m_cpColor->text());   if (c.isValid()) s.setControlPointColor(c); }
     { QColor c(m_gridColor->text()); if (c.isValid()) s.setCageGridColor(c); }
@@ -375,6 +410,8 @@ void ConfigDialog::applyToStyle()
 
     // Polygon
     s.setPolygonWidth(m_polygonWidth->value());
+    s.setPolygonHandleSize(m_polygonHandleSize->value());
+    { QColor c(m_polygonHandleColor->text()); if (c.isValid()) s.setPolygonHandleColor(c); }
 
     // ImageLayer
     s.setAllowIntegerMoveOnly(m_integerMoveOnly->isChecked());

@@ -52,6 +52,10 @@ class CageWarpCommand : public AbstractCommand
       m_rows = n;
       m_columns = n;
     }
+    void setNumberOfRowsAndColumns( int cols, int rows ) {
+      m_columns = cols;
+      m_rows    = rows;
+    }
     
     void setImage( const QImage& image ) { m_warpedImage = image; }
     void save_image() {
