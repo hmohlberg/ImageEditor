@@ -21,18 +21,35 @@
 #include <QImage>
 #include "MaskLayer.h"
 
+/**
+ * @brief QGraphicsItem that renders a semantic segmentation mask overlay.
+ *
+ * Holds a cached ARGB image built from the MaskLayer's label data.
+ * Each label index is mapped to a configurable colour; the resulting
+ * image is composited over the scene at a configurable opacity.
+ *
+ * Call maskUpdated() whenever the underlying MaskLayer data changes
+ * to invalidate the cache and schedule a repaint.
+ */
 class MaskLayerItem : public QGraphicsItem {
 
   public:
     explicit MaskLayerItem( MaskLayer* layer );
 
+    /// @brief Sets the overall opacity multiplier (0.0 = invisible, 1.0 = opaque).
     void setOpacityFactor( qreal o );
+    /**
+     * @brief Assigns the colour for each label index.
+     * @param colors Vector of colours; index 0 is the background class.
+     */
     void setLabelColors( const QVector<QColor>& colors );
 
     QRectF boundingRect() const override;
+    /// @brief Returns the display colour for label @p index.
     QColor labelColor( int index ) {
       return m_labelColors.at(index);
     }
+    /// @brief Invalidates the cached image so the overlay is redrawn on the next paint call.
     void maskUpdated();
     
   protected:

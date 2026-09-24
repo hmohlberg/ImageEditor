@@ -23,10 +23,26 @@
 #include <QTransform>
 #include <QGraphicsPixmapItem>
 
+/**
+ * @brief Geometric utility functions used by the warp and polygon subsystems.
+ *
+ * All functions are `inline` and header-only.  They operate on Qt value types
+ * (QPointF, QPolygonF, QTransform) so no additional linking is required.
+ */
 namespace GeometryUtils
 {
-    
-    // >>>
+
+    /**
+     * @brief Computes the inverse bilinear UV coordinates of point P inside a quad.
+     *
+     * Solves the quadratic equation that maps a point in world space back to the
+     * (u, v) unit-square parameterisation of the quad.  Used for cage-warp
+     * coordinate lookup.
+     *
+     * @param P    Point in world (scene) coordinates.
+     * @param quad Four corner points of the quad (bottom-left, bottom-right, top-right, top-left).
+     * @return     UV coordinates in [0, 1] × [0, 1], or (0, 0) on failure.
+     */
     inline QPointF getBilinearUV( const QPointF& P, const QVector<QPointF>& quad ) {
        // Implementiere hier die L?sung der quadratischen Gleichung f?r inverse bilineare Interpolation
        // Alternativ: Nutze QTransform::quadToQuad, um eine lokale Matrix pro Quad zu erstellen.
@@ -64,7 +80,11 @@ namespace GeometryUtils
     }
     
     
-    // >>>
+    /**
+     * @brief Returns a geometry string "WxH+X+Y" for a QGraphicsPixmapItem.
+     * @param item  The graphics item (may be nullptr; returns empty string then).
+     * @return      Geometry string in ImageMagick/X11 format, e.g. "512x256+10+20".
+     */
     inline QString getGeometryString( QGraphicsPixmapItem *item ) {
        if ( !item ) return QString();
        int w = item->pixmap().width();
@@ -74,7 +94,18 @@ namespace GeometryUtils
        return QString("%1x%2+%3+%4").arg(w).arg(h).arg(x).arg(y);
     }
     
-    // >>>
+    /**
+     * @brief Maps a point from @p dstQuad space to @p srcQuad space via bilinear interpolation.
+     *
+     * Solves the inverse bilinear problem in @p dstQuad, then evaluates the
+     * forward bilinear map in @p srcQuad.  Used to transfer pixel coordinates
+     * between the warped and unwarped image domains.
+     *
+     * @param p       Point in destination quad space.
+     * @param dstQuad Four corners of the destination quad.
+     * @param srcQuad Four corners of the source quad (same topology as dstQuad).
+     * @return        Corresponding point in source quad space.
+     */
     inline QPointF getBilinearCoords(const QPointF &p, const QVector<QPointF> &dstQuad, const QVector<QPointF> &srcQuad) {
        // Relative Koordinaten u, v im Einheitsquadrat berechnen (0 bis 1)
        // Wir nutzen hier die dstQuad Eckpunkte: p00, p10, p11, p01
@@ -113,7 +144,16 @@ namespace GeometryUtils
        return res;
     }
     
-    // Calculates a 3x3 homogeneous transformation matrix that maps quadSrc to quadDst.
+    /**
+     * @brief Computes the projective transform that maps @p src to @p dst.
+     *
+     * Wraps QTransform::quadToQuad and falls back to a least-squares affine
+     * fit when the projective solve fails (e.g. degenerate quads).
+     *
+     * @param src Four source corner points.
+     * @param dst Four destination corner points.
+     * @return    3×3 homogeneous QTransform, or the identity on failure.
+     */
     inline QTransform quadToQuad( const QPolygonF& src, const QPolygonF& dst )
     {
         if ( src.size() != 4 || dst.size() != 4 ) {
@@ -179,7 +219,19 @@ namespace GeometryUtils
         return t;
     }
     
-    // Barycentric mapping of a pixel within a triangle
+    /**
+     * @brief Maps a point from a source triangle (or quad) to the corresponding destination.
+     *
+     * For triangles (size == 3): uses standard barycentric coordinates.
+     * For quads (size == 4): uses iterative Newton–Raphson bilinear inversion.
+     *
+     * @param p      Point in source space.
+     * @param triSrc Source triangle/quad vertices.
+     * @param triDst Destination triangle/quad vertices (same topology).
+     * @param count  Incremented by the number of Newton iterations used (quads only).
+     * @param Q      Initial guess for the Newton solver; updated in-place.
+     * @return       Mapped point in destination space.
+     */
     inline QPointF barycentric( const QPointF& p, const QVector<QPointF>& triSrc, const QVector<QPointF>& triDst, int * count, QPointF & Q )
     {
        // Q_ASSERT(triSrc.size() == 3 && triDst.size() == 3);
@@ -234,11 +286,16 @@ namespace GeometryUtils
 
     }
 
-    // Checks whether a voxel lies within a triangle.
-    // Check all four corners of the voxel inside the triangle to include
-    // borders. So we check for p+(0,0), p+(1,0), p+(0,1), p+(1,1) in voxel 
-    // coords.
-
+    /**
+     * @brief Tests whether a unit-voxel at @p p overlaps a triangle.
+     *
+     * Checks all four corners of the 1×1 pixel cell (p, p+(1,0), p+(0,1),
+     * p+(1,1)) so that border voxels are included.
+     *
+     * @param p   Top-left corner of the voxel in scene coordinates.
+     * @param tri Three triangle vertices.
+     * @return    true if at least one corner of the voxel is inside the triangle.
+     */
     inline bool pointInTriangle( const QPointF& p, const QVector<QPointF>& tri ) {
 
        QPointF a = tri[0], b = tri[1], c = tri[2];
@@ -282,6 +339,7 @@ namespace GeometryUtils
        return false;
     }
     
+    /// @brief Returns true if the unit-voxel at @p p overlaps the convex quad (split into two triangles).
     inline bool pointInQuad(const QPointF &p, const QVector<QPointF> &quad) {
        if ( quad.size() < 4 ) return false;
        QVector<QPointF> tri1 = {quad[0], quad[1], quad[2]};
@@ -289,8 +347,12 @@ namespace GeometryUtils
        return pointInTriangle(p, tri1) || pointInTriangle(p, tri2);
     }
     
+    /**
+     * @brief Returns the affine transform that maps triangle (a1,b1,c1) onto (a2,b2,c2).
+     * @return QTransform encoding the affine map, computed as T2 * inv(T1).
+     */
     inline QTransform triangleToTriangle( const QPointF& a1, const QPointF& b1, const QPointF& c1,
-                                     const QPointF& a2, const QPointF& b2, const QPointF& c2 ) 
+                                     const QPointF& a2, const QPointF& b2, const QPointF& c2 )
     {
             QTransform t1, t2;
             t1.setMatrix( a1.x(), a1.y(), 0,
@@ -302,7 +364,12 @@ namespace GeometryUtils
     	return t2 * t1.inverted();                                 
     }
 
-    // Converts scene coordinates to layer coordinates
+    /**
+     * @brief Converts a point from scene coordinates to layer-local pixel coordinates.
+     * @param scenePos       Point in scene coordinates.
+     * @param layerTransform The cumulative transform of the LayerItem (totalTransform()).
+     * @return               Point in layer pixel coordinates.
+     */
     inline QPointF sceneToLayer( const QPointF& scenePos, const QTransform& layerTransform )
     {
         return layerTransform.inverted().map(scenePos);

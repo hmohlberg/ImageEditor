@@ -1,8 +1,11 @@
 API Reference
 =============
 
-All classes and functions extracted from the source code via Doxygen.
-Undocumented members are included so the full API surface is visible.
+.. toctree::
+   :maxdepth: 1
 
-.. doxygenindex::
-   :project: ImageEditor
+   core
+   layer
+   undo
+   util
+   gui
