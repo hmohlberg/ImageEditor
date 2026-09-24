@@ -1,0 +1,48 @@
+# Doxyfile — minimal configuration; Doxygen uses built-in defaults for all omitted settings.
+
+PROJECT_NAME           = "ImageEditor"
+PROJECT_BRIEF          = "Qt-based multi-layer image editing and annotation tool"
+OUTPUT_DIRECTORY       = doxygen_build
+OUTPUT_LANGUAGE        = English
+
+# ---- Input ---------------------------------------------------------------
+INPUT                  = core gui layer undo util web main.cpp
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h
+EXCLUDE_PATTERNS       = */build/* */.git/*
+
+# ---- Extraction ----------------------------------------------------------
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+
+# ---- Qt / preprocessing --------------------------------------------------
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = Q_OBJECT \
+                         Q_SIGNALS=signals \
+                         Q_SLOTS=slots \
+                         Q_EMIT=emit \
+                         Q_UNUSED(x)=
+
+# ---- Output formats ------------------------------------------------------
+GENERATE_HTML          = NO
+GENERATE_LATEX         = NO
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+XML_PROGRAMLISTING     = NO
+
+# ---- Misc ----------------------------------------------------------------
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+GENERATE_TODOLIST      = YES
+GENERATE_BUGLIST       = YES
+SORT_MEMBER_DOCS       = YES
+
+# ---- Exclusions ----------------------------------------------------------
+# s_brushSvg contains an inline SVG string that confuses Breathe's C++ parser.
+EXCLUDE_SYMBOLS        = s_brushSvg
