@@ -35,7 +35,7 @@ Quick links
    * - :doc:`docks`
      - Layers dock and Undo History dock
    * - :doc:`dialogs`
-     - Open-Image-Dialog und Konfigurations-Dialog
+     - Open Image dialog and Configuration dialog
    * - :doc:`technical`
      - BigTIFF, HDF5, batch processing details
    * - :doc:`api/index`

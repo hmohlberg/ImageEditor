@@ -1,289 +1,286 @@
 .. _dialogs:
 
-Dialoge
+Dialogs
 =======
 
-ImageEditor enthält zwei zentrale Dialoge: den **Open-Image-Dialog** zum Öffnen von Bilddateien
-und den **Konfigurations-Dialog** zum Anpassen aller applikationsweiten Einstellungen.
+ImageEditor provides two main dialogs: the **Open Image dialog** for loading image files,
+and the **Configuration dialog** for adjusting all application-wide settings.
 
-.. contents:: Inhalt
+.. contents:: Contents
    :local:
    :depth: 2
 
 
 .. _open-dialog:
 
-Open-Image-Dialog
+Open Image Dialog
 -----------------
 
-Der Dialog wird über ``File → Open`` (oder die entsprechende Schaltfläche in der Werkzeugleiste)
-geöffnet und ist in drei Reiter unterteilt.
+Opened via ``File → Open`` (or the toolbar button), the dialog is split into three tabs.
 
-Reiter: Open from local disk
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Tab: Open from local disk
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. figure:: _static/open_local.png
    :align: center
    :alt: Open from local disk
    :width: 95%
 
-   Reiter *Open from local disk*: eingebetteter Datei-Browser.
+   *Open from local disk* tab: embedded file browser.
 
-Zeigt einen nativen Qt-Dateidialog (``DontUseNativeDialog``).
-Ein Doppelklick auf eine Datei schließt den Dialog und öffnet die Datei direkt.
+Shows a Qt file dialog (``DontUseNativeDialog``).
+Double-clicking a file accepts the selection and opens the image immediately.
 
-Unterstützte Dateiformate:
+Supported file formats:
 
 .. list-table::
    :widths: 20 80
    :header-rows: 1
 
    * - Format
-     - Beschreibung
+     - Description
    * - PNG, JPG, BMP
-     - Gängige Rasterformate
+     - Common raster formats
    * - TIF / TIFF
-     - Tagged Image File (inkl. BigTIFF)
+     - Tagged Image File (including BigTIFF)
    * - H5 / HDF5
-     - Hierarchical Data Format – öffnet einen weiteren HDF5-Browser-Dialog
+     - Hierarchical Data Format – opens an additional HDF5 browser dialog
    * - .list
-     - Textdatei mit Pfadliste (→ Reiter *Open from filelist*)
+     - Text file containing a list of image paths (→ *Open from filelist* tab)
 
-Reiter: Open from web
-~~~~~~~~~~~~~~~~~~~~~~
+Tab: Open from web
+~~~~~~~~~~~~~~~~~~~
 
 .. figure:: _static/open_web.png
    :align: center
    :alt: Open from web
    :width: 95%
 
-   Reiter *Open from web*: Bild per URL laden.
+   *Open from web* tab: load an image directly from a URL.
 
-Ermöglicht das direkte Laden eines Bildes über eine URL.
-Unterstützte Protokolle:
+Loads an image directly from a URL.  Supported protocols:
 
-* ``http://`` / ``https://`` – öffnet direkt eine Bilddatei
-* ``github://`` – Kurzform für Raw-GitHub-Inhalte; die Basis-URL wird im
-  :ref:`config-main`-Reiter des Konfigurations-Dialogs festgelegt.
+* ``http://`` / ``https://`` – direct link to an image file
+* ``github://`` – shorthand for raw GitHub content; the base URL is configured in the
+  :ref:`config-main` tab of the Configuration dialog.
 
-Reiter: Open from filelist
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Tab: Open from filelist
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. figure:: _static/open_filelist.png
    :align: center
    :alt: Open from filelist
    :width: 95%
 
-   Reiter *Open from filelist*: Liste von Bilddateien.
+   *Open from filelist* tab: image file list.
 
-Lädt eine ``.list``-Textdatei, die zeilenweise ``Titel\tDateipfad``-Einträge enthält.
-Nach dem Laden werden alle Einträge in einer zweispaltigen Tabelle (**Title** / **File**)
-angezeigt. Ein Doppelklick auf eine Zeile öffnet das entsprechende Bild.
+Loads a ``.list`` text file containing ``Title\tFilepath`` entries, one per line.
+All entries are displayed in a two-column table (**Title** / **File**).
+Double-clicking a row opens the corresponding image.
 
-Über **Browse list file** kann eine ``.list``-Datei ausgewählt werden.
+Use **Browse list file** to select a ``.list`` file from disk.
 
 
 .. _config-dialog:
 
-Konfigurations-Dialog
----------------------
+Configuration Dialog
+--------------------
 
-Geöffnet über ``Edit → Config``.  Der Dialog besitzt sechs Reiter und drei
-globale Schaltflächen:
+Opened via ``Edit → Config``.  The dialog has six tabs and four global buttons:
 
 .. list-table::
    :widths: 20 80
    :header-rows: 1
 
-   * - Schaltfläche
-     - Funktion
+   * - Button
+     - Action
    * - **Load**
-     - Einstellungen aus einer ``.ini``-Datei laden
+     - Load settings from an ``.ini`` file
    * - **Save As**
-     - Aktuelle Einstellungen in eine ``.ini``-Datei speichern
+     - Save current settings to an ``.ini`` file
    * - **Default**
-     - Alle Einstellungen auf die Standardwerte zurücksetzen
+     - Reset all settings to their default values
    * - **Close**
-     - Dialog schließen (Änderungen werden sofort wirksam)
+     - Close the dialog (changes take effect immediately)
 
 
 .. _config-main:
 
-Reiter: Main
-~~~~~~~~~~~~~
+Tab: Main
+~~~~~~~~~~
 
 .. figure:: _static/config_main.png
    :align: center
-   :alt: Config – Main-Reiter
+   :alt: Config – Main tab
    :width: 95%
 
-   Reiter *Main*: allgemeine Anwendungseinstellungen.
+   *Main* tab: general application settings.
 
 .. list-table::
    :widths: 30 70
    :header-rows: 1
 
    * - Option
-     - Beschreibung
+     - Description
    * - **Enable logging**
-     - Aktiviert Debug-Ausgaben in der Konsole.
+     - Enables debug output to the console.
    * - **Window size**
-     - Anfangsgröße des Hauptfensters: ``default``, ``maximum``, ``fullscreen``, ``mni``.
+     - Initial window size at startup: ``default``, ``maximum``, ``fullscreen``, ``mni``.
    * - **Perspective mode**
-     - Ermöglicht perspektivische Transformationen für Bildebenen.
+     - Enables perspective transformation mode for image layers.
    * - **Binary masking**
-     - Schränkt Maskenwerte auf 0 oder 1 ein.
+     - Restricts mask values to 0 or 1.
    * - **Crosshair**
-     - Zeigt ein Fadenkreuz-Overlay an der Cursorposition.
+     - Shows a crosshair overlay at the cursor position.
    * - **Show docks at startup**
-     - Blendet alle Dock-Fenster beim Start automatisch ein.
+     - Opens all dock panels automatically when the application starts.
    * - **Cursor size** (0–128)
-     - Radius des Pinsel-Vorschaukreises in Pixeln.
+     - Radius of the brush preview circle in pixels.
    * - **Cursor fill color**
-     - Füllfarbe des Cursor-Kreises.
+     - Fill color of the brush preview cursor circle.
    * - **Cursor border color**
-     - Randfarbe des Cursor-Kreises.
+     - Border color of the brush preview cursor circle.
    * - **GitHub base URL**
-     - Basis-URL für das ``github://``-Protokoll beim Laden von Dateien aus GitHub.
+     - Base URL used to resolve the ``github://`` protocol when loading files from GitHub.
 
 
-Reiter: Cage
-~~~~~~~~~~~~~
+Tab: Cage
+~~~~~~~~~~
 
 .. figure:: _static/config_cage.png
    :align: center
-   :alt: Config – Cage-Reiter
+   :alt: Config – Cage tab
    :width: 95%
 
-   Reiter *Cage*: Cage-Warp-Einstellungen.
+   *Cage* tab: cage warp settings.
 
-Steuert alle Parameter des **Cage-Warp-Werkzeugs** (Käfig-Verzerrung):
+Controls all parameters of the **Cage Warp** tool:
 
 .. list-table::
    :widths: 35 65
    :header-rows: 1
 
    * - Option
-     - Beschreibung
+     - Description
    * - **Claude quads**
-     - Aktiviert den Claude-Quad-Subdivisions-Algorithmus.
+     - Uses Claude's quad subdivision algorithm for cage warping.
    * - **Cage quads**
-     - Verwendet Quad-basierte Käfigsteuerung statt Triangulierung.
+     - Activates quad-based cage control instead of triangulation.
    * - **Use GPU**
-     - GPU-beschleunigte Cage-Warp-Berechnung via OpenGL.
+     - Enables GPU-accelerated cage warp rendering via OpenGL.
    * - **GPU Catmull-Rom interpolation**
-     - Catmull-Rom-Spline-Interpolation auf der GPU.
-   * - **Live warp** *(nur GPU)*
-     - Aktualisiert die Verzerrung interaktiv beim Ziehen von Kontrollpunkten.
+     - Uses Catmull-Rom spline interpolation on the GPU.
+   * - **Live warp** *(GPU only)*
+     - Updates the warp interactively while dragging control points.
    * - **No self-intersection**
-     - Verhindert Überkreuzungen von Käfig-Kontrollpunkten.
+     - Prevents cage control points from crossing each other.
    * - **Control point radius** (1–32 px)
-     - Darstellungsradius der Kontrollpunkt-Handles.
+     - Display radius of cage control point handles.
    * - **Control point color**
-     - Farbe der Kontrollpunkt-Handles.
+     - Color of the cage control point handles.
    * - **Grid color**
-     - Farbe der Käfig-Gitterlinien.
+     - Color of the cage grid lines.
    * - **Cage warp color**
-     - Farbe des Käfig-Rahmens.
+     - Color of the cage warp boundary outline.
    * - **Grid columns** (3–33)
-     - Anzahl der Spalten im Käfig-Kontrollgitter.
+     - Number of columns in the cage control grid.
    * - **Square quads**
-     - Setzt die Zeilenanzahl automatisch so, dass Quads annähernd quadratisch sind.
+     - Automatically sets the number of rows so that each cage quad is approximately square.
 
 
-Reiter: Scale
-~~~~~~~~~~~~~
+Tab: Scale
+~~~~~~~~~~~
 
 .. figure:: _static/config_scale.png
    :align: center
-   :alt: Config – Scale-Reiter
+   :alt: Config – Scale tab
    :width: 95%
 
-   Reiter *Scale*: Einstellungen für Skalierungs- und Rotations-Handles.
+   *Scale* tab: scale and rotation handle appearance.
 
 .. list-table::
    :widths: 30 70
    :header-rows: 1
 
    * - Option
-     - Beschreibung
+     - Description
    * - **Handle color**
-     - Farbe der Skalierungs- und Rotations-Handles.
+     - Color of the scale and rotation transform handles.
    * - **Handle size** (1–64 px)
-     - Größe der Transform-Handles in Pixeln.
+     - Size of the transform handles in pixels.
 
 
-Reiter: Lasso
-~~~~~~~~~~~~~
+Tab: Lasso
+~~~~~~~~~~~
 
 .. figure:: _static/config_lasso.png
    :align: center
-   :alt: Config – Lasso-Reiter
+   :alt: Config – Lasso tab
    :width: 95%
 
-   Reiter *Lasso*: Einstellungen für das Freihand-Auswahlwerkzeug.
+   *Lasso* tab: freehand selection tool appearance.
 
 .. list-table::
    :widths: 30 70
    :header-rows: 1
 
    * - Option
-     - Beschreibung
+     - Description
    * - **Lasso color**
-     - Farbe der Lasso-Auswahlkontur.
+     - Color of the freehand lasso selection outline.
    * - **Lasso width** (0–20 px)
-     - Linienbreite der Lasso-Kontur in Pixeln.
+     - Line width of the lasso selection outline in pixels.
 
 
-Reiter: Polygon
-~~~~~~~~~~~~~~~~
+Tab: Polygon
+~~~~~~~~~~~~~
 
 .. figure:: _static/config_polygon.png
    :align: center
-   :alt: Config – Polygon-Reiter
+   :alt: Config – Polygon tab
    :width: 95%
 
-   Reiter *Polygon*: Einstellungen für das Polygon-Werkzeug.
+   *Polygon* tab: polygon tool appearance.
 
 .. list-table::
    :widths: 30 70
    :header-rows: 1
 
    * - Option
-     - Beschreibung
+     - Description
    * - **Polygon width** (0–50 px)
-     - Linienbreite der Polygon-Kontur.
+     - Line width of the polygon outline.
    * - **Handle size** (1–64 px)
-     - Größe der Vertex-Handles in Pixeln.
+     - Size of the vertex handles in pixels.
    * - **Handle color**
-     - Farbe der Polygon-Vertex-Handles.
+     - Color of the polygon vertex handles.
 
 
-Reiter: ImageLayer
-~~~~~~~~~~~~~~~~~~
+Tab: ImageLayer
+~~~~~~~~~~~~~~~~
 
 .. figure:: _static/config_imagelayer.png
    :align: center
-   :alt: Config – ImageLayer-Reiter
+   :alt: Config – ImageLayer tab
    :width: 95%
 
-   Reiter *ImageLayer*: Einstellungen für Bildebenen-Transformationen.
+   *ImageLayer* tab: image layer transformation settings.
 
 .. list-table::
    :widths: 35 65
    :header-rows: 1
 
    * - Option
-     - Beschreibung
+     - Description
    * - **Integer move only**
-     - Beschränkt das Verschieben von Ebenen auf ganzzahlige Pixelpositionen.
+     - Restricts layer movement to whole pixel positions.
    * - **Overlay opacity** (0.0–1.0)
-     - Deckkraft des halbtransparenten Overlays beim Ctrl-Verschieben einer Ebene.
+     - Opacity of the semi-transparent overlay shown when Ctrl-dragging a layer.
    * - **Rotation single step** (0.01°–90°)
-     - Drehwinkel pro Schritt beim Rotieren mit dem Rotations-Handle.
+     - Angle increment per step when rotating a layer with the rotation handle.
    * - **Handle radius** (1.0–50.0 px)
-     - Radius der Rotations- und Skalierungs-Handles.
+     - Radius of the rotation and scale transform handles.
    * - **Transformation mode**
-     - Rendering-Qualität bei Transformationen: ``fast`` oder ``smooth``.
+     - Rendering quality during transformations: ``fast`` or ``smooth``.
    * - **Interpolation mode**
-     - Pixelinterpolation beim Skalieren/Rotieren: ``nearest``, ``linear``, ``bicubic``.
+     - Pixel interpolation used when scaling or rotating layers: ``nearest``, ``linear``, ``bicubic``.
