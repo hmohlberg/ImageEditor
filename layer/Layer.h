@@ -49,7 +49,8 @@ class Layer {
     bool m_active = true;
     bool m_binaryMask = false;
     bool m_deleted = false;
-    
+    int  m_srcLayerId = -1;  // >= 0 if this layer is a duplicate of another layer
+
     QRect m_bounds;
     QGraphicsItem* m_item = nullptr;
     

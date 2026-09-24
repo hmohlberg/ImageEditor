@@ -59,7 +59,7 @@ void EditablePolygonCommand::printMessage( bool isUndo )
     if ( isUndo ) {
      IMainSystem::instance()->showMessage(QString("Deleted polygon %1").arg(m_name)); 
     } else {
-     IMainSystem::instance()->showMessage(QString("Created polygon %1 with %2 points").arg(m_name).arg(m_polygon.count()));
+     IMainSystem::instance()->showMessage(QString("Created polygon %1 with %2 points. Press \"Create new polygon layer\" to create a new layer image from the polygon.").arg(m_name).arg(m_polygon.count()));
     }
   }
 }

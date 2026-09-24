@@ -69,6 +69,7 @@ class EditablePolygon : public QObject
     QRectF boundingRect() const;
     void setVisible( bool isVisible );
     void printself();
+    QString infoHtml(double pixelScaleUm) const;
     
     // --- JSON ---
     void undoStackFromJson( const QJsonArray& arr );

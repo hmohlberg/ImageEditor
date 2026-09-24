@@ -202,7 +202,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     QAction* m_crosshairAction = nullptr;
     QAction* m_undoAction = nullptr;
     QAction* m_redoAction = nullptr;
-    QAction* m_paintAction = nullptr;
+    QAction* m_rubberAction = nullptr;
     QAction* m_showDockWidgets = nullptr;
     QAction* m_lassoAction = nullptr;
     QAction* m_polygonAction = nullptr;

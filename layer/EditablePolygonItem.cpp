@@ -28,6 +28,11 @@
 #include <QPainter>
 #include <QGraphicsSceneMouseEvent>
 #include <QtMath>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QLabel>
+#include <QVBoxLayout>
+#include "../core/Config.h"
 
 #include <iostream>
 
@@ -245,7 +250,19 @@ void EditablePolygonItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* e )
      e->accept();
      return;
     } else if ( mode == LayerItem::OperationMode::Info ) {
-     m_poly->printself();
+     const double scale = EditorStyle::instance().pixelScale();
+     QDialog dlg;
+     dlg.setWindowTitle(QString("Polygon information — %1").arg(m_poly->name()));
+     dlg.setMinimumWidth(440);
+     auto* lay  = new QVBoxLayout(&dlg);
+     auto* lbl  = new QLabel(m_poly->infoHtml(scale), &dlg);
+     lbl->setWordWrap(true);
+     auto* bbox = new QDialogButtonBox(QDialogButtonBox::Ok, &dlg);
+     QObject::connect(bbox, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+     lay->addWidget(lbl);
+     lay->addWidget(bbox);
+     dlg.exec();
+     e->accept();
      return;
     }
     QGraphicsObject::mouseDoubleClickEvent(e);

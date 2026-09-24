@@ -40,6 +40,7 @@ class DuplicateLayerCommand : public AbstractCommand
     void redo() override;
 
     QJsonObject toJson() const override;
+    static DuplicateLayerCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers );
 
  private:
 

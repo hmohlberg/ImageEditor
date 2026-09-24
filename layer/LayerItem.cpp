@@ -521,6 +521,9 @@ void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option
 {
   {
     QGraphicsPixmapItem::paint(painter,option,widget);
+    if ( m_redOverlay && !m_redOverlayPixmap.isNull() ) {
+      painter->drawPixmap(QPointF(0, 0), m_redOverlayPixmap);
+    }
     if ( m_operationMode == OperationMode::Perspective ) {
       return;
     }
@@ -1325,10 +1328,17 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
         // Ctrl: transparent red overlay (see-through mode)
         if ( event->modifiers() & Qt::ControlModifier ) {
           setOpacity(EditorStyle::instance().layerOverlayOpacity());
-          QGraphicsColorizeEffect* colorEffect = new QGraphicsColorizeEffect();
-          colorEffect->setColor(Qt::red);
-          colorEffect->setStrength(1.0);
-          setGraphicsEffect(colorEffect);
+          // Build alpha-masked red overlay once (reused every frame during drag)
+          const QPixmap& px = pixmap();
+          if ( !px.isNull() ) {
+            m_redOverlayPixmap = QPixmap(px.size());
+            m_redOverlayPixmap.fill(QColor(255, 0, 0, 100));
+            QPainter op(&m_redOverlayPixmap);
+            op.setCompositionMode(QPainter::CompositionMode_DestinationIn);
+            op.drawPixmap(0, 0, px);
+          }
+          m_redOverlay = true;
+          update();
         }
       }
     }
@@ -1371,7 +1381,11 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
   qCDebug(logEditor) << "LayerItem::mouseReleaseEvent(): index =" << m_index << ", name =" << name();
   {
     setOpacity(1.0);
-    setGraphicsEffect(nullptr);
+    if ( m_redOverlay ) {
+      m_redOverlay = false;
+      m_redOverlayPixmap = QPixmap();
+      update();
+    }
 
     if ( !isSelected() ) return;
     

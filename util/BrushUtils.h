@@ -35,7 +35,7 @@ namespace BrushUtils
     const int y0 = std::max(0, cy - radius);
     const int y1 = std::min(img.height() - 1, cy + radius);
     // 
-    if ( img.format() == QImage::Format_RGB32 ) {
+    if ( img.format() == QImage::Format_RGB32 || img.format() == QImage::Format_ARGB32 ) {
       for ( int y = y0; y <= y1; ++y ) {
         QRgb* line = reinterpret_cast<QRgb*>(img.scanLine(y));
         for ( int x = x0; x <= x1; ++x ) {

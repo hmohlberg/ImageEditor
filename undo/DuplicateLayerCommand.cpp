@@ -16,6 +16,7 @@
 */
 
 #include "DuplicateLayerCommand.h"
+#include "AbstractCommand.h"
 #include "../core/Config.h"
 
 DuplicateLayerCommand::DuplicateLayerCommand( LayerItem* duplicate, const int idx, QUndoCommand* parent )
@@ -43,7 +44,11 @@ void DuplicateLayerCommand::undo()
 
 void DuplicateLayerCommand::redo()
 {
-    if ( m_silent || !m_layer ) return;
+    if ( m_silent ) {
+        m_silent = false;
+        return;
+    }
+    if ( !m_layer ) return;
     m_layer->setVisible(true);
     m_layer->setInActive(false);
 }
@@ -54,4 +59,17 @@ QJsonObject DuplicateLayerCommand::toJson() const
     obj["type"]    = type();
     obj["layerId"] = m_layerId;
     return obj;
+}
+
+DuplicateLayerCommand* DuplicateLayerCommand::fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers )
+{
+    const int layerId = obj["layerId"].toInt(-1);
+    LayerItem* layer = AbstractCommand::getLayerItem(layers, layerId);
+    if ( !layer ) {
+        qWarning() << "DuplicateLayerCommand::fromJson(): Layer not found:" << layerId;
+        return nullptr;
+    }
+    auto* cmd = new DuplicateLayerCommand(layer, layerId);
+    cmd->setSilent(true);
+    return cmd;
 }

@@ -235,6 +235,8 @@ class LayerItem : public QGraphicsPixmapItem
     bool m_mouseOperationActive = false;
     bool m_isDeleted = false;
     bool m_isMultiSelected = false;
+    bool m_redOverlay = false;
+    QPixmap m_redOverlayPixmap;
 	
     QPen m_lassoPen;
     QPen m_selectedPen;

@@ -127,37 +127,65 @@ QWidget* ConfigDialog::buildMainTab()
     QFormLayout* f = new QFormLayout(w);
     f->setRowWrapPolicy(QFormLayout::WrapLongRows);
 
-    m_enableLogging = new QCheckBox; f->addRow(tr("Enable logging"),     m_enableLogging);
-    m_windowSize    = new QComboBox; m_windowSize->addItems({"default","maximum","fullscreen","mni"});
-    f->addRow(tr("Window size"), m_windowSize);
-    m_perspective   = new QCheckBox; f->addRow(tr("Perspective mode"),  m_perspective);
-    m_binaryMasking = new QCheckBox; f->addRow(tr("Binary masking"),    m_binaryMasking);
-    m_crosshair     = new QCheckBox; f->addRow(tr("Crosshair"),         m_crosshair);
-    m_showDocksAtStartup = new QCheckBox; f->addRow(tr("Show docks at startup"), m_showDocksAtStartup);
-    m_cursorSize    = new QSpinBox;  m_cursorSize->setRange(0, 128);
-    f->addRow(tr("Cursor size"), m_cursorSize);
+    auto row = [&](const QString& label, QWidget* widget, const QString& tip) {
+        auto* lbl = new QLabel(label);
+        lbl->setToolTip(tip);
+        widget->setToolTip(tip);
+        f->addRow(lbl, widget);
+    };
+
+    m_enableLogging = new QCheckBox;
+    row(tr("Enable logging"), m_enableLogging,
+        tr("Enables debug logging output to the console."));
+
+    m_windowSize = new QComboBox;
+    m_windowSize->addItems({"default","maximum","fullscreen","mni"});
+    row(tr("Window size"), m_windowSize,
+        tr("Initial window size at startup: default, maximum, fullscreen, or predefined mni layout."));
+
+    m_perspective = new QCheckBox;
+    row(tr("Perspective mode"), m_perspective,
+        tr("Enables perspective transformation mode for image layers."));
+
+    m_binaryMasking = new QCheckBox;
+    row(tr("Binary masking"), m_binaryMasking,
+        tr("Restricts mask values to 0 or 1 (binary on/off) instead of continuous values."));
+
+    m_crosshair = new QCheckBox;
+    row(tr("Crosshair"), m_crosshair,
+        tr("Shows a crosshair overlay at the cursor position in the image view."));
+
+    m_showDocksAtStartup = new QCheckBox;
+    row(tr("Show docks at startup"), m_showDocksAtStartup,
+        tr("Show all dock panels automatically when the application starts."));
+
+    m_cursorSize = new QSpinBox; m_cursorSize->setRange(0, 128);
+    row(tr("Cursor size"), m_cursorSize,
+        tr("Radius of the brush preview circle displayed at the cursor position, in pixels."));
 
     // color rows
-    m_cursorFillColor   = new QLineEdit;
-    m_cursorFillBtn     = new QPushButton;
+    m_cursorFillColor = new QLineEdit;
+    m_cursorFillBtn   = new QPushButton;
     connect(m_cursorFillBtn, &QPushButton::clicked, this, [this]{ pickColor(m_cursorFillColor, m_cursorFillBtn); });
     {
         QHBoxLayout* hl = new QHBoxLayout; hl->setContentsMargins(0,0,0,0); hl->addWidget(m_cursorFillColor); hl->addWidget(m_cursorFillBtn);
         QWidget* cw = new QWidget; cw->setLayout(hl);
-        f->addRow(tr("Cursor fill color"), cw);
+        row(tr("Cursor fill color"), cw, tr("Fill color of the brush preview cursor circle."));
     }
+
     m_cursorBorderColor = new QLineEdit;
     m_cursorBorderBtn   = new QPushButton;
     connect(m_cursorBorderBtn, &QPushButton::clicked, this, [this]{ pickColor(m_cursorBorderColor, m_cursorBorderBtn); });
     {
         QHBoxLayout* hl = new QHBoxLayout; hl->setContentsMargins(0,0,0,0); hl->addWidget(m_cursorBorderColor); hl->addWidget(m_cursorBorderBtn);
         QWidget* cw = new QWidget; cw->setLayout(hl);
-        f->addRow(tr("Cursor border color"), cw);
+        row(tr("Cursor border color"), cw, tr("Border color of the brush preview cursor circle."));
     }
 
     m_githubBaseUrl = new QLineEdit;
     m_githubBaseUrl->setPlaceholderText("https://raw.githubusercontent.com/...");
-    f->addRow(tr("GitHub base URL (github://)"), m_githubBaseUrl);
+    row(tr("GitHub base URL (github://)"), m_githubBaseUrl,
+        tr("Base URL used to resolve github:// protocol paths when loading remote resources."));
 
     return w;
 }
@@ -168,34 +196,68 @@ QWidget* ConfigDialog::buildCageTab()
     QFormLayout* f = new QFormLayout(w);
     f->setRowWrapPolicy(QFormLayout::WrapLongRows);
 
-    m_claudeQuads = new QCheckBox; f->addRow(tr("Claude quads"),           m_claudeQuads);
-    m_cageQuads   = new QCheckBox; f->addRow(tr("Cage quads"),             m_cageQuads);
-    m_gpu         = new QCheckBox; f->addRow(tr("Use GPU"),                m_gpu);
-    m_gpuCatmullRom      = new QCheckBox; f->addRow(tr("GPU Catmull-Rom interpolation"), m_gpuCatmullRom);
-    m_liveWarp           = new QCheckBox; f->addRow(tr("Live warp (GPU only)"),       m_liveWarp);
-    m_noSelfIntersection = new QCheckBox; f->addRow(tr("No self-intersection"),        m_noSelfIntersection);
-    m_cpRadius    = new QSpinBox;  m_cpRadius->setRange(1, 32);
-    f->addRow(tr("Control point radius"), m_cpRadius);
+    auto row = [&](const QString& label, QWidget* widget, const QString& tip) {
+        auto* lbl = new QLabel(label);
+        lbl->setToolTip(tip);
+        widget->setToolTip(tip);
+        f->addRow(lbl, widget);
+    };
 
-    auto makeColorRow = [&](const QString& label, QLineEdit*& edit, QPushButton*& btn) {
+    m_claudeQuads = new QCheckBox;
+    row(tr("Claude quads"), m_claudeQuads,
+        tr("Uses Claude's quad subdivision algorithm for cage warping."));
+
+    m_cageQuads = new QCheckBox;
+    row(tr("Cage quads"), m_cageQuads,
+        tr("Activates quad-based cage control instead of triangulation."));
+
+    m_gpu = new QCheckBox;
+    row(tr("Use GPU"), m_gpu,
+        tr("Enables GPU-accelerated cage warp rendering via OpenGL."));
+
+    m_gpuCatmullRom = new QCheckBox;
+    row(tr("GPU Catmull-Rom interpolation"), m_gpuCatmullRom,
+        tr("Uses Catmull-Rom spline interpolation on the GPU for smoother warp results."));
+
+    m_liveWarp = new QCheckBox;
+    row(tr("Live warp (GPU only)"), m_liveWarp,
+        tr("Updates the warp result interactively while dragging control points (requires GPU)."));
+
+    m_noSelfIntersection = new QCheckBox;
+    row(tr("No self-intersection"), m_noSelfIntersection,
+        tr("Prevents cage control points from crossing each other during warping."));
+
+    m_cpRadius = new QSpinBox; m_cpRadius->setRange(1, 32);
+    row(tr("Control point radius"), m_cpRadius,
+        tr("Display radius of cage control point handles in pixels."));
+
+    auto makeColorRow = [&](const QString& label, const QString& tip, QLineEdit*& edit, QPushButton*& btn) {
         edit = new QLineEdit; btn = new QPushButton;
         connect(btn, &QPushButton::clicked, this, [this, edit, btn]{ pickColor(edit, btn); });
         QHBoxLayout* hl = new QHBoxLayout; hl->setContentsMargins(0,0,0,0); hl->addWidget(edit); hl->addWidget(btn);
         QWidget* cw = new QWidget; cw->setLayout(hl);
-        f->addRow(label, cw);
+        row(label, cw, tip);
     };
-    makeColorRow(tr("Control point color"), m_cpColor,    m_cpColorBtn);
-    makeColorRow(tr("Grid color"),           m_gridColor,  m_gridColorBtn);
-    makeColorRow(tr("Cage warp color"),      m_cageColor,  m_cageColorBtn);
+    makeColorRow(tr("Control point color"), tr("Color used to draw cage control point handles."),
+                 m_cpColor, m_cpColorBtn);
+    makeColorRow(tr("Grid color"), tr("Color of the cage grid lines."),
+                 m_gridColor, m_gridColorBtn);
+    makeColorRow(tr("Cage warp color"), tr("Color of the cage warp boundary outline."),
+                 m_cageColor, m_cageColorBtn);
+
     m_cageGridCols = new QSpinBox; m_cageGridCols->setRange(3, 33); m_cageGridCols->setSingleStep(1);
-    f->addRow(tr("Grid columns"), m_cageGridCols);
-    m_squareCageQuads = new QCheckBox; f->addRow(tr("Square quads (auto rows)"), m_squareCageQuads);
+    row(tr("Grid columns"), m_cageGridCols,
+        tr("Number of columns in the cage control grid."));
+
+    m_squareCageQuads = new QCheckBox;
+    row(tr("Square quads (auto rows)"), m_squareCageQuads,
+        tr("Automatically sets the number of rows so each cage quad is approximately square."));
 
     if ( !GpuInfo::query().available ) {
-        const QString tip = tr("No OpenGL context available on this system");
-        for ( QWidget* w : { (QWidget*)m_gpu, (QWidget*)m_gpuCatmullRom, (QWidget*)m_liveWarp } ) {
-            w->setEnabled(false);
-            w->setToolTip(tip);
+        const QString noGpuTip = tr("No OpenGL context available on this system");
+        for ( QWidget* gw : { (QWidget*)m_gpu, (QWidget*)m_gpuCatmullRom, (QWidget*)m_liveWarp } ) {
+            gw->setEnabled(false);
+            gw->setToolTip(noGpuTip);
         }
     }
 
@@ -207,16 +269,26 @@ QWidget* ConfigDialog::buildScaleTab()
     QWidget* w = new QWidget;
     QFormLayout* f = new QFormLayout(w);
 
-    m_handleColor  = new QLineEdit;
+    auto row = [&](const QString& label, QWidget* widget, const QString& tip) {
+        auto* lbl = new QLabel(label);
+        lbl->setToolTip(tip);
+        widget->setToolTip(tip);
+        f->addRow(lbl, widget);
+    };
+
+    m_handleColor    = new QLineEdit;
     m_handleColorBtn = new QPushButton;
     connect(m_handleColorBtn, &QPushButton::clicked, this, [this]{ pickColor(m_handleColor, m_handleColorBtn); });
     {
         QHBoxLayout* hl = new QHBoxLayout; hl->setContentsMargins(0,0,0,0); hl->addWidget(m_handleColor); hl->addWidget(m_handleColorBtn);
         QWidget* cw = new QWidget; cw->setLayout(hl);
-        f->addRow(tr("Handle color"), cw);
+        row(tr("Handle color"), cw, tr("Color of the scale and rotate transform handles."));
     }
+
     m_handleSize = new QSpinBox; m_handleSize->setRange(1, 64);
-    f->addRow(tr("Handle size"), m_handleSize);
+    row(tr("Handle size"), m_handleSize,
+        tr("Size of the scale and rotate transform handles in pixels."));
+
     return w;
 }
 
@@ -225,16 +297,26 @@ QWidget* ConfigDialog::buildLassoTab()
     QWidget* w = new QWidget;
     QFormLayout* f = new QFormLayout(w);
 
+    auto row = [&](const QString& label, QWidget* widget, const QString& tip) {
+        auto* lbl = new QLabel(label);
+        lbl->setToolTip(tip);
+        widget->setToolTip(tip);
+        f->addRow(lbl, widget);
+    };
+
     m_lassoColor    = new QLineEdit;
     m_lassoColorBtn = new QPushButton;
     connect(m_lassoColorBtn, &QPushButton::clicked, this, [this]{ pickColor(m_lassoColor, m_lassoColorBtn); });
     {
         QHBoxLayout* hl = new QHBoxLayout; hl->setContentsMargins(0,0,0,0); hl->addWidget(m_lassoColor); hl->addWidget(m_lassoColorBtn);
         QWidget* cw = new QWidget; cw->setLayout(hl);
-        f->addRow(tr("Lasso color"), cw);
+        row(tr("Lasso color"), cw, tr("Color of the freehand lasso selection outline."));
     }
+
     m_lassoWidth = new QSpinBox; m_lassoWidth->setRange(0, 20);
-    f->addRow(tr("Lasso width"), m_lassoWidth);
+    row(tr("Lasso width"), m_lassoWidth,
+        tr("Line width of the lasso selection outline in pixels."));
+
     return w;
 }
 
@@ -243,11 +325,20 @@ QWidget* ConfigDialog::buildPolygonTab()
     QWidget* w = new QWidget;
     QFormLayout* f = new QFormLayout(w);
 
+    auto row = [&](const QString& label, QWidget* widget, const QString& tip) {
+        auto* lbl = new QLabel(label);
+        lbl->setToolTip(tip);
+        widget->setToolTip(tip);
+        f->addRow(lbl, widget);
+    };
+
     m_polygonWidth = new QSpinBox; m_polygonWidth->setRange(0, 50);
-    f->addRow(tr("Polygon width"), m_polygonWidth);
+    row(tr("Polygon width"), m_polygonWidth,
+        tr("Line width of the polygon outline in pixels."));
 
     m_polygonHandleSize = new QSpinBox; m_polygonHandleSize->setRange(1, 64);
-    f->addRow(tr("Handle size"), m_polygonHandleSize);
+    row(tr("Handle size"), m_polygonHandleSize,
+        tr("Size of polygon vertex handles in pixels."));
 
     m_polygonHandleColor    = new QLineEdit;
     m_polygonHandleColorBtn = new QPushButton;
@@ -255,7 +346,7 @@ QWidget* ConfigDialog::buildPolygonTab()
     {
         QHBoxLayout* hl = new QHBoxLayout; hl->setContentsMargins(0,0,0,0); hl->addWidget(m_polygonHandleColor); hl->addWidget(m_polygonHandleColorBtn);
         QWidget* cw = new QWidget; cw->setLayout(hl);
-        f->addRow(tr("Handle color"), cw);
+        row(tr("Handle color"), cw, tr("Color of the polygon vertex handles."));
     }
     return w;
 }
@@ -266,27 +357,41 @@ QWidget* ConfigDialog::buildImageLayerTab()
     QFormLayout* f = new QFormLayout(w);
     f->setRowWrapPolicy(QFormLayout::WrapLongRows);
 
-    m_integerMoveOnly = new QCheckBox; f->addRow(tr("Integer move only"), m_integerMoveOnly);
+    auto row = [&](const QString& label, QWidget* widget, const QString& tip) {
+        auto* lbl = new QLabel(label);
+        lbl->setToolTip(tip);
+        widget->setToolTip(tip);
+        f->addRow(lbl, widget);
+    };
+
+    m_integerMoveOnly = new QCheckBox;
+    row(tr("Integer move only"), m_integerMoveOnly,
+        tr("Restricts layer movement to whole pixel positions only."));
 
     m_overlayOpacity = new QDoubleSpinBox;
     m_overlayOpacity->setRange(0.0, 1.0); m_overlayOpacity->setSingleStep(0.05); m_overlayOpacity->setDecimals(2);
-    f->addRow(tr("Overlay opacity"), m_overlayOpacity);
+    row(tr("Overlay opacity"), m_overlayOpacity,
+        tr("Opacity of the semi-transparent red overlay shown when Ctrl+dragging a layer."));
 
     m_rotationStep = new QDoubleSpinBox;
     m_rotationStep->setRange(0.01, 90.0); m_rotationStep->setSingleStep(0.5); m_rotationStep->setDecimals(2);
-    f->addRow(tr("Rotation single step"), m_rotationStep);
+    row(tr("Rotation single step"), m_rotationStep,
+        tr("Angle increment per step when rotating a layer with the rotation handle, in degrees."));
 
     m_handleRadius = new QDoubleSpinBox;
     m_handleRadius->setRange(1.0, 50.0); m_handleRadius->setSingleStep(0.5); m_handleRadius->setDecimals(1);
-    f->addRow(tr("Handle radius"), m_handleRadius);
+    row(tr("Handle radius"), m_handleRadius,
+        tr("Radius of the rotation and scale transform handles in pixels."));
 
     m_transformMode = new QComboBox;
     m_transformMode->addItems({"fast", "smooth"});
-    f->addRow(tr("Transformation mode"), m_transformMode);
+    row(tr("Transformation mode"), m_transformMode,
+        tr("Rendering quality when transforming a layer: fast (nearest-neighbour) or smooth (bilinear)."));
 
     m_interpMode = new QComboBox;
     m_interpMode->addItems({"nearest", "linear", "bicubic"});
-    f->addRow(tr("Interpolation mode"), m_interpMode);
+    row(tr("Interpolation mode"), m_interpMode,
+        tr("Pixel interpolation used when scaling or rotating layers: nearest, linear, or bicubic."));
 
     return w;
 }

@@ -1094,6 +1094,13 @@ bool MainWindow::saveProject( const QString& filePath )
         layerObj["name"] = layer->name();
         // Image -> Base64
         if ( layer->id() != 0 ) {
+         if ( layer->m_srcLayerId >= 0 ) {
+           layerObj["srcLayerId"] = layer->m_srcLayerId;
+           layerObj["opacity"] = layer->opacity();
+           layerObj["creator"] = layer->creator();
+           layerArray.append(layerObj);
+           continue;
+         }
          bool binaryMasking = layer->m_bounds.isNull() ? false : EditorStyle::instance().binaryMasking();
          QByteArray ba;
          QBuffer buffer(&ba);
@@ -1225,6 +1232,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
     if ( undoStack != nullptr ) undoStack->clear();
     
     // --- Parsing layers (does not contain layer positions) ---
+    // Pass 1: load all layers with image data
     int nCreatedLayers = 0;
     for ( const QJsonValue& v : layerArray ) {
       QJsonObject layerObj = v.toObject();
@@ -1276,7 +1284,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
             }
            }
            newLayer = new LayerItem("SubImage",subImage);
-         } else if ( EditorStyle::instance().binaryMasking() ) {
+         } else if ( EditorStyle::instance().binaryMasking() && x >= 0 && y >= 0 ) {
             if ( mask.format() != QImage::Format_ARGB32 && mask.format() != QImage::Format_ARGB32_Premultiplied ) {
               mask = mask.convertToFormat(QImage::Format_ARGB32);
             }
@@ -1315,6 +1323,37 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
         }
       }
     }
+    // Pass 2: load duplicate layers (srcLayerId), source is now in scene
+    for ( const QJsonValue& v : layerArray ) {
+      QJsonObject layerObj = v.toObject();
+      int id = layerObj["id"].toInt();
+      if ( id != 0 && layerObj.contains("srcLayerId") ) {
+        QString name = layerObj["name"].toString();
+        const int srcId = layerObj["srcLayerId"].toInt(-1);
+        LayerItem* srcItem = nullptr;
+        for ( auto* item : m_imageView->getScene()->items() ) {
+          auto* li = dynamic_cast<LayerItem*>(item);
+          if ( li && li->id() == srcId ) { srcItem = li; break; }
+        }
+        if ( srcItem ) {
+          LayerItem* newLayer = new LayerItem(name, srcItem->pixmap());
+          newLayer->setIndex(id);
+          newLayer->setParent(this);
+          newLayer->setUndoStack(m_imageView->undoStack());
+          Layer* layer = new Layer(id, srcItem->image());
+          layer->m_name       = name;
+          layer->m_creator    = layerObj.value("creator").toString();
+          layer->m_srcLayerId = srcId;
+          layer->m_item       = newLayer;
+          newLayer->setLayer(layer);
+          m_imageView->layers().push_back(layer);
+          m_imageView->getScene()->addItem(newLayer);
+          nCreatedLayers += 1;
+        } else {
+          qWarning() << "loadProject(): srcLayer" << srcId << "not found for duplicate layer" << id;
+        }
+      }
+    }
     if ( nCreatedLayers > 0 ) {
       rebuildLayerList();
     }
@@ -1345,8 +1384,8 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
            LassoCutCommand* cutCommand = dynamic_cast<LassoCutCommand*>(cmd);
            if ( cutCommand != nullptr ) {
              cutCommand->setController(editablePolyCommand);
+             boundingBoxLayerMap.insert(cutCommand->layerId(),cutCommand->rect());
            }
-           boundingBoxLayerMap.insert(cutCommand->layerId(),cutCommand->rect());
         } else if ( type == "MoveLayer" || type == "MoveLayerCommand" ) {
            cmd = MoveLayerCommand::fromJson(cmdObj, layers);
         } else if ( type == "MirrorLayer" || type == "MirrorLayerCommand" ) {
@@ -1362,10 +1401,14 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
         } else if ( type == "EditablePolygon" || type == "EditablePolygonCommand" ) {
            cmd = EditablePolygonCommand::fromJson(cmdObj, layers);
            editablePolyCommand = dynamic_cast<EditablePolygonCommand*>(cmd);
-           int npolygons = m_imageView->pushEditablePolygon(editablePolyCommand->model());
-           if ( editablePolyCommand->childLayerId() == -1 || npolygons < 0 ) {
-             editablePolygonCommands.push_back(editablePolyCommand);
+           if ( editablePolyCommand != nullptr ) {
+             int npolygons = m_imageView->pushEditablePolygon(editablePolyCommand->model());
+             if ( editablePolyCommand->childLayerId() == -1 || npolygons < 0 ) {
+               editablePolygonCommands.push_back(editablePolyCommand);
+             }
            }
+        } else if ( type == "DuplicateLayer" || type == "DuplicateLayerCommand" ) {
+            cmd = DuplicateLayerCommand::fromJson(cmdObj, layers);
         } else if ( type == "DeleteUndoEntry" || type == "DeleteUndoEntryCommand" ) {
             cmd = DeleteUndoEntryCommand::fromJson(undoStack, cmdObj, layers);
         } else {
@@ -1678,9 +1721,14 @@ void MainWindow::createDockWidgets()
         }
     } else if ( selectedAction == deleteAction ) {
         QUndoCommand *cmd = const_cast<QUndoCommand*>(m_imageView->undoStack()->command(index.row() - 1));
-        QString labelText = QString("Do you really want to delete the command? Press the Revoke button to undo all operations "
-                    "(all follow-up entries will be permanently deleted from the history list) or press Delete to remove "
-                    "the command with the option of restoring it.");
+        QString labelText = QString(
+            "Do you really want to delete this history command?<br><br>"
+            "Press <b>Revert</b> to undo this command and all follow-up operations, restoring "
+            "the image to its state before this command. All related history entries will be "
+            "permanently removed.<br><br>"
+            "Press <b>Delete</b> to remove the command but keep a history entry, so it can be "
+            "restored later via undo."
+        );
         int result = QWidgetUtils::showIconDialog(this,QString("Delete %1").arg(cmd->text()),labelText);
         if ( result == 1 ) {
            // --- sort required so that the requested layer is at the end ---
@@ -2123,9 +2171,15 @@ void MainWindow::deleteLayer()
     if ( !item ) return;
     Layer* layer = static_cast<Layer*>(item->data(Qt::UserRole).value<void*>());
     if ( !layer ) return;
-    QString labelText = QString("Do you really want to delete layer %1? Press the Revoke button to undo all operations "
-                    "(all entries will be permanently deleted from the history list), press Delete to remove "
-                    "the layer with the option of restoring it or press Destroy to remove the layer image").arg(layer->id());
+    QString labelText = QString(
+        "Do you really want to delete layer %1?<br><br>"
+        "Press <b>Revert</b> to undo the operation that created this layer and restore the image "
+        "to its original state. All related history entries will be permanently removed.<br><br>"
+        "Press <b>Delete</b> to remove the layer but keep a history entry, so it can be restored "
+        "later via undo.<br><br>"
+        "Press <b>Destroy</b> to permanently remove the layer without any history entry. "
+        "This cannot be undone."
+    ).arg(layer->id());
     int result = QWidgetUtils::showIconDialog(this,QString("Delete %1").arg(layer->name()),labelText);
     if ( result == 1 ) { // Revoke
       // Undo all operations from the stack. Preserve original state
@@ -2171,6 +2225,9 @@ void MainWindow::duplicateLayer()
     Layer* newLayer       = new Layer(nidx);
     newLayer->m_name      = QString("Layer %1").arg(nidx);
     newLayer->m_visible   = true;
+    newLayer->m_image     = srcItem->image();
+    newLayer->m_srcLayerId = srcLayer->id();
+    newLayer->m_creator    = QString("Duplicate of layer %1").arg(srcLayer->id());
     LayerItem* newItem    = new LayerItem(newLayer->m_name, srcItem->pixmap());
     newItem->setParent(this);
     newItem->setIndex(nidx);
@@ -2218,76 +2275,172 @@ void MainWindow::createActions()
   qCDebug(logEditor) << "MainWindow::createActions(): Processing...";
   {
     m_configAction = new QAction(tr("Config"), this);
+    m_configAction->setToolTip(
+        "<b>Config</b><br>"
+        "Open the application settings: adjust display options, binary masking behaviour, "
+        "default brush parameters and other editor preferences.");
     connect(m_configAction, &QAction::triggered, this, &MainWindow::showConfig);
-    
+
     m_sortHistoryAction = new QAction(tr("Sort and merge history"), this);
+    m_sortHistoryAction->setToolTip(
+        "<b>Sort and merge history</b><br>"
+        "Rebuild and compact the undo history by sorting operations into a consistent order "
+        "and merging redundant entries. Useful after complex editing sessions to clean up "
+        "the history list.");
     connect(m_sortHistoryAction, &QAction::triggered, m_imageView, &ImageView::rebuildUndoStack);
-    
+
     m_saveHistoryAction = new QAction(tr("Save history as..."), this);
+    m_saveHistoryAction->setToolTip(
+        "<b>Save history as...</b><br>"
+        "Export the current undo history to a JSON file. The saved history can be reloaded "
+        "later to continue editing from exactly the same state, including all layer operations "
+        "and polygon annotations.");
     connect(m_saveHistoryAction, &QAction::triggered, this, &MainWindow::saveHistory);
-    
+
     m_openHistoryAction = new QAction(tr("Open history file"), this);
+    m_openHistoryAction->setToolTip(
+        "<b>Open history file</b><br>"
+        "Load a previously saved JSON history file and restore all recorded operations "
+        "into the undo stack, reconstructing layers, selections and annotations.");
     connect(m_openHistoryAction, &QAction::triggered, this, &MainWindow::openHistory);
-    
+
     m_openAction = new QAction(tr("Open"), this);
+    m_openAction->setToolTip(
+        "<b>Open</b><br>"
+        "Open an image file from disk, a URL or a filelist. Supported formats include "
+        "PNG, JPEG, TIFF and HDF5. The loaded image becomes the new base image for editing.");
     connect(m_openAction, &QAction::triggered, this, &MainWindow::openImage);
 
-    m_saveAsAction = new QAction(tr("Save Image As..."), this);
+    m_saveAsAction = new QAction(tr("Save image as..."), this);
+    m_saveAsAction->setToolTip(
+        "<b>Save image as...</b><br>"
+        "Export the current image (with all visible layers composited) to a file. "
+        "Choose the file name, location and format (PNG, JPEG, TIFF) in the save dialog.");
     connect(m_saveAsAction, &QAction::triggered, this, &MainWindow::saveAsImage);
     
     m_pipetteAction = new QAction("Pipette", this);
     m_pipetteAction->setCheckable(true);
+    m_pipetteAction->setToolTip(
+        "<b>Pipette</b><br>"
+        "Pick a colour from the image by clicking on any pixel. "
+        "The sampled colour becomes the active foreground colour for painting.");
     connect(m_pipetteAction, &QAction::toggled, m_imageView, &ImageView::enablePipette);
     connect(m_pipetteAction, &QAction::toggled, this, &MainWindow::updateButtonState);
     
     m_zoom1to1Action = new QAction("1:1", this);
+    m_zoom1to1Action->setToolTip(
+        "<b>1:1</b><br>"
+        "Reset the zoom to 100% so that one image pixel maps to exactly one screen pixel. "
+        "Useful for inspecting fine detail without any interpolation.");
     connect(m_zoom1to1Action, &QAction::triggered, this, &MainWindow::zoom1to1);
-    m_fitAction      = new QAction("Fit", this);
-    connect(m_fitAction, &QAction::triggered,  this, &MainWindow::fitToWindow);
-    
+
+    m_fitAction = new QAction("Fit", this);
+    m_fitAction->setToolTip(
+        "<b>Fit</b><br>"
+        "Scale the view so the entire image fits within the current window. "
+        "Use this to get an overview after zooming into a detail.");
+    connect(m_fitAction, &QAction::triggered, this, &MainWindow::fitToWindow);
+
     m_crosshairAction = new QAction("Crosshair", this);
     m_crosshairAction->setCheckable(true);
+    m_crosshairAction->setToolTip(
+        "<b>Crosshair</b><br>"
+        "Toggle a crosshair cursor that follows the mouse pointer. "
+        "Helps with precise alignment and locating coordinates on the image.");
     connect(m_crosshairAction, &QAction::toggled, m_imageView, &ImageView::setCrosshairVisible);
-    
-    m_quitAction = new QAction("Quit Application", this);
-    m_quitAction->setToolTip("Exit application");
+
+    m_quitAction = new QAction("Quit application", this);
+    m_quitAction->setToolTip(
+        "<b>Quit application</b><br>"
+        "Close the editor. You will be prompted to save any unsaved changes before exiting.");
     connect(m_quitAction, &QAction::triggered, this, [this]() {
       QApplication::quit();
     });
     
-    m_undoAction = m_imageView->undoStack()->createUndoAction(this," Undo ");
-    m_redoAction = m_imageView->undoStack()->createRedoAction(this," Redo ");
+    m_undoAction = m_imageView->undoStack()->createUndoAction(this, "Undo");
+    m_undoAction->setToolTip(
+        "<b>Undo</b><br>"
+        "Step back through the undo history and reverse the last operation. "
+        "The label shows which operation will be undone.");
+    m_redoAction = m_imageView->undoStack()->createRedoAction(this, "Redo");
+    m_redoAction->setToolTip(
+        "<b>Redo</b><br>"
+        "Reapply the last undone operation. "
+        "The label shows which operation will be reapplied.");
     
-    m_paintAction = new QAction(" Paint", this);
-    m_paintAction->setCheckable(true);
-    connect(m_paintAction, &QAction::toggled, m_imageView, &ImageView::setPaintToolEnabled);
-    connect(m_paintAction, &QAction::toggled, this, &MainWindow::updateButtonState);
+    m_rubberAction = new QAction("Brush", this);
+    m_rubberAction->setCheckable(true);
+    m_rubberAction->setToolTip(
+        "<b>Brush</b><br>"
+        "Activate the paint brush to draw on the image. "
+        "Adjust brush size, hardness and opacity in the toolbar. "
+        "Use together with the Pipette to sample and apply colours.");
+    connect(m_rubberAction, &QAction::toggled, m_imageView, &ImageView::setPaintToolEnabled);
+    connect(m_rubberAction, &QAction::toggled, this, &MainWindow::updateButtonState);
     
-    m_showDockWidgets = new QAction(" Docks", this);
+    m_showDockWidgets = new QAction("Docks", this);
     m_showDockWidgets->setCheckable(true);
+    m_showDockWidgets->setToolTip(
+        "<b>Docks</b><br>"
+        "Show or hide all floating dock panels (history, layer list, colour picker, etc.). "
+        "Toggle this to quickly unclutter the workspace without closing individual panels.");
     connect(m_showDockWidgets, &QAction::toggled, this, &MainWindow::toggleDocks);
     
-    m_lassoAction = new QAction(" Create new lasso", this);
+    m_lassoAction = new QAction("Create new lasso", this);
     m_lassoAction->setCheckable(true);
+    m_lassoAction->setToolTip(
+        "<b>Create new lasso</b><br>"
+        "Start drawing a freehand selection. Click and drag to outline the region you want "
+        "to cut out. Release to close the shape and place the selection on a new layer.");
     connect(m_lassoAction, &QAction::toggled, m_imageView, &ImageView::setLassoEnabled);
     connect(m_lassoAction, &QAction::toggled, this, &MainWindow::updateButtonState);
-    
-    m_polygonAction = new QAction(" Create new polygon", this);
+
+    m_polygonAction = new QAction("Create new polygon", this);
     m_polygonAction->setCheckable(true);
+    m_polygonAction->setToolTip(
+        "<b>Create new polygon</b><br>"
+        "Start placing vertices to build a new polygon. Click to add each point; "
+        "press Escape to close and finish the shape.");
     connect(m_polygonAction, &QAction::toggled, m_imageView, &ImageView::setPolygonEnabled);
     connect(m_polygonAction, &QAction::toggled, this, &MainWindow::updatePolygonEnabledState);
+    connect(m_polygonAction, &QAction::toggled, this, [this](bool on){
+        if ( on ) showMessage(tr("To draw a closed polygon click to place points. Press Escape to finish the shape."));
+    });
     
     // mask image actions
-    m_createMaskImageAction = new QAction(" Create new class", this);
+    m_createMaskImageAction = new QAction("Create new class", this);
+    m_createMaskImageAction->setToolTip(
+        "<b>Create new class</b><br>"
+        "Add a new semantic class to the mask. Each class gets its own colour channel "
+        "and can be painted independently.");
     connect(m_createMaskImageAction, &QAction::triggered, this, &MainWindow::createMaskImage);
-    m_openMaskImageAction = new QAction(" Open class mask", this);
+
+    m_openMaskImageAction = new QAction("Open class mask", this);
+    m_openMaskImageAction->setToolTip(
+        "<b>Open class mask</b><br>"
+        "Load an existing class mask image from disk and overlay it on the current image.");
     connect(m_openMaskImageAction, &QAction::triggered, this, &MainWindow::openImage);
-    m_saveMaskImageAction = new QAction(" Save class mask as...", this);
+
+    m_saveMaskImageAction = new QAction("Save class mask as...", this);
+    m_saveMaskImageAction->setToolTip(
+        "<b>Save class mask as...</b><br>"
+        "Export the current class mask to a file. The mask is saved as a colour-coded "
+        "image where each colour represents one semantic class.");
     connect(m_saveMaskImageAction, &QAction::triggered, this, &MainWindow::saveAsImage);
+
     m_paintMaskImageAction = new QAction("Paint", this);
     m_paintMaskImageAction->setCheckable(true);
+    m_paintMaskImageAction->setToolTip(
+        "<b>Paint</b><br>"
+        "Paint the active class label onto the mask. Use the brush size slider "
+        "to control the area covered by each stroke.");
+
     m_eraseMaskImageAction = new QAction("Erase", this);
     m_eraseMaskImageAction->setCheckable(true);
+    m_eraseMaskImageAction->setToolTip(
+        "<b>Erase</b><br>"
+        "Remove the class label from pixels by painting over them. "
+        "Erased pixels become unlabelled.");
     connect(m_paintMaskImageAction, &QAction::toggled, this, [=](bool on){
         if ( on ) m_eraseMaskImageAction->setChecked(false);
         m_imageView->setMaskTool(on?ImageView::MaskPaint:ImageView::None);
@@ -2301,22 +2454,47 @@ void MainWindow::createActions()
     m_paintControlAction = new QAction("Paint", this);
     m_paintControlAction->setCheckable(true);
     m_paintControlAction->setChecked(true);
+    m_paintControlAction->setToolTip(
+        "<b>Paint mode</b><br>"
+        "Draw directly on the image using a brush. Adjust brush size, hardness and opacity "
+        "in the toolbar. Use the colour picker to sample colours from the image. "
+        "Supports undo/redo for every stroke.");
     connect(m_paintControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
-    
+
     m_maskControlAction = new QAction("Mask classes", this);
     m_maskControlAction->setCheckable(true);
+    m_maskControlAction->setToolTip(
+        "<b>Mask classes mode</b><br>"
+        "Assign semantic class labels to image regions by painting with a class colour. "
+        "Select the active class in the toolbar and paint to create or refine a pixel-wise "
+        "segmentation mask. Each class is stored as a separate colour channel.");
     connect(m_maskControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
-    
+
     m_layerControlAction = new QAction("Layer", this);
     m_layerControlAction->setCheckable(true);
+    m_layerControlAction->setToolTip(
+        "<b>Layer mode</b><br>"
+        "Manage image layers: add, duplicate, reorder, show/hide or delete layers. "
+        "Each layer holds an independent image region that can be repositioned and composited "
+        "over the base image. Layer operations are tracked in the undo history.");
     connect(m_layerControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
-    
+
     m_lassoControlAction = new QAction("Free selection", this);
     m_lassoControlAction->setCheckable(true);
+    m_lassoControlAction->setToolTip(
+        "<b>Free selection mode</b><br>"
+        "Draw a freehand lasso around any region to cut it out of the image and place it "
+        "on a new layer. The cut-out can then be moved, scaled or deleted independently. "
+        "The operation is recorded in the undo history.");
     connect(m_lassoControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
-    
+
     m_polygonControlAction = new QAction("Polygon", this);
     m_polygonControlAction->setCheckable(true);
+    m_polygonControlAction->setToolTip(
+        "<b>Polygon mode</b><br>"
+        "Define precise selections and annotations by placing polygon vertices on the image. "
+        "Add, move or delete individual points to refine the shape. Finished polygons can be "
+        "converted to layers or used as region boundaries for other operations.");
     connect(m_polygonControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
 
     // "Check for updates" lives in the macOS application menu (the one named
@@ -2329,6 +2507,9 @@ void MainWindow::createActions()
 
         QAction* checkUpdateAction = new QAction(tr("Check for updates…"), this);
         checkUpdateAction->setMenuRole(QAction::ApplicationSpecificRole);
+        checkUpdateAction->setToolTip(
+            "<b>Check for updates</b><br>"
+            "Connect to the update server and check whether a newer version of ImageEditor is available.");
         connect(checkUpdateAction, &QAction::triggered, this, [this](){
             triggerUpdateCheck(false);
         });
@@ -2336,6 +2517,9 @@ void MainWindow::createActions()
 
         QAction* aboutAction = new QAction(tr("About ImageEditor…"), this);
         aboutAction->setMenuRole(QAction::AboutRole);
+        aboutAction->setToolTip(
+            "<b>About ImageEditor</b><br>"
+            "Show version information, licence details and credits for ImageEditor.");
         connect(aboutAction, &QAction::triggered, this, &MainWindow::showAboutDialog);
         appMenu->addAction(aboutAction);
     }
@@ -2457,21 +2641,21 @@ void MainWindow::updateControlButtonState()
 void MainWindow::updateButtonState() 
 {
     bool isA = sender() == m_pipetteAction? 1 : 0;
-    bool isB = sender() == m_paintAction ? 1 : 0;
+    bool isB = sender() == m_rubberAction ? 1 : 0;
     bool isC = sender() == m_lassoAction ? 1 : 0;
     bool pipetteIsChecked = m_pipetteAction->isChecked();
-    bool paintIsChecked = m_paintAction->isChecked();
+    bool paintIsChecked = m_rubberAction->isChecked();
     bool lassoIsChecked = m_lassoAction->isChecked();
-    if ( isB && m_paintAction->isChecked() && ( pipetteIsChecked || lassoIsChecked ) ) {
+    if ( isB && m_rubberAction->isChecked() && ( pipetteIsChecked || lassoIsChecked ) ) {
        m_pipetteAction->setChecked(false);
        m_lassoAction->setChecked(false);
     }
     if ( isA && m_pipetteAction->isChecked() && ( paintIsChecked || lassoIsChecked ) ) {
-       m_paintAction->setChecked(false);
+       m_rubberAction->setChecked(false);
        m_lassoAction->setChecked(false);
     }
     if ( isC && m_lassoAction->isChecked() && ( paintIsChecked || pipetteIsChecked ) ) {
-       m_paintAction->setChecked(false);
+       m_rubberAction->setChecked(false);
        m_pipetteAction->setChecked(false);
     }
 }
@@ -2548,6 +2732,11 @@ void MainWindow::createToolbars()
         "Jet","Viridis","Plasma","Inferno",
         "Nissl","Myelin"
     });
+    colorTableCombo->setToolTip(
+        "<b>Colormap</b><br>"
+        "Apply a colour lookup table to the greyscale image for pseudo-colour visualisation. "
+        "\"Original\" shows the raw grey values; scientific maps (Jet, Viridis, Plasma, Inferno) "
+        "highlight intensity gradients; histology maps (Nissl, Myelin) mimic common tissue stains.");
     fileToolbar->addWidget(colorTableCombo);
     connect(colorTableCombo, &QComboBox::currentTextChanged, m_imageView, [this](const QString& text){
        // helper: build LUT by linear interpolation through anchor stops {index, r, g, b}
@@ -2685,11 +2874,15 @@ void MainWindow::createToolbars()
     m_editToolbar->addWidget(pipetteColorLabel);
     QPushButton* pipetteColorButton = new QPushButton();
     pipetteColorButton->setFixedSize(20,20);
-     QPixmap whitepixmap(20,20); 
+     QPixmap whitepixmap(20,20);
      whitepixmap.fill(Qt::white);
     pipetteColorButton->setIcon(whitepixmap);
     pipetteColorButton->setIconSize(QSize(20,20));
     pipetteColorButton->setFlat(true);
+    pipetteColorButton->setToolTip(
+        "<b>Brush colour</b><br>"
+        "Shows the current paint colour. Click to open the colour picker and choose a new colour. "
+        "The colour is also updated automatically when you use the Pipette to sample from the image.");
     connect(pipetteColorButton, &QPushButton::clicked, this, [this,pipetteColorButton](){
       QColor c = QColorDialog::getColor(Qt::red,this,"Select Brush Color");
       if( c.isValid() ) {
@@ -2705,14 +2898,18 @@ void MainWindow::createToolbars()
      pipetteColorButton->setIcon(pix);
     });
     m_editToolbar->addWidget(pipetteColorButton);
-    m_editToolbar->addAction(m_paintAction);
-    // Brush size
-    QLabel* brushLabel = new QLabel(" Brush size:");
+    m_editToolbar->addAction(m_rubberAction);
+    // Rubber size
+    QLabel* brushLabel = new QLabel(" Size:");
     m_editToolbar->addWidget(brushLabel);
     QSpinBox* brushSpin = new QSpinBox();
     brushSpin->setFocusPolicy(Qt::ClickFocus);
     brushSpin->setRange(1,50);
     brushSpin->setValue(5);
+    brushSpin->setToolTip(
+        "<b>Brush size</b><br>"
+        "Radius of the paint brush in pixels (1–50). "
+        "Larger values cover more area per stroke.");
     m_editToolbar->addWidget(brushSpin);
     connect(brushSpin, QOverload<int>::of(&QSpinBox::valueChanged), m_imageView, &ImageView::setBrushRadius);
     // Brush hardness
@@ -2722,6 +2919,10 @@ void MainWindow::createToolbars()
     hardnessSlider->setRange(1,100); // 1..100 %
     hardnessSlider->setValue(100);
     hardnessSlider->setFixedWidth(80);
+    hardnessSlider->setToolTip(
+        "<b>Brush hardness</b><br>"
+        "Controls the softness of the brush edge (1–100%). "
+        "At 100% the edge is hard and crisp; lower values produce a feathered, soft edge.");
     m_editToolbar->addWidget(hardnessSlider);
     QLabel* hardnessValueLabel = new QLabel(QString::number(hardnessSlider->value()) + "%");
     m_editToolbar->addWidget(hardnessValueLabel);
@@ -2741,6 +2942,9 @@ void MainWindow::createToolbars()
     m_selectLayerItem = new QComboBox();
     m_selectLayerItem->addItems({"None yet defined"});
     m_selectLayerItem->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_selectLayerItem->setToolTip(
+        "<b>Active layer</b><br>"
+        "Select which layer to work on. All transform and edit operations apply to the chosen layer.");
     m_layerToolbar->addWidget(m_selectLayerItem);
     connect(m_selectLayerItem,&QComboBox::currentTextChanged,this,&MainWindow::selectLayerItem);
     connect(m_selectLayerItem, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
@@ -2755,6 +2959,9 @@ void MainWindow::createToolbars()
     auto* editorBtn = new QPushButton(tr("Editor"));
     editorBtn->setFixedHeight(24);
     editorBtn->setFocusPolicy(Qt::NoFocus);
+    editorBtn->setToolTip(
+        "<b>Editor</b><br>"
+        "Open the layer editor panel for the currently selected layer to inspect and adjust its properties.");
     m_layerToolbar->addWidget(editorBtn);
     connect(editorBtn, &QPushButton::clicked, this, [this] {
         const int id = m_selectLayerItem->currentData().toInt();
@@ -2769,6 +2976,15 @@ void MainWindow::createToolbars()
     view->setMouseTracking(true);
     m_transformLayerItem->setView(view);
     m_transformLayerItem->addItems({"Translate","Rotate","Scale","Mirror","Perspective","Cage warp"});
+    m_transformLayerItem->setToolTip(
+        "<b>Transform mode</b><br>"
+        "Choose how to manipulate the active layer:<br>"
+        "<b>Translate</b> — move the layer by dragging<br>"
+        "<b>Rotate</b> — rotate around its centre<br>"
+        "<b>Scale</b> — resize proportionally or freely<br>"
+        "<b>Mirror</b> — flip horizontally or vertically<br>"
+        "<b>Perspective</b> — apply a four-corner perspective warp<br>"
+        "<b>Cage warp</b> — deform with a freeform control-point mesh");
     if ( !EditorStyle::instance().hasPerspective() ) {
       // disable entries (4=Perpective)
       const int perspectiveIndex = m_transformLayerItem->findText("Perspective");
@@ -2826,6 +3042,7 @@ void MainWindow::createToolbars()
     m_translateXLayerSpin->setFocusPolicy(Qt::ClickFocus);
     m_translateXLayerSpin->setRange(-100000.0,100000.0);
     m_translateXLayerSpin->setValue(0.0);
+    m_translateXLayerSpin->setToolTip("<b>X position</b><br>Current horizontal offset of the layer in pixels (read-only, updated while dragging).");
     m_translateLayerToolbar->addWidget(m_translateXLayerSpin);
     QLabel* translateYLayerLabel = new QLabel(" YTranslate:");
     m_translateLayerToolbar->addWidget(translateYLayerLabel);
@@ -2834,6 +3051,7 @@ void MainWindow::createToolbars()
     m_translateYLayerSpin->setFocusPolicy(Qt::ClickFocus);
     m_translateYLayerSpin->setRange(-100000.0,100000.0);
     m_translateYLayerSpin->setValue(0.0);
+    m_translateYLayerSpin->setToolTip("<b>Y position</b><br>Current vertical offset of the layer in pixels (read-only, updated while dragging).");
     m_translateLayerToolbar->addWidget(m_translateYLayerSpin);
     m_translateLayerToolbar->setVisible(false);
     
@@ -2846,6 +3064,7 @@ void MainWindow::createToolbars()
     m_scaleXLayerSpin->setFocusPolicy(Qt::ClickFocus);
     m_scaleXLayerSpin->setRange(-100.0,100.0);
     m_scaleXLayerSpin->setValue(1.0);
+    m_scaleXLayerSpin->setToolTip("<b>X scale</b><br>Current horizontal scale factor of the layer (read-only). 1.0 = original size.");
     m_scaleLayerToolbar->addWidget(m_scaleXLayerSpin);
     QLabel* scaleYLayerLabel = new QLabel(" YScale:");
     m_scaleLayerToolbar->addWidget(scaleYLayerLabel);
@@ -2854,9 +3073,11 @@ void MainWindow::createToolbars()
     m_scaleYLayerSpin->setFocusPolicy(Qt::ClickFocus);
     m_scaleYLayerSpin->setRange(-100.0,100.0);
     m_scaleYLayerSpin->setValue(1.0);
+    m_scaleYLayerSpin->setToolTip("<b>Y scale</b><br>Current vertical scale factor of the layer (read-only). 1.0 = original size.");
     m_scaleLayerToolbar->addWidget(m_scaleYLayerSpin);
     QPushButton *resetScaleAction = new QPushButton("Reset");
     resetScaleAction->setFocusPolicy(Qt::ClickFocus);
+    resetScaleAction->setToolTip("<b>Reset scale</b><br>Restore the layer to its original size (scale 1:1).");
     connect(resetScaleAction, &QPushButton::clicked, this, [this]() {
       LayerItem *layerItem = m_imageView->getLayerItem(m_selectLayerItem->currentText());
       if ( layerItem != nullptr ) layerItem->scale(1.0,1.0);
@@ -2871,9 +3092,14 @@ void MainWindow::createToolbars()
     m_mirrorDirectionCombo = new QComboBox();
     m_mirrorDirectionCombo->addItems({"Horizontal","Vertical"});
     m_mirrorDirectionCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_mirrorDirectionCombo->setToolTip(
+        "<b>Mirror direction</b><br>"
+        "<b>Horizontal</b> — flip the layer left–right.<br>"
+        "<b>Vertical</b> — flip the layer top–bottom.");
     m_mirrorLayerToolbar->addWidget(m_mirrorDirectionCombo);
     QPushButton *doMirrorAction = new QPushButton("Apply");
     doMirrorAction->setFocusPolicy(Qt::ClickFocus);
+    doMirrorAction->setToolTip("<b>Apply mirror</b><br>Flip the active layer in the selected direction.");
     connect(doMirrorAction, &QPushButton::clicked, this, [this]() {
       LayerItem *layerItem = m_imageView->getLayerItem(m_selectLayerItem->currentText());
       if ( layerItem != nullptr ) layerItem->mirror(m_mirrorDirectionCombo->currentText() == "Vertical" ? 1 : 2);
@@ -2891,6 +3117,10 @@ void MainWindow::createToolbars()
     m_rotationLayerAngleSpin->setSingleStep(EditorStyle::instance().rotationSingleStep());
     m_rotationLayerAngleSpin->setValue(0.0);
     m_rotationLayerAngleSpin->setWrapping(true);
+    m_rotationLayerAngleSpin->setToolTip(
+        "<b>Rotation angle</b><br>"
+        "Rotation of the active layer in degrees (−180° to +180°). "
+        "Positive values rotate clockwise; the spinner wraps around at the limits.");
     connect(m_rotationLayerAngleSpin, &QDoubleSpinBox::valueChanged, m_imageView, [this](double value){
       LayerItem *layer = m_imageView->getSelectedItem();
       if ( layer ) {
@@ -2905,6 +3135,7 @@ void MainWindow::createToolbars()
     m_perspectiveLayerToolbar = addToolBar(tr("PerspectiveLayer"));
     QPushButton *resetPerspectiveAction = new QPushButton("Reset");
     resetPerspectiveAction->setFocusPolicy(Qt::ClickFocus);
+    resetPerspectiveAction->setToolTip("<b>Reset perspective</b><br>Remove all perspective distortion and restore the layer to its flat, undistorted shape.");
     connect(resetPerspectiveAction, &QPushButton::clicked, this, [this]() {
       if ( m_imageView ) {
         m_imageView->setPerspectiveWarpReset();
@@ -2920,8 +3151,10 @@ void MainWindow::createToolbars()
     m_canvasWarpLayerToolbar->addWidget(cageControlPointsLabel);
     QPushButton* btnPlus = new QPushButton("+", this);
     btnPlus->setFocusPolicy(Qt::ClickFocus);
+    btnPlus->setToolTip("<b>Add control point</b><br>Increase the number of cage warp control points to allow finer local deformation.");
     QPushButton* btnMinus = new QPushButton("-", this);
     btnMinus->setFocusPolicy(Qt::ClickFocus);
+    btnMinus->setToolTip("<b>Remove control point</b><br>Decrease the number of cage warp control points for a coarser, smoother deformation.");
     btnPlus->setStyleSheet("font-size: 20px; font-weight: bold;");
     btnMinus->setStyleSheet("font-size: 20px; font-weight: bold;");
     btnPlus->setFixedSize(18, 18);
@@ -2933,7 +3166,7 @@ void MainWindow::createToolbars()
     // --- fix boundary ---
     QCheckBox* fixBoundaryCheck = new QCheckBox("Fix boundary", this);
     fixBoundaryCheck->setFocusPolicy(Qt::ClickFocus);
-    fixBoundaryCheck->setToolTip("Fixed outer mesh warp cage boundaries.");
+    fixBoundaryCheck->setToolTip("<b>Fix boundary</b><br>Lock the outer edge of the cage so only interior control points can be moved. Prevents the layer border from being distorted during warping.");
     fixBoundaryCheck->setChecked(true);
     m_canvasWarpLayerToolbar->addWidget(fixBoundaryCheck);
     connect(fixBoundaryCheck, &QCheckBox::toggled, m_imageView, &ImageView::setCageWarpFixBoundary);
@@ -2944,32 +3177,43 @@ void MainWindow::createToolbars()
     relaxationSpin->setFocusPolicy(Qt::ClickFocus);
     relaxationSpin->setRange(0,100);
     relaxationSpin->setValue(0);
+    relaxationSpin->setToolTip(
+        "<b>Relaxation steps</b><br>"
+        "Number of smoothing iterations applied after each warp. "
+        "Higher values spread the deformation more gradually across the mesh.");
     m_canvasWarpLayerToolbar->addWidget(relaxationSpin);
     connect(relaxationSpin, QOverload<int>::of(&QSpinBox::valueChanged), m_imageView, &ImageView::setCageWarpRelaxationSteps);
     // --- stiffness ---
-    QLabel* cageStiffnessLabel = new QLabel(" Stifness:");
+    QLabel* cageStiffnessLabel = new QLabel(" Stiffness:");
     m_canvasWarpLayerToolbar->addWidget(cageStiffnessLabel);
     QDoubleSpinBox* stiffnessSpin = new QDoubleSpinBox();
     stiffnessSpin->setFocusPolicy(Qt::ClickFocus);
     stiffnessSpin->setRange(0.0,3.0);
     stiffnessSpin->setSingleStep(0.05);
     stiffnessSpin->setValue(0.0);
+    stiffnessSpin->setToolTip(
+        "<b>Stiffness</b><br>"
+        "Controls how rigidly the mesh resists deformation (0.0–3.0). "
+        "Higher values keep the shape more intact while lower values allow freer warping.");
     m_canvasWarpLayerToolbar->addWidget(stiffnessSpin);
     connect(stiffnessSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), m_imageView, &ImageView::setCageWarpStiffness);
     // --- Cage edit undo/redo ---
     m_canvasWarpLayerToolbar->addSeparator();
     QAction* cageUndoAction = new QAction(tr("Undo"), this);
     cageUndoAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    cageUndoAction->setToolTip("<b>Undo</b><br>Reverse the last cage warp control-point move.");
     connect(cageUndoAction, &QAction::triggered, m_imageView, &ImageView::undoCageWarpOperation);
     m_canvasWarpLayerToolbar->addAction(cageUndoAction);
     QAction* cageRedoAction = new QAction(tr("Redo"), this);
     cageRedoAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+    cageRedoAction->setToolTip("<b>Redo</b><br>Reapply the last undone cage warp control-point move.");
     connect(cageRedoAction, &QAction::triggered, m_imageView, &ImageView::redoCageWarpOperation);
     m_canvasWarpLayerToolbar->addAction(cageRedoAction);
     m_canvasWarpLayerToolbar->addSeparator();
     // --- Reset cage ---
     QPushButton *resetCageAction = new QPushButton("Reset");
     resetCageAction->setFocusPolicy(Qt::ClickFocus);
+    resetCageAction->setToolTip("<b>Reset cage warp</b><br>Remove all cage warp deformation and restore the layer to its original unwarped shape.");
     connect(resetCageAction, &QPushButton::clicked, m_imageView, &ImageView::setCageWarpReset);
     m_canvasWarpLayerToolbar->addWidget(resetCageAction);
     // --- Update for Debugging ---
@@ -2993,11 +3237,23 @@ void MainWindow::createToolbars()
     QLabel* maskIndexLabel = new QLabel(" Index:");
     m_maskToolbar->addWidget(maskIndexLabel);
     QComboBox* maskIndexBox = buildDefaultColorComboBox();
+    maskIndexBox->setToolTip(
+        "<b>Active class</b><br>"
+        "Select the semantic class to paint with. Each class is shown with its assigned colour. "
+        "The Paint and Erase tools affect only the currently selected class.");
     m_maskToolbar->addWidget(maskIndexBox);
     QLabel* classTypeLabel = new QLabel(" Type:");
     m_maskToolbar->addWidget(classTypeLabel);
     QComboBox* applyClassImageItem = new QComboBox();
     applyClassImageItem->addItems({"Ignore mask","Mask labels","Only mask labels","Copy where mask","Inpainting"});
+    applyClassImageItem->setToolTip(
+        "<b>Mask cut type</b><br>"
+        "Defines how this class interacts with the lasso cut operation:<br>"
+        "<b>Ignore mask</b> — this class is not used during cutting<br>"
+        "<b>Mask labels</b> — masked pixels are made transparent in the cut layer<br>"
+        "<b>Only mask labels</b> — only masked pixels are kept in the cut layer<br>"
+        "<b>Copy where mask</b> — copy image content wherever this class is painted<br>"
+        "<b>Inpainting</b> — fill masked regions using image inpainting");
     connect(maskIndexBox, &QComboBox::currentTextChanged, this, [this,applyClassImageItem](const QString& text){
       applyClassImageItem->setCurrentIndex(m_imageView->getMaskCutToolType(text));
       QString numOnly;
@@ -3030,14 +3286,16 @@ void MainWindow::createToolbars()
     maskBrushSpin->setFocusPolicy(Qt::ClickFocus);
     maskBrushSpin->setRange(1,50);
     maskBrushSpin->setValue(5);
+    maskBrushSpin->setToolTip("<b>Brush size</b><br>Radius of the mask paint brush in pixels (1–50).");
     m_maskToolbar->addWidget(maskBrushSpin);
     connect(maskBrushSpin, QOverload<int>::of(&QSpinBox::valueChanged), m_imageView, &ImageView::setMaskBrushRadius);
     QLabel *maskOpacityLabel = new QLabel("Opacity", this);
     m_maskToolbar->addWidget(maskOpacityLabel);
     QSlider *maskOpacitySlider = new QSlider(Qt::Horizontal, this);
-    maskOpacitySlider->setRange(0,100); 
-    maskOpacitySlider->setValue(40);  
+    maskOpacitySlider->setRange(0,100);
+    maskOpacitySlider->setValue(40);
     maskOpacitySlider->setFixedWidth(100);
+    maskOpacitySlider->setToolTip("<b>Mask opacity</b><br>Transparency of the mask overlay on the image (0 = invisible, 100 = fully opaque). Does not affect the saved mask data.");
     connect(maskOpacitySlider, &QSlider::valueChanged, this, [&](int v){
        m_imageView->setMaskOpacity(v/100.0); // m_maskItem->setOpacityFactor(v / 100.0);
     });
@@ -3056,10 +3314,21 @@ void MainWindow::createToolbars()
     layerMaskThresholdSpin->setFocusPolicy(Qt::ClickFocus);
     layerMaskThresholdSpin->setRange(0,255);
     layerMaskThresholdSpin->setValue(0);
+    layerMaskThresholdSpin->setToolTip(
+        "<b>Image threshold</b><br>"
+        "Pixels below this grey value (0–255) are treated as transparent when the lasso cut is applied. "
+        "Set to 0 to disable thresholding and keep all pixels.");
     m_lassoToolbar->addWidget(layerMaskThresholdSpin);
     // --- Mask image ---
     QComboBox* applyMaskImageItem = new QComboBox();
     applyMaskImageItem->addItems({"Ignore mask","Mask labels","Only mask labels","Copy where mask"});
+    applyMaskImageItem->setToolTip(
+        "<b>Mask cut mode</b><br>"
+        "Controls how the class mask interacts with the lasso cut:<br>"
+        "<b>Ignore mask</b> — cut the selected region without considering the mask<br>"
+        "<b>Mask labels</b> — masked pixels are made transparent in the resulting layer<br>"
+        "<b>Only mask labels</b> — only pixels that are masked are included in the layer<br>"
+        "<b>Copy where mask</b> — copy image pixels wherever the mask is painted");
     connect(applyMaskImageItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
       // std::cout << "applyMaskImageItem(): " << text.toStdString() << std::endl;
       QString name = "Label 0";
@@ -3089,6 +3358,10 @@ void MainWindow::createToolbars()
     QLabel* polygonColorLabel = new QLabel("  Index:");
     m_polygonToolbar->addWidget(polygonColorLabel);
     m_polygonIndexBox = buildDefaultColorComboBox("Polygon", 10);
+    m_polygonIndexBox->setToolTip(
+        "<b>Polygon index</b><br>"
+        "Select which polygon to work on. Each polygon has its own colour and index. "
+        "Switching the index lets you create and edit multiple independent polygons on the same image.");
     {
         QFontMetrics fm(m_polygonIndexBox->font());
         const int w = m_polygonIndexBox->iconSize().width() + 6
@@ -3117,6 +3390,18 @@ void MainWindow::createToolbars()
     m_polygonOperationItem->setCurrentIndex(-1);
     m_polygonOperationItem->addItems({"Select","Move polygon point","Add new polygon point","Delete polygon point","Translate polygon","Smooth polygon","Reduce polygon","Delete polygon","Information"});
     m_polygonOperationItem->setEnabled(false);
+    m_polygonOperationItem->setToolTip(
+        "<b>Polygon operation</b><br>"
+        "Choose what clicking on the polygon does:<br>"
+        "<b>Select</b> — select the polygon or a point<br>"
+        "<b>Move polygon point</b> — drag an existing vertex<br>"
+        "<b>Add new polygon point</b> — insert a vertex by clicking on an edge<br>"
+        "<b>Delete polygon point</b> — remove a vertex by clicking it<br>"
+        "<b>Translate polygon</b> — move the entire polygon<br>"
+        "<b>Smooth polygon</b> — apply smoothing to reduce jagged edges<br>"
+        "<b>Reduce polygon</b> — simplify by reducing the number of vertices<br>"
+        "<b>Delete polygon</b> — remove the entire polygon<br>"
+        "<b>Information</b> — show statistics about the polygon");
     m_polygonToolbar->addWidget(m_polygonOperationItem);
     connect(m_polygonOperationItem, &QComboBox::currentTextChanged, this, [this](const QString& text){
       LayerItem::OperationMode polygonOperationMode = LayerItem::OperationMode::Select;
@@ -3127,18 +3412,32 @@ void MainWindow::createToolbars()
       else if ( text.startsWith("Smooth") ) polygonOperationMode = LayerItem::OperationMode::SmoothPolygon;
       else if ( text.startsWith("Reduce") ) polygonOperationMode = LayerItem::OperationMode::ReducePolygon;
       else if ( text.startsWith("Delete") ) polygonOperationMode = LayerItem::OperationMode::DeletePolygon;
-      else if ( text.startsWith("Info") ) polygonOperationMode = LayerItem::OperationMode::Info;
+      else if ( text.startsWith("Info") ) {
+        polygonOperationMode = LayerItem::OperationMode::Info;
+        showMessage(tr("Double-click the polygon to display its measurements."));
+      }
       m_imageView->setPolygonOperationMode(polygonOperationMode);
     });
     
     QAction *polygonUndoAction = new QAction(tr("Undo"), this);
+    polygonUndoAction->setToolTip(
+        "<b>Undo</b><br>"
+        "Remove the last placed polygon vertex or reverse the last polygon edit.");
     connect(polygonUndoAction, &QAction::triggered, m_imageView, &ImageView::undoPolygonOperation);
     m_polygonToolbar->addAction(polygonUndoAction);
-    QAction *polygonRedoAction =  new QAction(tr("Redo"), this);
+
+    QAction *polygonRedoAction = new QAction(tr("Redo"), this);
+    polygonRedoAction->setToolTip(
+        "<b>Redo</b><br>"
+        "Reapply the last undone polygon vertex or edit.");
     connect(polygonRedoAction, &QAction::triggered, m_imageView, &ImageView::redoPolygonOperation);
     m_polygonToolbar->addAction(polygonRedoAction);
-    
+
     m_polygonCreateLayerAction = new QAction(tr("Create new polygon layer"), this);
+    m_polygonCreateLayerAction->setToolTip(
+        "<b>Create new polygon layer</b><br>"
+        "Cut the region enclosed by the current polygon out of the base image and place it "
+        "on a new layer. The button switches to \"Update polygon layer\" once a layer exists.");
     connect(m_polygonCreateLayerAction, &QAction::triggered, m_imageView, &ImageView::createPolygonLayer);
     connect(m_imageView, &ImageView::polygonHasLayer, this, [this](bool hasLayer){
         m_polygonCreateLayerAction->setText(
@@ -3179,7 +3478,8 @@ void MainWindow::createStatusbar()
   {
     m_messageLabel = new QLabel("Ready", this);
     m_messageLabel->setFrameStyle(QFrame::NoFrame);
-    statusBar()->insertWidget(0, m_messageLabel);
+    m_messageLabel->setMinimumWidth(200);
+    statusBar()->insertWidget(0, m_messageLabel, 1);
     
     m_statusScaleLabel  = new QLabel(this);
     m_statusPosLabel    = new QLabel(this);

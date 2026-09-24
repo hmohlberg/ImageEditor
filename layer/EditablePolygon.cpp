@@ -30,6 +30,8 @@
 #include "../core/Config.h"
 
 #include <QDebug>
+#include <QString>
+#include <cmath>
 
 #include <iostream>
 
@@ -243,6 +245,71 @@ void EditablePolygon::printself()
         auto* cmd = m_undoStack.command(i);
         qInfo() << "  + text =" << cmd->text();
   }
+}
+
+QString EditablePolygon::infoHtml(double pixelScaleUm) const
+{
+    const int n = m_polygon.size();
+    if (n < 3) {
+        return QString("<b>%1</b><br><br>Not enough vertices to compute measurements (%2 points).")
+                   .arg(m_name).arg(n);
+    }
+
+    // Signed shoelace → area and centroid
+    double signedArea = 0.0;
+    double perimeter  = 0.0;
+    double cx = 0.0, cy = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const QPointF& a = m_polygon[i];
+        const QPointF& b = m_polygon[(i + 1) % n];
+        const double cross = a.x() * b.y() - b.x() * a.y();
+        signedArea += cross;
+        cx += (a.x() + b.x()) * cross;
+        cy += (a.y() + b.y()) * cross;
+        const double dx = b.x() - a.x(), dy = b.y() - a.y();
+        perimeter += std::sqrt(dx*dx + dy*dy);
+    }
+    signedArea /= 2.0;
+    const double area = std::abs(signedArea);
+    if (area > 0.0) { cx /= 6.0 * signedArea; cy /= 6.0 * signedArea; }
+
+    const QRectF bb = m_polygon.boundingRect();
+    const double s  = pixelScaleUm;
+    const double s2 = s * s;
+
+    // Format helpers
+    auto fmtPx  = [](double v, int d = 1){ return QString::number(v, 'f', d); };
+    auto fmtLen = [](double um){
+        return um >= 1000.0 ? QString("%1 mm").arg(um / 1000.0, 0, 'f', 3)
+                            : QString("%1 µm").arg(um, 0, 'f', 1);
+    };
+    auto fmtArea = [](double um2){
+        return um2 >= 1.0e6 ? QString("%1 mm²").arg(um2 / 1.0e6, 0, 'f', 4)
+                            : QString("%1 µm²").arg(um2, 0, 'f', 1);
+    };
+
+    return QString(
+        "<b>%1</b><br><br>"
+        "<table cellspacing='4'>"
+        "<tr><td><b>Vertices</b></td><td>%2</td></tr>"
+        "<tr><td><b>Bounding box</b></td><td>%3 × %4 px &nbsp;(%5 × %6)</td></tr>"
+        "<tr><td><b>Top-left corner</b></td><td>(%7, %8) px</td></tr>"
+        "<tr><td><b>Centroid</b></td><td>(%9, %10) px</td></tr>"
+        "<tr><td><b>Perimeter</b></td><td>%11 px &nbsp;(%12)</td></tr>"
+        "<tr><td><b>Enclosed area</b></td><td>%13 px² &nbsp;(%14)</td></tr>"
+        "<tr><td colspan='2'><hr></td></tr>"
+        "<tr><td><b>Scale</b></td><td>1 pixel = %15 µm</td></tr>"
+        "</table>"
+    )
+    .arg(m_name)
+    .arg(n)
+    .arg(fmtPx(bb.width())).arg(fmtPx(bb.height()))
+    .arg(fmtLen(bb.width() * s)).arg(fmtLen(bb.height() * s))
+    .arg(fmtPx(bb.left())).arg(fmtPx(bb.top()))
+    .arg(fmtPx(cx)).arg(fmtPx(cy))
+    .arg(fmtPx(perimeter)).arg(fmtLen(perimeter * s))
+    .arg(fmtPx(area, 0)).arg(fmtArea(area * s2))
+    .arg(pixelScaleUm, 0, 'f', 1);
 }
 
 // ---------------- Serialization ----------------

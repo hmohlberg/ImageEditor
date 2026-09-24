@@ -78,6 +78,7 @@
       m_binaryMasking = settings.value("Main/binaryMasking", true).toBool();
       m_crosshair = settings.value("Main/crosshair", true).toBool();
       m_showDocksAtStartup = settings.value("Main/showDocksAtStartup", false).toBool();
+      m_pixelScale = settings.value("Main/pixelScale", 20.0).toDouble();
       
       // cursor stuff
       m_cursorSize = settings.value("Main/cursorSize",0).toInt();
@@ -197,6 +198,7 @@
     QColor polygonHandleColor() const { return m_polygonHandleColor; }
     int controlPointRadius() const { return m_controlPointRadius; }
     double handleRadius() const { return m_handleRadius; }
+    double pixelScale() const { return m_pixelScale; }
     bool crosshair() const { return m_crosshair; }
     bool showDocksAtStartup() const { return m_showDocksAtStartup; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
@@ -251,6 +253,7 @@
     void setLayerOverlayOpacity(double v) { m_layerOverlayOpacity = v; }
     void setRotationSingleStep(double v) { m_rotationSingleStep = v; }
     void setHandleRadius(double v) { m_handleRadius = v; }
+    void setPixelScale(double v) { m_pixelScale = v; }
     void setTransformationMode(Qt::TransformationMode v) { m_transformationMode = v; }
     void setInterpolationMode(InterpolationMode v) { m_interpolationMode = v; }
     void setPath(const QString& v) { m_path = v; }
@@ -273,6 +276,7 @@
       m_cursorBorderColor = Qt::white;
       m_cageWarpColor     = Qt::green;
       m_rotationSingleStep= 0.5;
+      m_pixelScale        = 20.0;
       m_layerOverlayOpacity = 0.8;
       m_loggingIsEnabled  = false;
       m_useCageQuads      = true;
@@ -341,6 +345,7 @@
         default:                         im = "linear";  break;
       }
       s.setValue("ImageLayer/interpolationMode", im);
+      s.setValue("Main/pixelScale",       m_pixelScale);
       s.setValue("Network/githubBaseUrl", m_githubBaseUrl);
       s.sync();
     }
@@ -434,6 +439,7 @@
     double m_handleRadius;
     double m_rotationSingleStep;
     double m_layerOverlayOpacity;
+    double m_pixelScale = 20.0;
     
  };
 

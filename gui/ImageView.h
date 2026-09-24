@@ -236,6 +236,7 @@ class ImageView : public QGraphicsView
     qreal m_brushHardness = 1.0;
     QColor m_brushColor = Qt::white;
     QColor m_backgroundColor = Qt::white;
+    QColor m_activePaintColor = Qt::white;
     int m_oldVisibleLayerItemNum = -1;
     int m_brushRadius = 5;
     int m_maskBrushRadius = 5;

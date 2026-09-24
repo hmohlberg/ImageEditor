@@ -329,6 +329,21 @@ void ImageView::setPaintToolEnabled( bool enabled )
         m_painting = false;
         m_paintLayer = nullptr;
         m_currentStroke.clear();
+    } else {
+        for ( auto* item : m_scene->items() ) {
+            auto* layer = dynamic_cast<LayerItem*>(item);
+            if ( !layer || layer->getType() != LayerItem::MainImage ) continue;
+            const QImage& img = layer->image();
+            if ( img.isNull() || img.width() < 2 || img.height() < 2 ) break;
+            int r = 0, g = 0, b = 0;
+            const int iw = img.width() - 1, ih = img.height() - 1;
+            for ( const QPoint& p : { QPoint{0,0}, QPoint{iw,0}, QPoint{0,ih}, QPoint{iw,ih} } )
+                { QColor c( img.pixel(p) ); r += c.red(); g += c.green(); b += c.blue(); }
+            m_backgroundColor = QColor( r/4, g/4, b/4 );
+            m_brushColor = m_backgroundColor;
+            emit pickedColorChanged( m_brushColor );
+            break;
+        }
     }
     viewport()->update();
 }
@@ -345,9 +360,18 @@ void ImageView::setLassoEnabled( bool enabled )
   viewport()->update(); 
 }
 
-void ImageView::setImage( const QImage& img ) 
+void ImageView::setImage( const QImage& img )
 {
   m_image = img.convertToFormat(QImage::Format_ARGB32);
+  if ( !m_image.isNull() && m_image.width() >= 2 && m_image.height() >= 2 ) {
+    int r = 0, g = 0, b = 0;
+    const int w = m_image.width() - 1, h = m_image.height() - 1;
+    for ( const QPoint& p : { QPoint{0,0}, QPoint{w,0}, QPoint{0,h}, QPoint{w,h} } ) {
+      QColor c( m_image.pixel(p) );
+      r += c.red(); g += c.green(); b += c.blue();
+    }
+    m_backgroundColor = QColor( r/4, g/4, b/4 );
+  }
   QVector<QRgb> lut(256);
   for ( int i=0 ; i<256 ; i++ ) lut[i] = qRgb(i,i,i);
   setColorTable(lut);
@@ -392,11 +416,6 @@ void ImageView::rebuildUndoStack()
           }
         }
       } 
-    }
-    
-    // output
-    for ( int i=0; i < entries.size(); ++i ) {
-      qDebug() << "  + name = " << entries[i].cmd->text() << ": id =" << entries[i].id << ", originalIndex =" << entries[i].originalIndex;
     }
 
     // sort method
@@ -735,7 +754,7 @@ LayerItem* ImageView::currentLayer() const
 
 void ImageView::deleteLayer( Layer* layer )
 {
-  qDebug() << "ImageView::deleteLayer(): Processing...";
+  qCDebug(logEditor) << "ImageView::deleteLayer(): Processing...";
   {
    if ( layer == nullptr || layer->m_item == nullptr ) return;
    LayerItem *imageLayer = dynamic_cast<LayerItem*>(layer->m_item);
@@ -1068,11 +1087,24 @@ void ImageView::mousePressEvent( QMouseEvent* event )
             if ( !layer->image().rect().contains(localPos) ) continue;
             m_painting = true;
             m_paintLayer = layer;
+            if ( event->button() == Qt::RightButton ) {
+                const QImage& img = layer->image();
+                if ( !img.isNull() && img.width() >= 2 && img.height() >= 2 ) {
+                    int r = 0, g = 0, b = 0;
+                    const int iw = img.width() - 1, ih = img.height() - 1;
+                    for ( const QPoint& p : { QPoint{0,0}, QPoint{iw,0}, QPoint{0,ih}, QPoint{iw,ih} } )
+                        { QColor c( img.pixel(p) ); r += c.red(); g += c.green(); b += c.blue(); }
+                    m_activePaintColor = QColor( r/4, g/4, b/4 );
+                } else {
+                    m_activePaintColor = m_backgroundColor;
+                }
+            } else {
+                m_activePaintColor = m_brushColor;
+            }
             m_currentStroke.clear();
             m_currentStroke << localPos;
-            //ALT: m_undoStack->push(new PaintStrokeCommand(layer, localPos, m_brushColor, m_brushRadius, m_brushHardness));
             layer->updateOriginalImage();
-            layer->paintStrokeSegment(localPos,localPos,m_brushColor,m_brushRadius,m_brushHardness);
+            layer->paintStrokeSegment(localPos,localPos,m_activePaintColor,m_brushRadius,m_brushHardness);
             viewport()->update();
             break;
         }
@@ -1239,7 +1271,7 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
         if ( m_currentStroke.isEmpty() || m_currentStroke.last() != localPos ) {
             m_currentStroke << localPos;
             m_paintLayer->paintStrokeSegment(m_currentStroke[m_currentStroke.size()-2], localPos,
-                                             m_brushColor, m_brushRadius, m_brushHardness);
+                                             m_activePaintColor, m_brushRadius, m_brushHardness);
             viewport()->update();
         }
         return;
@@ -1337,6 +1369,7 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
                                                         rows, columns ) );
          } else {
            selectedCageLayer->getCageWarpCommand()->pushNewWarpStep( selectedCageLayer->pos(), cageAfter );
+           m_undoStack->resetClean();
          }
          if( selectedCageLayer ) {
            selectedCageLayer->applyCageWarp("ImageView::1");
@@ -1376,9 +1409,9 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
         return;
      }
      // --- Painting beenden ---
-     if ( m_painting && event->button() == Qt::LeftButton ) {
+     if ( m_painting && (event->button() == Qt::LeftButton || event->button() == Qt::RightButton) ) {
         if ( m_currentStroke.size() > 1 ) {
-            m_undoStack->push(new PaintStrokeCommand(m_paintLayer,m_currentStroke,m_brushColor,
+            m_undoStack->push(new PaintStrokeCommand(m_paintLayer,m_currentStroke,m_activePaintColor,
                                     m_brushRadius,m_brushHardness));
         }
         m_paintLayer = nullptr;
@@ -1662,6 +1695,9 @@ void ImageView::setPolygonOperationMode( LayerItem::OperationMode mode )
      case LayerItem::OperationMode::DeletePolygon:
       todoText = "Double click inside the polygon to delete it";
       break;
+     case LayerItem::OperationMode::Info:
+      todoText = "Double-click the polygon to display its measurements.";
+      break;
      default:
       todoText = "";
       break;
@@ -1713,6 +1749,7 @@ void ImageView::initCageWarpForLayer( LayerItem *layerItem )
               cageBefore, cageAfter,m_selectedCageLayer->sceneBoundingRect(), m_selectedCageLayer->pos(), rows, columns ) );
      } else {
        m_selectedCageLayer->getCageWarpCommand()->pushNewWarpStep( m_selectedCageLayer->pos(), cageAfter );
+       m_undoStack->resetClean();
      }
      if ( m_selectedCageLayer ) {
         m_selectedCageLayer->applyCageWarp("ImageView::2");
@@ -1812,7 +1849,7 @@ void ImageView::createLassoLayer()
 
 LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QString &name )
 {
-  qDebug() << "ImageView::createNewLayer(): name =" << name << ",  polygon_size =" 
+  qCDebug(logEditor) << "ImageView::createNewLayer(): name =" << name << ",  polygon_size =" 
                 << polygon.size() << ", operationMode =" << m_layerOperationMode;
   {
     // --- switch to layer operation mode ---
@@ -2334,7 +2371,19 @@ void ImageView::updatePolygonLayer()
     if ( polyF.size() < 3 )
       return;
     QRect newBounds = polyF.boundingRect().toAlignedRect();
-    QColor backgroundColor = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
+    // Sample image corners to detect the actual background colour
+    // (avoids relying on the static Config flag which may not reflect the real background).
+    QColor backgroundColor = Qt::black;
+    if ( !restoredSrc.isNull() && restoredSrc.width() >= 2 && restoredSrc.height() >= 2 ) {
+        int r = 0, g = 0, b = 0;
+        for ( const QPoint& p : { QPoint{0,0}, QPoint{restoredSrc.width()-1,0},
+                                   QPoint{0,restoredSrc.height()-1},
+                                   QPoint{restoredSrc.width()-1,restoredSrc.height()-1} } ) {
+            QColor c(restoredSrc.pixel(p));
+            r += c.red(); g += c.green(); b += c.blue();
+        }
+        backgroundColor = QColor(r/4, g/4, b/4);
+    }
 
     // Rasterise polygon into an alpha mask (255 = inside, 0 = outside).
     // Always use Qt::white as brush so the alpha component (255) is written to

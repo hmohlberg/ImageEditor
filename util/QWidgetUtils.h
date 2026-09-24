@@ -97,7 +97,7 @@ namespace QWidgetUtils
     QHBoxLayout *buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch(); 
 
-    QPushButton *btnOk = new QPushButton("Revoke", &dialog);
+    QPushButton *btnOk = new QPushButton("Revert", &dialog);
     QPushButton *btnIgnore = new QPushButton("Delete", &dialog);
     QPushButton *btnDestroy = new QPushButton("Destroy", &dialog);
     QPushButton *btnCancel = new QPushButton("Cancel", &dialog);
