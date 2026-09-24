@@ -30,6 +30,10 @@ Quick links
      - How to build on Linux, macOS, or Windows/WSL
    * - :doc:`usage`
      - Command-line options and usage examples
+   * - :doc:`tools`
+     - Paint, Mask Classes, Lasso, Polygon, and Layer tools explained
+   * - :doc:`docks`
+     - Layers dock and Undo History dock
    * - :doc:`technical`
      - BigTIFF, HDF5, batch processing details
    * - :doc:`api/index`
@@ -47,6 +51,8 @@ Quick links
    features
    installation
    usage
+   tools
+   docks
    technical
 
 .. toctree::
