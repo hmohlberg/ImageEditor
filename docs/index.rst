@@ -34,6 +34,8 @@ Quick links
      - Paint, Mask Classes, Lasso, Polygon, and Layer tools explained
    * - :doc:`docks`
      - Layers dock and Undo History dock
+   * - :doc:`dialogs`
+     - Open-Image-Dialog und Konfigurations-Dialog
    * - :doc:`technical`
      - BigTIFF, HDF5, batch processing details
    * - :doc:`api/index`
@@ -53,6 +55,7 @@ Quick links
    usage
    tools
    docks
+   dialogs
    technical
 
 .. toctree::
