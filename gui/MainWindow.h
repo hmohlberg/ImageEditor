@@ -35,6 +35,7 @@
 
 class ImageView;
 class LayerEditorView;
+class OverviewWidget;
 #ifdef HASTIFF
 class BigTiffViewer;
 #endif
@@ -158,9 +159,11 @@ class MainWindow : public QMainWindow, public IMainSystem
     QUndoView* m_undoView;
     DarkHistoryDelegate* m_undoViewDelegate;
     
-    QDockWidget* m_layerDock;
-    QDockWidget* m_historyDock;
-    QListWidget* m_layerList;
+    QDockWidget*    m_overviewDock   = nullptr;
+    QDockWidget*    m_layerDock      = nullptr;
+    QDockWidget*    m_historyDock    = nullptr;
+    QListWidget*    m_layerList      = nullptr;
+    OverviewWidget* m_overviewWidget = nullptr;
     
     QToolBar* m_controlToolbar = nullptr;
     QToolBar* m_editToolbar = nullptr;
@@ -219,7 +222,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     QComboBox* m_polygonOperationItem = nullptr;
     QComboBox* m_selectLayerItem = nullptr;
     QComboBox* m_mirrorDirectionCombo = nullptr;
-    
+
     QDoubleSpinBox* m_rotationLayerAngleSpin = nullptr;
     QDoubleSpinBox* m_scaleXLayerSpin = nullptr;
     QDoubleSpinBox* m_scaleYLayerSpin = nullptr;

@@ -79,5 +79,6 @@ class LassoCutCommand : public AbstractCommand
     QRect m_bounds;
     QImage m_backup;
     QImage m_originalImageBackup; // snapshot of m_originalLayer->originalImage() before the cut
-    
+    QColor m_origBgColor;         // source-space background sampled from m_originalImageBackup corners
+
 };

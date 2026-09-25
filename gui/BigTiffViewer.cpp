@@ -138,15 +138,29 @@ public:
         setScene(scene);
 
         // default identity LUT (gray → gray)
+        m_baseLut.resize(256);
         m_lut.resize(256);
         for (int i = 0; i < 256; ++i)
-            m_lut[i] = qRgb(i, i, i);
+            m_baseLut[i] = m_lut[i] = qRgb(i, i, i);
     }
 
     void setColorTable(const QVector<QRgb>& lut) {
-        m_lut = lut;
-        m_cache.clear();          // cached tiles used the old LUT → invalidate
-        scene()->update();        // trigger redraw
+        m_baseLut = lut;
+        rebuildEffectiveLut();
+    }
+
+    void setBrightness(int v) { m_brightness = qBound(-100, v, 100); rebuildEffectiveLut(); }
+    void setContrast(int v)   { m_contrast   = qBound(-100, v, 100); rebuildEffectiveLut(); }
+
+    void rebuildEffectiveLut() {
+        m_lut.resize(256);
+        const float factor = 1.0f + m_contrast / 100.0f;
+        for (int i = 0; i < 256; ++i) {
+            int adj = qBound(0, qRound((i - 128) * factor + 128 + m_brightness), 255);
+            m_lut[i] = m_baseLut[adj];
+        }
+        m_cache.clear();
+        scene()->update();
     }
 
     ~BigTiffGraphicsView() { closeTiff(); }
@@ -226,6 +240,12 @@ public:
         m_fitted = true;
         fitInView(scene()->sceneRect(), Qt::KeepAspectRatio);
         if (onScaleChanged) onScaleChanged(transform().m11());
+        emitViewport();
+    }
+
+    void emitViewport() {
+        if (onViewportChanged)
+            onViewportChanged(mapToScene(viewport()->rect()).boundingRect(), sceneRect());
     }
 
     // called by BigTiffViewer to receive live level/scale updates
@@ -233,8 +253,14 @@ public:
     std::function<void(double)>                   onScaleChanged;
     std::function<void(int, int)>                 onCursorPos;
     std::function<void(QColor)>                   onCursorColor;
+    std::function<void(QRectF, QRectF)>           onViewportChanged;
 
 protected:
+    void scrollContentsBy(int dx, int dy) override {
+        QGraphicsView::scrollContentsBy(dx, dy);
+        emitViewport();
+    }
+
     // ── tile-based background rendering ──────────────────────────────────────
     void drawBackground(QPainter* painter, const QRectF& exposed) override {
         QGraphicsView::drawBackground(painter, exposed);
@@ -296,6 +322,7 @@ protected:
         // always call parent so AnchorUnderMouse works
         QGraphicsView::wheelEvent(e);
         if (onScaleChanged) onScaleChanged(transform().m11());
+        emitViewport();
     }
 
     void mouseMoveEvent(QMouseEvent* e) override {
@@ -634,7 +661,10 @@ public:
     QSet<quint64>         m_pending;
     QVector<BigTiffLevel> m_levels;
     TileCache             m_cache;
+    QVector<QRgb>         m_baseLut;
     QVector<QRgb>         m_lut;
+    int                   m_brightness = 0;
+    int                   m_contrast   = 0;
     QString               m_lastSaveError;
     QString               m_srcPath;
 };
@@ -718,9 +748,10 @@ bool BigTiffViewer::open(const QString& path)
                     .arg(dirIdx)
                     .arg(scale, 0, 'f', 4));
         };
-        m_view->onScaleChanged = [this](double s) { emit scaleChanged(s); };
-        m_view->onCursorPos    = [this](int x, int y) { emit cursorPositionChanged(x, y); };
-        m_view->onCursorColor  = [this](QColor c) { emit cursorColorChanged(c); };
+        m_view->onScaleChanged      = [this](double s) { emit scaleChanged(s); };
+        m_view->onCursorPos         = [this](int x, int y) { emit cursorPositionChanged(x, y); };
+        m_view->onCursorColor       = [this](QColor c) { emit cursorColorChanged(c); };
+        m_view->onViewportChanged   = [this](QRectF vis, QRectF full) { emit viewportChanged(vis, full); };
         QTimer::singleShot(0, m_view, [this]{ m_view->fitAll(); });
     }
     return ok;
@@ -810,10 +841,10 @@ void BigTiffViewer::zoomIn()  { m_view->zoomBy(1.25); }
 void BigTiffViewer::zoomOut() { m_view->zoomBy(1.0 / 1.25); }
 void BigTiffViewer::fitView() { m_view->fitAll(); }
 
-void BigTiffViewer::setColorTable(const QVector<QRgb>& lut)
-{
-    m_view->setColorTable(lut);
-}
+void BigTiffViewer::setColorTable(const QVector<QRgb>& lut) { m_view->setColorTable(lut); }
+void BigTiffViewer::setBrightness(int v) { m_view->setBrightness(v); }
+void BigTiffViewer::setContrast(int v)   { m_view->setContrast(v); }
+void BigTiffViewer::centerOn(const QPointF& scenePos) { m_view->centerOn(scenePos); m_view->emitViewport(); }
 
 QSize BigTiffViewer::imageSize() const
 {

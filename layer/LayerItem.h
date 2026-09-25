@@ -125,6 +125,11 @@ class LayerItem : public QGraphicsPixmapItem
     void updatePixmap();
     /// @brief Restores the display pixmap from the stored original image.
     void resetPixmap();
+    /// @brief Sets the effective display LUT (colormap + brightness/contrast combined).
+    void setActiveLut( const QVector<QRgb>& lut ) { m_activeLut = lut; }
+    const QVector<QRgb>& activeLut() const { return m_activeLut; }
+    /// @brief Re-derives m_image from m_originalImage using the active LUT for the given region.
+    void applyActiveLutToRegion( const QRect& rect );
     /// @brief Resets the cumulative transform to the identity matrix.
     void resetTotalTransform();
     /// @brief Stores the file path and computes an MD5 checksum for the loaded file.
@@ -271,8 +276,9 @@ class LayerItem : public QGraphicsPixmapItem
     void mouseReleaseEvent( QGraphicsSceneMouseEvent* ) override;
     void mouseDoubleClickEvent( QGraphicsSceneMouseEvent* ) override;
     
-    QImage m_image;
-    QImage m_originalImage;
+    QImage         m_image;
+    QImage         m_originalImage;
+    QVector<QRgb>  m_activeLut;
     ImageType m_originalImageType = ImageType::Unknown;
     
     QPointF m_startPos;

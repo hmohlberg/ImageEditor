@@ -39,6 +39,17 @@ LassoCutCommand::LassoCutCommand( LayerItem* originalLayer, LayerItem* newLayer,
 {
   qCDebug(logEditor) << "LassoCutCommand::LassoCutCommand(): Processing...";
   {
+    // Sample source-space background from m_originalImageBackup corners for use in redo().
+    const QImage& origBg = m_originalImageBackup;
+    if ( !origBg.isNull() && origBg.width() >= 2 && origBg.height() >= 2 ) {
+        int r = 0, g = 0, b = 0;
+        const int iw = origBg.width()-1, ih = origBg.height()-1;
+        for ( const QPoint& p : { QPoint{0,0}, QPoint{iw,0}, QPoint{0,ih}, QPoint{iw,ih} } )
+            { QColor c(origBg.pixel(p)); r += c.red(); g += c.green(); b += c.blue(); }
+        m_origBgColor = QColor(r/4, g/4, b/4);
+    } else {
+        m_origBgColor = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
+    }
     newLayer->setPos(bounds.topLeft());
     m_originalLayerId = originalLayer->id();
     m_newLayerId = newLayer->id(); 
@@ -69,28 +80,31 @@ void LassoCutCommand::undo()
 {
   qCDebug(logEditor) << "LassoCutCommand::undo(): Processing...";
   {
-    QImage tempImage = m_originalLayer->image();
-    QPainter p(&tempImage);
-     for ( int y = 0; y < m_backup.height(); ++y ) {
-      for ( int x = 0; x < m_backup.width(); ++x ) {
-        QColor maskPixel = m_backup.pixelColor(x, y);
-        if ( maskPixel.alpha() > 0 ) {
-          tempImage.setPixelColor(m_bounds.x()+x,m_bounds.y()+y,maskPixel);
-        }
-      }
-     }
-    p.end();
-    m_originalLayer->setImage(tempImage);
+    // Restore source data first.
     m_originalLayer->setOriginalImage(m_originalImageBackup);
+    // Re-derive m_image for the cut region from restored m_originalImage via the current LUT.
+    // Restoring m_backup (display-space, old colormap) directly would show wrong colours.
+    if ( !m_originalLayer->activeLut().isEmpty() ) {
+        m_originalLayer->applyActiveLutToRegion(m_bounds);
+        m_originalLayer->updateImageRegion(m_bounds);
+    } else {
+        QImage tempImage = m_originalLayer->image();
+        for ( int y = 0; y < m_backup.height(); ++y ) {
+            for ( int x = 0; x < m_backup.width(); ++x ) {
+                QColor maskPixel = m_backup.pixelColor(x, y);
+                if ( maskPixel.alpha() > 0 )
+                    tempImage.setPixelColor(m_bounds.x()+x, m_bounds.y()+y, maskPixel);
+            }
+        }
+        m_originalLayer->setImage(tempImage);
+    }
     m_originalLayer->update();
-    if ( m_newLayer->scene() ) {
-      m_newLayer->scene()->removeItem(m_newLayer);
-    }  
+    if ( m_newLayer->scene() )
+        m_newLayer->scene()->removeItem(m_newLayer);
     if ( m_controller != nullptr ) {
-     EditablePolygonCommand* editablePolyCommand = dynamic_cast<EditablePolygonCommand*>(m_controller);
-     if ( editablePolyCommand != nullptr ) {
-      editablePolyCommand->setVisible(true);
-     }
+        EditablePolygonCommand* editablePolyCommand = dynamic_cast<EditablePolygonCommand*>(m_controller);
+        if ( editablePolyCommand != nullptr )
+            editablePolyCommand->setVisible(true);
     }
     m_newLayer->setVisible(false);
     m_newLayer->setInActive(true);
@@ -104,53 +118,57 @@ void LassoCutCommand::redo()
   qCDebug(logEditor) << "LassoCutCommand::redo(): Processing...";
   {
     if ( m_silent ) return;
-    QImage tempImage = m_originalLayer->image();
-    // Detect the actual background colour from the image corners so colourmap
-    // changes (e.g. Invert: white→black) are respected.
-    QColor color = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
-    if ( !tempImage.isNull() && tempImage.width() > 1 && tempImage.height() > 1 ) {
-        int r = 0, g = 0, b = 0;
-        for ( const QPoint& p : { QPoint{0,0}, QPoint{tempImage.width()-1,0},
-                                   QPoint{0,tempImage.height()-1}, QPoint{tempImage.width()-1,tempImage.height()-1} } )
-        {
-            QColor c(tempImage.pixel(p));
-            r += c.red(); g += c.green(); b += c.blue();
-        }
-        color = QColor(r/4, g/4, b/4);
-    }
-    for ( int y = 0; y < m_backup.height(); ++y ) {
-      for ( int x = 0; x < m_backup.width(); ++x ) {
-        QColor maskPixel = m_backup.pixelColor(x, y);
-        if ( maskPixel.alpha() > 128 ) {
-          tempImage.setPixelColor(m_bounds.x()+x,m_bounds.y()+y,color); // hier wird im orignal image ge-cuttet
-        }
-      }
-    }
-    m_originalLayer->setImage(tempImage);
-    // Keep m_originalImage in sync: InvertLayerCommand applies LUT from originalImage(),
-    // so we fill the cut region there too (with the raw-colorspace background).
-    {
-        QImage origImg = m_originalLayer->originalImage().copy();
-        const QColor origBg = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
+    // Update m_originalImage: fill cut pixels with source-space background (m_origBgColor).
+    QImage& orig = m_originalLayer->image(1);
+    if ( !orig.isNull() && orig.size() == m_originalLayer->image().size() ) {
         for ( int y = 0; y < m_backup.height(); ++y ) {
             for ( int x = 0; x < m_backup.width(); ++x ) {
                 if ( m_backup.pixelColor(x, y).alpha() > 128 )
-                    origImg.setPixelColor(m_bounds.x()+x, m_bounds.y()+y, origBg);
+                    orig.setPixelColor(m_bounds.x()+x, m_bounds.y()+y, m_origBgColor);
             }
         }
-        m_originalLayer->setOriginalImage(origImg);
+        // Re-derive m_image for cut region from updated m_originalImage via current LUT.
+        if ( !m_originalLayer->activeLut().isEmpty() ) {
+            m_originalLayer->applyActiveLutToRegion(m_bounds);
+            m_originalLayer->updateImageRegion(m_bounds);
+        } else {
+            QImage tempImage = m_originalLayer->image();
+            QColor color = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
+            if ( !tempImage.isNull() && tempImage.width() > 1 && tempImage.height() > 1 ) {
+                int r = 0, g = 0, b = 0;
+                for ( const QPoint& p : { QPoint{0,0}, QPoint{tempImage.width()-1,0},
+                                          QPoint{0,tempImage.height()-1}, QPoint{tempImage.width()-1,tempImage.height()-1} } )
+                    { QColor c(tempImage.pixel(p)); r += c.red(); g += c.green(); b += c.blue(); }
+                color = QColor(r/4, g/4, b/4);
+            }
+            for ( int y = 0; y < m_backup.height(); ++y ) {
+                for ( int x = 0; x < m_backup.width(); ++x ) {
+                    if ( m_backup.pixelColor(x, y).alpha() > 128 )
+                        tempImage.setPixelColor(m_bounds.x()+x, m_bounds.y()+y, color);
+                }
+            }
+            m_originalLayer->setImage(tempImage);
+        }
+    } else {
+        // Fallback: no originalImage present, update m_image directly.
+        QImage tempImage = m_originalLayer->image();
+        QColor color = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;
+        for ( int y = 0; y < m_backup.height(); ++y ) {
+            for ( int x = 0; x < m_backup.width(); ++x ) {
+                if ( m_backup.pixelColor(x, y).alpha() > 128 )
+                    tempImage.setPixelColor(m_bounds.x()+x, m_bounds.y()+y, color);
+            }
+        }
+        m_originalLayer->setImage(tempImage);
     }
-    if ( !m_newLayer->scene() && m_originalLayer->scene() ) {
-      m_originalLayer->scene()->addItem(m_newLayer);
-    }
+    if ( !m_newLayer->scene() && m_originalLayer->scene() )
+        m_originalLayer->scene()->addItem(m_newLayer);
     m_newLayer->setVisible(true);
     m_newLayer->setInActive(false);
-    // controller handling
     if ( m_controller != nullptr ) {
-     EditablePolygonCommand* editablePolyCommand = dynamic_cast<EditablePolygonCommand*>(m_controller);
-     if ( editablePolyCommand != nullptr ) {
-      editablePolyCommand->setVisible(false);
-     }
+        EditablePolygonCommand* editablePolyCommand = dynamic_cast<EditablePolygonCommand*>(m_controller);
+        if ( editablePolyCommand != nullptr )
+            editablePolyCommand->setVisible(false);
     }
     m_originalLayer->update();
     MainWindow *window = dynamic_cast<MainWindow*>(m_newLayer->parent());

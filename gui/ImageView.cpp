@@ -837,16 +837,71 @@ void ImageView::setActiveLayer( const QString &name, bool initialize )
 // ------------------------ Colortable tools -------------------------------------
 void ImageView::setColorTable( const QVector<QRgb> &lut )
 {
-  QList<LayerItem*> allLayers;
-  for ( QGraphicsItem* item : m_scene->items() ) {
-    if ( auto* li = dynamic_cast<LayerItem*>(item) )
-      allLayers << li;
-  }
-  if ( allLayers.isEmpty() ) return;
-  m_undoStack->beginMacro("Apply colormap");
-  for ( LayerItem* li : allLayers )
-    m_undoStack->push(new InvertLayerCommand(li, lut));
-  m_undoStack->endMacro();
+    m_lut = lut;
+    applyDisplayAdjustments();
+}
+
+void ImageView::setBrightness( int brightness )
+{
+    m_brightness = qBound(-100, brightness, 100);
+    applyDisplayAdjustments();
+}
+
+void ImageView::setContrast( int contrast )
+{
+    m_contrast = qBound(-100, contrast, 100);
+    applyDisplayAdjustments();
+}
+
+void ImageView::applyDisplayAdjustments()
+{
+    if ( !m_scene ) return;
+
+    // Build effective LUT: brightness/contrast adjustment applied first, then colormap.
+    // If no colormap has been set yet use an identity (greyscale passthrough).
+    QVector<QRgb> effectiveLut(256);
+    const float factor = 1.0f + m_contrast / 100.0f;
+    for ( int i = 0; i < 256; ++i ) {
+        int adjusted = qBound(0, qRound((i - 128) * factor + 128 + m_brightness), 255);
+        effectiveLut[i] = m_lut.isEmpty() ? qRgb(adjusted, adjusted, adjusted) : m_lut[adjusted];
+    }
+
+    // Apply directly to all layers — not through the undo stack (display-only).
+    for ( QGraphicsItem* item : m_scene->items() ) {
+        auto* li = dynamic_cast<LayerItem*>(item);
+        if ( !li ) continue;
+        const QImage& original = li->originalImage();
+        if ( original.isNull() || original.format() != QImage::Format_ARGB32 ) continue;
+        QImage& img = li->image();
+        img = original.copy();
+        for ( int y = 0; y < img.height(); ++y ) {
+            const QRgb* src = reinterpret_cast<const QRgb*>(original.constScanLine(y));
+            QRgb*       dst = reinterpret_cast<QRgb*>(img.scanLine(y));
+            for ( int x = 0; x < img.width(); ++x ) {
+                int gray  = qGray(src[x]);
+                QRgb mapped = effectiveLut[gray];
+                dst[x] = qRgba(qRed(mapped), qGreen(mapped), qBlue(mapped), qAlpha(src[x]));
+            }
+        }
+        li->setActiveLut(effectiveLut);
+        li->updatePixmap();
+    }
+
+    // Resample background colour from the updated MainImage so the paint tool stays in sync.
+    for ( QGraphicsItem* item : m_scene->items() ) {
+        auto* li = dynamic_cast<LayerItem*>(item);
+        if ( !li || li->getType() != LayerItem::MainImage ) continue;
+        const QImage& img = li->image();
+        if ( img.isNull() || img.width() < 2 || img.height() < 2 ) break;
+        int r = 0, g = 0, b = 0;
+        const int iw = img.width()-1, ih = img.height()-1;
+        for ( const QPoint& p : { QPoint{0,0}, QPoint{iw,0}, QPoint{0,ih}, QPoint{iw,ih} } )
+            { QColor c(img.pixel(p)); r += c.red(); g += c.green(); b += c.blue(); }
+        m_backgroundColor = QColor(r/4, g/4, b/4);
+        m_brushColor = m_backgroundColor;
+        emit pickedColorChanged(m_backgroundColor);
+        break;
+    }
 }
 
 void ImageView::enablePipette( bool enabled ) {
@@ -1103,7 +1158,7 @@ void ImageView::mousePressEvent( QMouseEvent* event )
             }
             m_currentStroke.clear();
             m_currentStroke << localPos;
-            layer->updateOriginalImage();
+            m_preStrokeImage = layer->image().copy();  // snapshot before live preview for correct undo
             layer->paintStrokeSegment(localPos,localPos,m_activePaintColor,m_brushRadius,m_brushHardness);
             viewport()->update();
             break;
@@ -1411,9 +1466,21 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
      // --- Painting beenden ---
      if ( m_painting && (event->button() == Qt::LeftButton || event->button() == Qt::RightButton) ) {
         if ( m_currentStroke.size() > 1 ) {
+            // Restore the pre-live-preview state into m_paintLayer->image() within the dirty
+            // rect so the command constructor captures a clean (pre-stroke) backup for undo.
+            if ( !m_preStrokeImage.isNull() && m_paintLayer ) {
+                QRect dirtyRect = QRect(m_currentStroke.first(), QSize(1,1));
+                for ( const QPoint& p : m_currentStroke )
+                    dirtyRect |= QRect(p, QSize(1,1));
+                dirtyRect.adjust(-m_brushRadius-2, -m_brushRadius-2, m_brushRadius+2, m_brushRadius+2);
+                dirtyRect &= m_paintLayer->image().rect();
+                QPainter p(&m_paintLayer->image());
+                p.drawImage(dirtyRect.topLeft(), m_preStrokeImage.copy(dirtyRect));
+            }
             m_undoStack->push(new PaintStrokeCommand(m_paintLayer,m_currentStroke,m_activePaintColor,
                                     m_brushRadius,m_brushHardness));
         }
+        m_preStrokeImage = QImage();
         m_paintLayer = nullptr;
         m_currentStroke.clear();
         m_painting = false;
@@ -1492,9 +1559,16 @@ bool ImageView::scaleScene( int direction )
     emit scaleChanged(transform().m11());
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     scale(factor, factor);
+    emit viewportChanged(mapToScene(viewport()->rect()).boundingRect(), sceneRect());
     return true;
   }
   return false;
+}
+
+void ImageView::scrollContentsBy( int dx, int dy )
+{
+    QGraphicsView::scrollContentsBy(dx, dy);
+    emit viewportChanged(mapToScene(viewport()->rect()).boundingRect(), sceneRect());
 }
 
 void ImageView::leaveEvent( QEvent* event )

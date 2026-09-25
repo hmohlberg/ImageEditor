@@ -76,6 +76,8 @@ class ImageView : public QGraphicsView
     void finishPolygonDrawing( LayerItem* layer );
     void setPolygonEnabled( bool enabled );
     void setColorTable( const QVector<QRgb>& lut );
+    void setBrightness( int brightness );
+    void setContrast( int contrast );
     void setImage( const QImage& img );
     
     LayerItem::OperationMode getPolygonOperationMode() const { return m_polygonOperationMode; }
@@ -153,6 +155,9 @@ class ImageView : public QGraphicsView
     
     void printself();
 
+ private:
+    void applyDisplayAdjustments();
+
  signals:
 
     void cursorColorChanged( const QColor& color );
@@ -163,9 +168,11 @@ class ImageView : public QGraphicsView
     void layerAdded();
     void polygonHasLayer(bool hasLayer);
     void polygonNeedsUpdate(bool needsUpdate);
+    void viewportChanged(QRectF visibleScene, QRectF fullScene);
 
  protected:
 
+    void scrollContentsBy( int dx, int dy ) override;
     void keyPressEvent( QKeyEvent* e ) override;
     void keyReleaseEvent( QKeyEvent* e ) override;
     void mousePressEvent( QMouseEvent* event ) override;
@@ -250,8 +257,11 @@ class ImageView : public QGraphicsView
     QGraphicsRectItem* m_lassoBoundingBox = nullptr;
     QPainterPath m_selectionPath;
     QVector<QPoint> m_currentStroke;
+    QImage          m_preStrokeImage;    // backup of m_image before live preview, for correct undo
     QVector<QPoint> m_maskStrokePoints;
     QVector<QRgb> m_lut;
+    int m_brightness = 0;
+    int m_contrast   = 0;
     QVector<QPointF> m_cageBefore;
 
 };

@@ -21,6 +21,7 @@
 
 #include <QTabWidget>
 #include <QCheckBox>
+#include <QSlider>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QLineEdit>
@@ -84,12 +85,12 @@ ConfigDialog::ConfigDialog(QWidget* parent)
     );
 
     QTabWidget* tabs = new QTabWidget(this);
-    tabs->addTab(buildMainTab(),       tr("Main"));
-    tabs->addTab(buildCageTab(),       tr("Cage"));
-    tabs->addTab(buildScaleTab(),      tr("Scale"));
-    tabs->addTab(buildLassoTab(),      tr("Lasso"));
-    tabs->addTab(buildPolygonTab(),    tr("Polygon"));
-    tabs->addTab(buildImageLayerTab(), tr("ImageLayer"));
+    tabs->addTab(buildMainTab(),        tr("Main"));
+    tabs->addTab(buildCageTab(),        tr("Cage"));
+    tabs->addTab(buildScaleTab(),       tr("Scale"));
+    tabs->addTab(buildLassoTab(),       tr("Lasso"));
+    tabs->addTab(buildPolygonTab(),     tr("Polygon"));
+    tabs->addTab(buildImageLayerTab(),  tr("ImageLayer"));
 
     // button row
     QPushButton* loadBtn    = new QPushButton(tr("Load"),    this);
@@ -159,6 +160,10 @@ QWidget* ConfigDialog::buildMainTab()
     row(tr("Show docks at startup"), m_showDocksAtStartup,
         tr("Show all dock panels automatically when the application starts."));
 
+    m_showOverviewMap = new QCheckBox;
+    row(tr("Show overview map in layers dock"), m_showOverviewMap,
+        tr("Show a minimap thumbnail above the layer list in the dock, with a red rectangle indicating the currently visible area."));
+
     m_cursorSize = new QSpinBox; m_cursorSize->setRange(0, 128);
     row(tr("Cursor size"), m_cursorSize,
         tr("Radius of the brush preview circle displayed at the cursor position, in pixels."));
@@ -186,6 +191,12 @@ QWidget* ConfigDialog::buildMainTab()
     m_githubBaseUrl->setPlaceholderText("https://raw.githubusercontent.com/...");
     row(tr("GitHub base URL (github://)"), m_githubBaseUrl,
         tr("Base URL used to resolve github:// protocol paths when loading remote resources."));
+
+    // Brightness/contrast sliders disabled — too slow and incorrect with multiple layers.
+    // TODO: re-enable once applyDisplayAdjustments() is optimized.
+    // auto makeSliderRow = [&](const QString& label, const QString& tip, QSlider*& slider) { ... };
+    // makeSliderRow(tr("Brightness"), ..., m_brightnessSlider);
+    // makeSliderRow(tr("Contrast"),   ..., m_contrastSlider);
 
     return w;
 }
@@ -414,6 +425,7 @@ void ConfigDialog::loadFromStyle()
     m_binaryMasking->setChecked(s.binaryMasking());
     m_crosshair->setChecked(s.crosshair());
     m_showDocksAtStartup->setChecked(s.showDocksAtStartup());
+    m_showOverviewMap->setChecked(s.showOverviewMap());
     m_cursorSize->setValue(s.cursorSize());
     m_cursorFillColor->setText(s.cursorFillColor().name());
     styleColorButton(m_cursorFillBtn, s.cursorFillColor().name());
@@ -454,6 +466,10 @@ void ConfigDialog::loadFromStyle()
     m_polygonHandleColor->setText(s.polygonHandleColor().name());
     styleColorButton(m_polygonHandleColorBtn, s.polygonHandleColor().name());
 
+    // ImageHeader (sliders disabled — see buildMainTab)
+    if ( m_brightnessSlider ) m_brightnessSlider->setValue(s.brightness());
+    if ( m_contrastSlider )   m_contrastSlider->setValue(s.contrast());
+
     // ImageLayer
     m_integerMoveOnly->setChecked(s.allowIntegerMoveOnly());
     m_overlayOpacity->setValue(s.layerOverlayOpacity());
@@ -486,6 +502,7 @@ void ConfigDialog::applyToStyle()
     s.setBinaryMasking(m_binaryMasking->isChecked());
     s.setCrosshair(m_crosshair->isChecked());
     s.setShowDocksAtStartup(m_showDocksAtStartup->isChecked());
+    s.setShowOverviewMap(m_showOverviewMap->isChecked());
     s.setCursorSize(m_cursorSize->value());
     { QColor c(m_cursorFillColor->text());   if (c.isValid()) s.setCursorFillColor(c); }
     { QColor c(m_cursorBorderColor->text()); if (c.isValid()) s.setCursorBorderColor(c); }
@@ -517,6 +534,10 @@ void ConfigDialog::applyToStyle()
     s.setPolygonWidth(m_polygonWidth->value());
     s.setPolygonHandleSize(m_polygonHandleSize->value());
     { QColor c(m_polygonHandleColor->text()); if (c.isValid()) s.setPolygonHandleColor(c); }
+
+    // ImageHeader (sliders disabled — see buildMainTab)
+    if ( m_brightnessSlider ) s.setBrightness(m_brightnessSlider->value());
+    if ( m_contrastSlider )   s.setContrast(m_contrastSlider->value());
 
     // ImageLayer
     s.setAllowIntegerMoveOnly(m_integerMoveOnly->isChecked());

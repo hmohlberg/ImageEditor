@@ -115,6 +115,7 @@ set(SOURCES
     gui/AboutDialog.cpp
     gui/ConfigDialog.cpp
     gui/LayerEditorView.cpp
+    gui/OverviewWidget.cpp
     layer/LayerItem.cpp
     layer/CageMesh.cpp
     layer/CageControlPointItem.cpp
@@ -163,6 +164,7 @@ set(HEADERS
     gui/ImageView.h
     gui/ConfigDialog.h
     gui/LayerEditorView.h
+    gui/OverviewWidget.h
     layer/LayerItem.h
     layer/CageMesh.h
     layer/CageControlPointItem.h

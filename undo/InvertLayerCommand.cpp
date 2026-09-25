@@ -83,22 +83,22 @@ void InvertLayerCommand::undo()
 }
 
 void InvertLayerCommand::redo()
-{   
+{
     if ( m_silent || !m_layer ) return;
     QImage& img = m_layer->image();
-    const QImage& original = m_layer->originalImage(); // das Ausgangsbild
+    const QImage& original = m_layer->originalImage();
     if ( original.format() != QImage::Format_ARGB32 ) {
-     qWarning() << "InvertLayerCommand(): Only supports ARGB32 format!";
-     return;
+        qWarning() << "InvertLayerCommand(): Only supports ARGB32 format!";
+        return;
     }
-    img = original.copy();  // Basis für die LUT-Anwendung
+    img = original.copy();
     for ( int y = 0; y < img.height(); ++y ) {
         const QRgb* srcLine = reinterpret_cast<const QRgb*>(original.constScanLine(y));
         QRgb* dstLine = reinterpret_cast<QRgb*>(img.scanLine(y));
         for (int x = 0; x < img.width(); ++x) {
             QRgb src = srcLine[x];
             int alpha = qAlpha(src);
-            int gray = qGray(src); // Index für LUT
+            int gray = qGray(src);
             QRgb mapped = (gray < m_lut.size()) ? m_lut[gray] : src;
             dstLine[x] = qRgba(qRed(mapped), qGreen(mapped), qBlue(mapped), alpha);
         }

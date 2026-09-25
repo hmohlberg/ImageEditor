@@ -18,6 +18,7 @@
 
 #include <QColor>
 #include <QHash>
+#include <QRectF>
 #include <QRgb>
 #include <QSize>
 #include <QVector>
@@ -46,13 +47,17 @@ public:
     QString filePath() const { return m_filePath; }
     QSize   imageSize() const;
     void    setColorTable(const QVector<QRgb>& lut);
+    void    setBrightness(int v);
+    void    setContrast(int v);
     bool    saveTiff(const QString& outputPath);
+    void    centerOn(const QPointF& scenePos);
 
 signals:
     void closeRequested();
     void scaleChanged(double scale);
     void cursorPositionChanged(int x, int y);
     void cursorColorChanged(const QColor& color);
+    void viewportChanged(QRectF visibleScene, QRectF fullScene);
 
 private slots:
     void zoomIn();

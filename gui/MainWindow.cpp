@@ -18,10 +18,12 @@
 #include "MainWindow.h"
 #include "ImageView.h"
 #include "ConfigDialog.h"
+#include "OverviewWidget.h"
 #include "AboutDialog.h"
 #include "LayerEditorView.h"
 #ifdef HASTIFF
 #include "BigTiffViewer.h"
+#include "../core/BigTiffIO.h"
 #endif
 #ifdef HASHDF5
 #include "Hdf5Viewer.h"
@@ -94,6 +96,7 @@
 #include <QEventLoop>
 #include <QSslConfiguration>
 #include <QProgressDialog>
+#include <QSplitter>
 #include <QVBoxLayout>
 #include <QFormLayout>
 #include <QDialog>
@@ -203,6 +206,7 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
         m_bigTiffViewer->closeTiff();
         setEditorToolbarsEnabled(true);
         m_centralStack->setCurrentIndex(0);
+        if ( m_overviewWidget ) m_overviewWidget->clear();
     });
 #endif
 
@@ -218,6 +222,11 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
         m_hdf5Viewer->closeFile();
         setEditorToolbarsEnabled(true);
         m_centralStack->setCurrentIndex(0);
+        if ( m_overviewWidget ) m_overviewWidget->clear();
+    });
+    connect(m_hdf5Viewer, &Hdf5Viewer::viewportChanged, this, [this](const QRectF& vis, const QRectF& full) {
+        if ( m_overviewWidget && m_overviewDock && m_overviewDock->isVisible() )
+            m_overviewWidget->setVisibleRect(vis, full);
     });
     m_centralStack->addWidget(m_hdf5Viewer);      // index 3 — HDF5 viewer
 #endif
@@ -229,6 +238,7 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     createToolbars();
     createDockWidgets();
     if ( options.value("showDocks").toBool() || EditorStyle::instance().showDocksAtStartup() ) {
+        if ( EditorStyle::instance().showOverviewMap() ) m_overviewDock->show();
         m_layerDock->show();
         m_historyDock->show();
     }
@@ -572,6 +582,9 @@ bool MainWindow::loadImage( const QString& filePath, bool askForNewLoad )
     scene->setSceneRect(m_layerItem->boundingRect());
     // center
     m_imageView->centerOn(m_layerItem);
+    // update overview with the newly loaded image
+    if ( m_overviewWidget )
+        m_overviewWidget->setImage(m_layerItem->image());
     // create main image layer
     rebuildLayerList();
     // ready
@@ -956,6 +969,15 @@ void MainWindow::openBigTiff(const QString& filePath)
     setEditorToolbarsEnabled(false);
     m_centralStack->setCurrentIndex(2);
 
+    if ( m_overviewWidget ) {
+        // Use the coarsest pyramid level (scaleFactor 64) as thumbnail; fast to read.
+        const QImage thumb = bigTiffReadLevel(filePath, 64);
+        if ( !thumb.isNull() )
+            m_overviewWidget->setImage(thumb);
+        else
+            m_overviewWidget->clear();
+    }
+
     // Resize window to match image aspect ratio, up to 80% of available screen
     const QSize imgSize = m_bigTiffViewer->imageSize();
     if (imgSize.isValid()) {
@@ -988,6 +1010,26 @@ void MainWindow::openHdf5(const QString& filePath)
         const int extraH = height() - m_centralStack->height();
         const int extraW = width()  - m_centralStack->width();
         resize(winContent.width() + extraW, winContent.height() + extraH);
+    }
+
+    if ( m_overviewWidget ) {
+        m_overviewWidget->clear();
+        // fitAll() is queued via singleShot(0) in open(); grab the view after
+        // fitAll runs AND one more paint cycle completes (viewportChanged fires
+        // synchronously from fitAll → emitViewport, then singleShot(0) defers
+        // past the pending repaint event so grab() captures real content).
+        auto* conn = new QMetaObject::Connection;
+        *conn = connect(m_hdf5Viewer, &Hdf5Viewer::viewportChanged, this,
+            [this, conn](const QRectF&, const QRectF&) {
+                disconnect(*conn);
+                delete conn;
+                QTimer::singleShot(0, this, [this] {
+                    if (!m_overviewWidget || !m_hdf5Viewer->isOpen()) return;
+                    const QImage thumb = m_hdf5Viewer->thumbnail();
+                    if (!thumb.isNull())
+                        m_overviewWidget->setImage(thumb);
+                });
+            });
     }
 }
 #endif
@@ -1592,21 +1634,28 @@ void MainWindow::createMaskImage()
 }
 
 // ---------------------- Create ----------------------
-void MainWindow::createDockWidgets() 
+void MainWindow::createDockWidgets()
 {
   qCDebug(logEditor) << "MainWindow::createDockWidgets(): Processing...";
   {
-   // layer dock
+   // overview dock — always in layout (hidden when flag is off); order: overview → layers → history
+   m_overviewWidget = new OverviewWidget;
+   m_overviewDock = new QDockWidget(tr("Overview"), this);
+   m_overviewDock->setAllowedAreas(Qt::RightDockWidgetArea);
+   m_overviewDock->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+   m_overviewDock->setWidget(m_overviewWidget);
+   addDockWidget(Qt::RightDockWidgetArea, m_overviewDock);
+
+   // layer dock — placed below overview
    m_layerDock = new QDockWidget("Layers", this);
    m_layerDock->setAllowedAreas(Qt::RightDockWidgetArea);
-   m_layerList = new QListWidget(m_layerDock);
+   m_layerList = new QListWidget;
    m_layerList->setFocusPolicy(Qt::NoFocus);
    m_layerList->setSelectionMode(QAbstractItemView::SingleSelection);
    m_layerList->setDragDropMode(QAbstractItemView::InternalMove);
    m_layerList->setDefaultDropAction(Qt::MoveAction);
    m_layerDock->setWidget(m_layerList);
-   m_layerDock->hide();
-   addDockWidget(Qt::RightDockWidgetArea, m_layerDock);
+   splitDockWidget(m_overviewDock, m_layerDock, Qt::Vertical);
    for ( Layer* layer : m_imageView->layers() ) {
     QListWidgetItem* item = new QListWidgetItem(layer->name(), m_layerList);
     item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
@@ -1633,6 +1682,19 @@ void MainWindow::createDockWidgets()
    m_layerList->setContextMenuPolicy(Qt::CustomContextMenu);
    connect(m_layerList, &QListWidget::customContextMenuRequested,this, &MainWindow::showLayerContextMenu);
    connect(m_layerList, &QListWidget::itemClicked, this, &MainWindow::onLayerItemClicked);
+   connect(m_imageView, &ImageView::viewportChanged, this, [this](const QRectF& vis, const QRectF& full) {
+       if ( m_overviewWidget && m_overviewDock && m_overviewDock->isVisible() )
+           m_overviewWidget->setVisibleRect(vis, full);
+   });
+   connect(m_overviewWidget, &OverviewWidget::centerRequested, this, [this](const QPointF& scenePos) {
+#ifdef HASTIFF
+       if ( m_centralStack->currentIndex() == 2 ) { m_bigTiffViewer->centerOn(scenePos); return; }
+#endif
+#ifdef HASHDF5
+       if ( m_centralStack->currentIndex() == 3 ) { m_hdf5Viewer->centerOn(scenePos); return; }
+#endif
+       m_imageView->centerOn(scenePos);
+   });
 
    // history dock
    m_undoView = new QUndoView(m_imageView->undoStack());
@@ -1683,8 +1745,10 @@ void MainWindow::createDockWidgets()
    m_historyDock->setWidget(m_undoView);
    m_historyDock->setAllowedAreas(Qt::RightDockWidgetArea);
    m_historyDock->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
-   addDockWidget(Qt::RightDockWidgetArea, m_historyDock);
+   splitDockWidget(m_layerDock, m_historyDock, Qt::Vertical);
    m_historyDock->setMinimumWidth(200);
+   m_overviewDock->hide();
+   m_layerDock->hide();
    m_historyDock->hide();
    connect(m_undoView, &QUndoView::activated, this, [this](const QModelIndex &index){
      int i = index.row();
@@ -1747,12 +1811,17 @@ void MainWindow::createDockWidgets()
  }  
 }
 
-void MainWindow::toggleDocks() 
+void MainWindow::toggleDocks()
 {
-  if ( m_historyDock->isVisible() ) m_historyDock->hide();
-  else m_historyDock->show();
-  if ( m_layerDock->isVisible() ) m_layerDock->hide();
-  else m_layerDock->show();
+  if ( m_layerDock->isVisible() ) {
+      m_overviewDock->hide();
+      m_historyDock->hide();
+      m_layerDock->hide();
+  } else {
+      m_overviewDock->setVisible(EditorStyle::instance().showOverviewMap());
+      m_historyDock->show();
+      m_layerDock->show();
+  }
 }
 
 // --------------------------------- Layer tools ---------------------------------
@@ -2812,6 +2881,7 @@ void MainWindow::createToolbars()
        m_hdf5Viewer->setColorTable(lut);
 #endif
     });
+
     fileToolbar->addAction(m_showDockWidgets);
     fileToolbar->insertSeparator(m_showDockWidgets);
     fileToolbar->addAction(m_undoAction);
@@ -3524,6 +3594,10 @@ void MainWindow::createStatusbar()
         m_statusColorSwatch->setToolTip(QString("R:%1 G:%2 B:%3 A:%4")
                                         .arg(c.red()).arg(c.green()).arg(c.blue()).arg(c.alpha()));
     });
+    connect(m_bigTiffViewer, &BigTiffViewer::viewportChanged, this, [this](const QRectF& vis, const QRectF& full) {
+        if ( m_overviewWidget && m_overviewDock && m_overviewDock->isVisible() )
+            m_overviewWidget->setVisibleRect(vis, full);
+    });
 #endif
   }
 }
@@ -3577,7 +3651,38 @@ void MainWindow::showConfig()
 {
   qCDebug(logEditor) << "MainWindow::showConfig(): Processing...";
   ConfigDialog dlg(this);
+  // Live preview of brightness/contrast changes while the dialog is open.
+  connect(&dlg, &ConfigDialog::displayAdjustmentChanged, this, [this](int b, int c) {
+      m_imageView->setBrightness(b);
+      m_imageView->setContrast(c);
+#ifdef HASTIFF
+      m_bigTiffViewer->setBrightness(b);
+      m_bigTiffViewer->setContrast(c);
+#endif
+#ifdef HASHDF5
+      m_hdf5Viewer->setBrightness(b);
+      m_hdf5Viewer->setContrast(c);
+#endif
+  });
   dlg.exec();
+  // Apply showOverviewMap toggle immediately (only when dock panel is open).
+  if ( m_overviewDock && m_layerDock->isVisible() )
+      m_overviewDock->setVisible(EditorStyle::instance().showOverviewMap());
+  // Apply final brightness/contrast to all viewers in case live preview was not in sync.
+  {
+      const int b = EditorStyle::instance().brightness();
+      const int c = EditorStyle::instance().contrast();
+      m_imageView->setBrightness(b);
+      m_imageView->setContrast(c);
+#ifdef HASTIFF
+      m_bigTiffViewer->setBrightness(b);
+      m_bigTiffViewer->setContrast(c);
+#endif
+#ifdef HASHDF5
+      m_hdf5Viewer->setBrightness(b);
+      m_hdf5Viewer->setContrast(c);
+#endif
+  }
   // Refresh all cage control points and overlay items so size/colour changes take effect immediately.
   if ( m_imageView && m_imageView->getScene() ) {
     for ( QGraphicsItem* item : m_imageView->getScene()->items() ) {

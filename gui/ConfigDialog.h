@@ -21,6 +21,7 @@
 
 class QTabWidget;
 class QCheckBox;
+class QSlider;
 class QSpinBox;
 class QDoubleSpinBox;
 class QLineEdit;
@@ -63,6 +64,7 @@ private:
     QCheckBox*  m_binaryMasking     = nullptr;
     QCheckBox*  m_crosshair         = nullptr;
     QCheckBox*  m_showDocksAtStartup = nullptr;
+    QCheckBox*  m_showOverviewMap    = nullptr;
     QSpinBox*   m_cursorSize        = nullptr;
     QLineEdit*  m_cursorFillColor   = nullptr;
     QPushButton* m_cursorFillBtn    = nullptr;
@@ -110,4 +112,11 @@ private:
     QDoubleSpinBox* m_handleRadius       = nullptr;
     QComboBox*      m_transformMode      = nullptr;
     QComboBox*      m_interpMode         = nullptr;
+
+    // ---- ImageHeader ----
+    QSlider* m_brightnessSlider = nullptr;
+    QSlider* m_contrastSlider   = nullptr;
+
+signals:
+    void displayAdjustmentChanged(int brightness, int contrast);
 };

@@ -317,6 +317,23 @@ void LayerItem::updateImageRegion( const QRect& rect ) {
   update(rect);
 }
 
+void LayerItem::applyActiveLutToRegion( const QRect& rect )
+{
+    if ( m_activeLut.isEmpty() || m_originalImage.isNull() ) return;
+    if ( m_originalImage.format() != QImage::Format_ARGB32 ) return;
+    const QRect r = rect & m_image.rect();
+    if ( r.isEmpty() ) return;
+    for ( int y = r.top(); y <= r.bottom(); ++y ) {
+        const QRgb* src = reinterpret_cast<const QRgb*>(m_originalImage.constScanLine(y));
+        QRgb*       dst = reinterpret_cast<QRgb*>(m_image.scanLine(y));
+        for ( int x = r.left(); x <= r.right(); ++x ) {
+            int gray = qGray(src[x]);
+            QRgb mapped = m_activeLut[gray];
+            dst[x] = qRgba(qRed(mapped), qGreen(mapped), qBlue(mapped), qAlpha(src[x]));
+        }
+    }
+}
+
 void LayerItem::updateOriginalImage() {
   m_originalImage = m_image;
 }

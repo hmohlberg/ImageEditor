@@ -64,6 +64,8 @@ private:
     
     QRect      m_dirtyRect;
     QRect      m_backupRect;
-    QImage     m_backup;
+    QImage     m_backup;      // pre-stroke m_image region (for undo display)
+    QImage     m_origBackup;  // pre-stroke m_originalImage region (for colormap consistency)
+    QColor     m_origColor;   // source-space background (corners of m_originalImage at construction)
     
 };

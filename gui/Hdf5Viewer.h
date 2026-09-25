@@ -16,10 +16,13 @@
 
 #pragma once
 
-#include <QWidget>
+#include <QImage>
+#include <QPointF>
+#include <QRectF>
 #include <QRgb>
 #include <QSize>
 #include <QVector>
+#include <QWidget>
 
 struct Hdf5Level {
     int64_t rows = 0, cols = 0;
@@ -44,9 +47,14 @@ public:
     QString filePath() const { return m_filePath; }
     QSize   imageSize() const;
     void    setColorTable(const QVector<QRgb>& lut);
+    void    setBrightness(int v);
+    void    setContrast(int v);
+    void    centerOn(const QPointF& scenePos);
+    QImage  thumbnail();
 
 signals:
     void closeRequested();
+    void viewportChanged(QRectF visibleScene, QRectF fullScene);
 
 private slots:
     void zoomIn();

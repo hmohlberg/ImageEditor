@@ -70,12 +70,24 @@ PaintStrokeCommand::PaintStrokeCommand( LayerItem* layer,
     int pad = m_radius + 2;
     m_dirtyRect.adjust(-pad, -pad, pad, pad);
     m_dirtyRect &= m_layer->image().rect();
-    m_backup = m_layer->image(1).copy(m_dirtyRect);
-    // --- test save ---
-    // QString text = CompressUtils::toGZipBase64(m_backup);
-    // CompressUtils::saveToFile("/tmp/testimage.txt",text);
-    // --- --- --- ---
+    m_backup     = m_layer->image().copy(m_dirtyRect);   // display state backup for undo
+    m_origBackup = m_layer->image(1).copy(m_dirtyRect);  // source image backup for colormap consistency
     m_layerId = layer->id();
+
+    // Sample source-space background from m_originalImage corners.
+    // This value is written into m_originalImage for painted pixels in redo() so that
+    // future colormap changes produce the correct background there rather than re-mapping
+    // the already-mapped display-space paint color.
+    const QImage& orig = layer->image(1);
+    if ( !orig.isNull() && orig.width() >= 2 && orig.height() >= 2 ) {
+        int r = 0, g = 0, b = 0;
+        const int iw = orig.width() - 1, ih = orig.height() - 1;
+        for ( const QPoint& p : { QPoint{0,0}, QPoint{iw,0}, QPoint{0,ih}, QPoint{iw,ih} } )
+            { QColor c(orig.pixel(p)); r += c.red(); g += c.green(); b += c.blue(); }
+        m_origColor = QColor(r/4, g/4, b/4);
+    } else {
+        m_origColor = m_color;
+    }
 }
 
 // --------------------------------  --------------------------------
@@ -111,26 +123,65 @@ void PaintStrokeCommand::paint( QImage &img )
 void PaintStrokeCommand::undo()
 {
   qCDebug(logEditor) << "PaintStrokeCommand::undo(): Processing...";
-  {
-    if ( !m_layer || m_backup.isNull() )
-        return;
-    QImage& img = m_layer->image();
-    QPainter p(&img);
-    p.drawImage(m_dirtyRect.topLeft(), m_backup);
-    m_layer->updateImageRegion(m_dirtyRect);
+  if ( !m_layer || m_backup.isNull() )
+      return;
+  QImage& orig = m_layer->image(1);
+  if ( !m_origBackup.isNull() && !orig.isNull() && orig.size() == m_layer->image().size() )
+      { QPainter p(&orig); p.drawImage(m_dirtyRect.topLeft(), m_origBackup); }
+  // Re-derive m_image from restored m_originalImage using the current active LUT.
+  // Restoring m_backup would show colours from the colormap era at stroke creation time.
+  if ( !m_layer->activeLut().isEmpty() ) {
+      m_layer->applyActiveLutToRegion(m_dirtyRect);
+  } else {
+      QImage& img = m_layer->image();
+      QPainter p(&img); p.drawImage(m_dirtyRect.topLeft(), m_backup);
   }
+  m_layer->updateImageRegion(m_dirtyRect);
 }
 
 void PaintStrokeCommand::redo()
 {
   qCDebug(logEditor) << "PaintStrokeCommand::redo(): Processing...";
-  {
-    if ( m_silent || !m_layer || m_points.isEmpty() )
-      return;
-    QImage& img = m_layer->image();
-    paint(img);
-    m_layer->updateImageRegion(m_dirtyRect);
+  if ( m_silent || !m_layer || m_points.isEmpty() )
+    return;
+  QImage& img  = m_layer->image();
+  QImage& orig = m_layer->image(1);
+
+  if ( !orig.isNull() && orig.size() == img.size() ) {
+      // Build stroke mask to find exactly which pixels the stroke touches.
+      QImage strokeMask(m_dirtyRect.size(), QImage::Format_Grayscale8);
+      strokeMask.fill(0);
+      const QPoint offset = -m_dirtyRect.topLeft();
+      const QColor white(255, 255, 255, 255);
+      if ( m_points.size() == 1 ) {
+          BrushUtils::dab(strokeMask, m_points.first() + offset, white, m_radius, m_hardness);
+      } else {
+          for ( int i = 1; i < m_points.size(); ++i )
+              BrushUtils::strokeSegment(strokeMask, m_points[i-1] + offset, m_points[i] + offset,
+                                        white, m_radius, m_hardness);
+      }
+      // Write source-space background into m_originalImage for stroke pixels.
+      const QRgb origBgRgb = m_origColor.rgba();
+      for ( int y = m_dirtyRect.top(); y <= m_dirtyRect.bottom(); ++y ) {
+          const uchar* maskLine = strokeMask.constScanLine(y - m_dirtyRect.top());
+          QRgb*        origLine = reinterpret_cast<QRgb*>(orig.scanLine(y));
+          for ( int x = m_dirtyRect.left(); x <= m_dirtyRect.right(); ++x ) {
+              if ( maskLine[x - m_dirtyRect.left()] > 0 )
+                  origLine[x] = origBgRgb;
+          }
+      }
+      // Re-derive m_image from the updated m_originalImage via the current LUT.
+      // This keeps stroke pixels consistent with the active colormap on every redo,
+      // regardless of which colormap was in effect when the stroke was created.
+      if ( !m_layer->activeLut().isEmpty() ) {
+          m_layer->applyActiveLutToRegion(m_dirtyRect);
+      } else {
+          paint(img);
+      }
+  } else {
+      paint(img);
   }
+  m_layer->updateImageRegion(m_dirtyRect);
 }
 
 // -------------- JSON stuff -------------- 

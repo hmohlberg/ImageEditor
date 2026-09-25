@@ -79,8 +79,10 @@ public:
         setScene(new QGraphicsScene(this));
 
         // identity LUT
+        m_baseLut.resize(256);
         m_lut.resize(256);
-        for (int i = 0; i < 256; ++i) m_lut[i] = qRgb(i, i, i);
+        for (int i = 0; i < 256; ++i)
+            m_baseLut[i] = m_lut[i] = qRgb(i, i, i);
         m_lutIsIdentity = true;
 
         // suppress HDF5 error output
@@ -148,8 +150,19 @@ public:
     const QVector<Hdf5Level>& levels() const { return m_levels; }
 
     void setColorTable(const QVector<QRgb>& lut) {
-        m_lut = lut;
-        // check identity: Original maps i → qRgb(i,i,i)
+        m_baseLut = lut;
+        rebuildEffectiveLut();
+    }
+
+    void setBrightness(int v) { m_brightness = qBound(-100, v, 100); rebuildEffectiveLut(); }
+    void setContrast(int v)   { m_contrast   = qBound(-100, v, 100); rebuildEffectiveLut(); }
+
+    void rebuildEffectiveLut() {
+        const float factor = 1.0f + m_contrast / 100.0f;
+        for (int i = 0; i < 256; ++i) {
+            int adj = qBound(0, qRound((i - 128) * factor + 128 + m_brightness), 255);
+            m_lut[i] = m_baseLut[adj];
+        }
         m_lutIsIdentity = true;
         for (int i = 0; i < 256; ++i) {
             if (m_lut[i] != qRgb(i, i, i)) { m_lutIsIdentity = false; break; }
@@ -162,9 +175,25 @@ public:
     void fitAll() {
         if (m_levels.isEmpty()) return;
         fitInView(scene()->sceneRect(), Qt::KeepAspectRatio);
+        emitViewport();
     }
 
+    void emitViewport() {
+        if (onViewportChanged)
+            onViewportChanged(mapToScene(viewport()->rect()).boundingRect(), sceneRect());
+    }
+
+    // Grab the view's rendered content — called only after the first paint cycle.
+    QImage grabRendered() { return grab().toImage(); }
+
+    std::function<void(QRectF, QRectF)> onViewportChanged;
+
 protected:
+    void scrollContentsBy(int dx, int dy) override {
+        QGraphicsView::scrollContentsBy(dx, dy);
+        emitViewport();
+    }
+
     // ── tile-based background rendering ──────────────────────────────────────
     void drawBackground(QPainter* painter, const QRectF& exposed) override {
         QGraphicsView::drawBackground(painter, exposed);
@@ -204,6 +233,7 @@ protected:
     void wheelEvent(QWheelEvent* e) override {
         scale(e->angleDelta().y() > 0 ? 1.25 : 1.0/1.25, e->angleDelta().y() > 0 ? 1.25 : 1.0/1.25);
         QGraphicsView::wheelEvent(e);
+        emitViewport();
     }
 
 private:
@@ -319,8 +349,11 @@ private:
     hid_t              m_fileId = -1;
     QVector<Hdf5Level> m_levels;
     Hdf5TileCache      m_cache;
+    QVector<QRgb>      m_baseLut;
     QVector<QRgb>      m_lut;
     bool               m_lutIsIdentity = true;
+    int                m_brightness = 0;
+    int                m_contrast   = 0;
 };
 
 // ── Hdf5Viewer ────────────────────────────────────────────────────────────────
@@ -370,6 +403,7 @@ bool Hdf5Viewer::open(const QString& path)
 {
     m_filePath = path;
     if (!m_view->openFile(path)) return false;
+    m_view->onViewportChanged = [this](QRectF vis, QRectF full) { emit viewportChanged(vis, full); };
     updateInfoLabel();
     QTimer::singleShot(0, m_view, [this]{ m_view->fitAll(); });
     return true;
@@ -391,10 +425,12 @@ QSize Hdf5Viewer::imageSize() const
     return QSize((int)lvls.first().cols, (int)lvls.first().rows);
 }
 
-void Hdf5Viewer::setColorTable(const QVector<QRgb>& lut)
-{
-    m_view->setColorTable(lut);
-}
+void Hdf5Viewer::setColorTable(const QVector<QRgb>& lut) { m_view->setColorTable(lut); }
+void Hdf5Viewer::setBrightness(int v) { m_view->setBrightness(v); }
+void Hdf5Viewer::setContrast(int v)   { m_view->setContrast(v); }
+
+void Hdf5Viewer::centerOn(const QPointF& scenePos) { m_view->centerOn(scenePos); m_view->emitViewport(); }
+QImage Hdf5Viewer::thumbnail() { return m_view->grabRendered(); }
 
 void Hdf5Viewer::zoomIn()  { m_view->zoomBy(1.25); }
 void Hdf5Viewer::zoomOut() { m_view->zoomBy(1.0/1.25); }

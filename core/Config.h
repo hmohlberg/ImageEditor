@@ -78,6 +78,7 @@
       m_binaryMasking = settings.value("Main/binaryMasking", true).toBool();
       m_crosshair = settings.value("Main/crosshair", true).toBool();
       m_showDocksAtStartup = settings.value("Main/showDocksAtStartup", false).toBool();
+      m_showOverviewMap    = settings.value("Main/showOverviewMap",    false).toBool();
       m_pixelScale = settings.value("Main/pixelScale", 20.0).toDouble();
       
       // cursor stuff
@@ -154,6 +155,9 @@
       // github:// shorthand base URL
       m_githubBaseUrl = settings.value("Network/githubBaseUrl",
           "https://raw.githubusercontent.com/hmohlberg/ImageEditor/main/samples").toString();
+      // ImageHeader display adjustments
+      m_brightness = settings.value("ImageHeader/brightness", 0).toInt();
+      m_contrast   = settings.value("ImageHeader/contrast",   0).toInt();
       // ImageLayer allowIntegerMoveOnly
       m_allowIntegerMoveOnly = settings.value("ImageLayer/integerMoveOnly", true).toBool();
       // ImageLayer overlay opacity
@@ -182,6 +186,8 @@
     }
     
     QColor getHandleColor() const { return m_handleColor; }
+    int brightness() const { return m_brightness; }
+    int contrast()   const { return m_contrast; }
     int getHandleSize() const { return m_handleSize; }
     QColor lassoColor() const { return m_lassoColor; }
     QColor cageGridColor() const { return m_gridColor; }
@@ -201,6 +207,7 @@
     double pixelScale() const { return m_pixelScale; }
     bool crosshair() const { return m_crosshair; }
     bool showDocksAtStartup() const { return m_showDocksAtStartup; }
+    bool showOverviewMap()    const { return m_showOverviewMap; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
     bool useGPU() const { return m_usegpu; }
@@ -221,12 +228,15 @@
     QString githubBaseUrl() const { return m_githubBaseUrl; }
 
     // Setters (used by ConfigDialog to apply changes at runtime)
+    void setBrightness(int v) { m_brightness = qBound(-100, v, 100); }
+    void setContrast(int v)   { m_contrast   = qBound(-100, v, 100); }
     void setLoggingEnabled(bool v) { m_loggingIsEnabled = v; QLoggingCategory::setFilterRules(v ? "editor.graphics.debug=true" : "editor.graphics.debug=false"); }
     void setWindowSize(const QString& v) { m_windowSize = v; }
     void setHasPerspective(bool v) { m_hasPerspective = v; }
     void setBinaryMasking(bool v) { m_binaryMasking = v; }
     void setCrosshair(bool v) { m_crosshair = v; }
     void setShowDocksAtStartup(bool v) { m_showDocksAtStartup = v; }
+    void setShowOverviewMap(bool v)    { m_showOverviewMap = v; }
     void setCursorSize(int v) { m_cursorSize = v; }
     void setCursorFillColor(const QColor& v) { m_cursorFillColor = v; }
     void setCursorBorderColor(const QColor& v) { m_cursorBorderColor = v; }
@@ -292,9 +302,12 @@
       m_binaryMasking     = true;
       m_crosshair         = true;
       m_showDocksAtStartup = false;
+      m_showOverviewMap    = false;
       m_windowSize        = "default";
       m_version           = "public";
       m_githubBaseUrl     = "https://raw.githubusercontent.com/hmohlberg/ImageEditor/main/samples";
+      m_brightness        = 0;
+      m_contrast          = 0;
       m_transformationMode= Qt::FastTransformation;
       m_interpolationMode = InterpolationMode::Linear;
       QLoggingCategory::setFilterRules("editor.graphics.debug=false");
@@ -310,6 +323,7 @@
       s.setValue("Main/binaryMasking",     m_binaryMasking);
       s.setValue("Main/crosshair",         m_crosshair);
       s.setValue("Main/showDocksAtStartup", m_showDocksAtStartup);
+      s.setValue("Main/showOverviewMap",    m_showOverviewMap);
       s.setValue("Main/cursorSize",        m_cursorSize);
       s.setValue("Main/cursorFillColor",   m_cursorFillColor.name());
       s.setValue("Main/cursorBorderColor", m_cursorBorderColor.name());
@@ -347,6 +361,8 @@
       s.setValue("ImageLayer/interpolationMode", im);
       s.setValue("Main/pixelScale",       m_pixelScale);
       s.setValue("Network/githubBaseUrl", m_githubBaseUrl);
+      s.setValue("ImageHeader/brightness", m_brightness);
+      s.setValue("ImageHeader/contrast",   m_contrast);
       s.sync();
     }
 
@@ -383,6 +399,7 @@
           m_binaryMasking(true),
           m_crosshair(true),
           m_showDocksAtStartup(false),
+          m_showOverviewMap(false),
           m_windowSize("default"),
           m_version("public"),
           m_cageWarpColor(Qt::green),
@@ -415,6 +432,7 @@
     
     bool m_crosshair;
     bool m_showDocksAtStartup;
+    bool m_showOverviewMap;
     bool m_loggingIsEnabled;
     bool m_useCageQuads;
     bool m_useClaudeQuads;
@@ -440,6 +458,8 @@
     double m_rotationSingleStep;
     double m_layerOverlayOpacity;
     double m_pixelScale = 20.0;
+    int m_brightness = 0;
+    int m_contrast   = 0;
     
  };
 
