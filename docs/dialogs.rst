@@ -3,8 +3,10 @@
 Dialogs
 =======
 
-ImageEditor provides two main dialogs: the **Open Image dialog** for loading image files,
-and the **Configuration dialog** for adjusting all application-wide settings.
+ImageEditor provides several dialogs and tool-specific control strips:
+the **Open Image dialog** for loading image files,
+the **Configuration dialog** for adjusting all application-wide settings,
+and the **Inpainting** toolbar with its **PatchMatch Options** dialog.
 
 .. contents:: Contents
    :local:
@@ -284,3 +286,108 @@ Tab: ImageLayer
      - Rendering quality during transformations: ``fast`` or ``smooth``.
    * - **Interpolation mode**
      - Pixel interpolation used when scaling or rotating layers: ``nearest``, ``linear``, ``bicubic``.
+
+
+.. _inpainting-tool:
+
+Inpainting Tool
+---------------
+
+The Inpainting tool fills a painted region automatically using either the
+classical **PatchMatch** algorithm or the AI-based **LaMa** model (requires
+onnxruntime).  Activate it by clicking **Inpainting** in the main toolbar; the
+inpainting control strip appears below the main toolbar.
+
+.. rubric:: Control strip
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Control
+     - Description
+   * - **Brush**
+     - Activates the paint brush.  Click and drag on the canvas to mark the
+       region that should be filled.  The painted area is shown as a coloured
+       overlay on the base image.
+   * - **Eraser**
+     - Removes parts of the painted region.  Useful for refining the
+       selection before running inpainting.
+   * - **Brush size** (1–200 px)
+     - Radius of the inpainting brush in pixels.
+   * - **Model**
+     - Selects the inpainting algorithm:
+
+       - **Classic (PatchMatch)** — texture-synthesis algorithm; no external
+         library required; configurable via the **Options** dialog.
+       - **LaMa (AI)** — deep-learning model; only available when onnxruntime
+         is installed; no user-configurable parameters.
+   * - **Options**
+     - Opens the :ref:`patchmatch-options` dialog (PatchMatch only).
+       For LaMa, clicking this button shows an information message.
+   * - **Run**
+     - Applies inpainting to the painted region and places the result on a
+       new layer above the base image.  The operation is fully undoable via
+       the undo stack.
+
+**Workflow**
+
+1. Click **Inpainting** in the main toolbar to activate the tool.
+2. Select **Brush** and paint over the area to be filled.
+   Use **Eraser** to refine the selection if needed.
+3. Select a **Model**.  If PatchMatch is selected, click **Options** to
+   configure the texture source and background filter.
+4. Click **Run**.  The filled patch appears on a new layer in the Layers dock.
+5. Use the Layers dock to toggle the result layer on/off, or drag it to
+   adjust the stacking order.
+
+.. note::
+   The painted mask is discarded after **Run**.  If you need to redo the
+   inpainting, re-paint the region and run again.  The previous result layer
+   stays in the project and can be deleted separately.
+
+
+.. _patchmatch-options:
+
+PatchMatch Options Dialog
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Opened via the **Options** button when **Classic (PatchMatch)** is the active
+model.
+
+.. rubric:: Use reference region as texture source
+
+A checkable group box.  When enabled, PatchMatch samples texture from a
+*different* mask label rather than from the surrounding image.  This is useful
+when a specific tissue region should be used to fill the hole.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Option
+     - Description
+   * - **Reference label**
+     - Drop-down showing all mask labels currently painted on the image
+       (excluding the active inpainting label).  The selected label's region
+       is used as the texture source.
+
+The group box is disabled when no other mask labels are present.
+
+.. rubric:: Only replace pixels near background value
+
+A checkable group box.  When enabled, PatchMatch only overwrites pixels whose
+grey value is close to the specified background value.  Pixels that differ from
+the background by more than the tolerance are left unchanged.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Option
+     - Description
+   * - **Background value** (0–255)
+     - The grey value that defines "background" in the source image.
+   * - **Tolerance**
+     - Pixels within this distance (in grey value) of the background value are
+       considered background and will be replaced.
