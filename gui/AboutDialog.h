@@ -33,6 +33,8 @@ public:
 
 private:
     QWidget* buildAboutTab();
+    QWidget* buildShortcutsTab();
+    QWidget* buildThirdPartyTab();
     QWidget* buildAuthorsTab();
     QWidget* buildLicenseTab();
 

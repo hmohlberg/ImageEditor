@@ -33,6 +33,17 @@ Layer Transforms
    - Deformed with **cage warp** — a grid of control points that
      smoothly deform the layer content via bilinear interpolation
 
+AI Inpainting *(optional)*
+   Fill selected regions automatically using the **LaMa** deep-learning model.
+   Requires onnxruntime.
+
+   - Paint a mask over the area to be filled using the Mask Classes tool
+     (type **Inpainting**).
+   - Apply via the **Inpainting** toolbar — the result appears on a new layer
+     above the base image so it remains fully undoable.
+   - In batch mode the inpainting layer is re-run at the target image's native
+     resolution (e.g. 20× for BigTIFF export at 1 µm/px).
+
 Mask / Class Labels
    Paint semantic class masks on top of a layer.
    Up to 10 label classes with individually configurable colours
@@ -76,6 +87,15 @@ Colour LUT / Colour Table
    A toolbar selector applies lookup tables (Jet, Viridis, Plasma,
    Inferno, Hot, Cold, Copper; histology-specific: Nissl, Myelin)
    to the view and all active layers simultaneously.
+
+Navigation
+----------
+
+Overview Minimap
+   An optional miniature thumbnail of the full image is shown in the
+   **Overview** dock (right panel, above the Layers dock).  A blue rectangle
+   marks the currently visible portion of the canvas.  Enabled via
+   **Config → Main → Show overview map in layers dock**.
 
 Configuration
 -------------

@@ -1,0 +1,9 @@
+# example for a disk filelist
+path;/Users/hmohlberg/Projects/Software/HITools/progs/qt/ImageEditor/samples/images
+Sample 1;pm2105o.png
+Sample 2;pm2264o.png
+Sample 3;pm2372o.png
+Sample 4;pm2382o.png
+Sample 5;pm2414o.png
+Sample 6;/Users/hmohlberg/Projects/Software/HITools/progs/qt/ImageEditor/samples/projects/daniel/pm3800o.png
+

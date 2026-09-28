@@ -17,6 +17,7 @@
 
 #include "ImageView.h"
 #include "MainWindow.h"
+#include <QApplication>
 
 #include "../core/Config.h"
 #include "../layer/LayerItem.h"
@@ -41,8 +42,19 @@
 #include "../util/QUndoSortDialog.h"
 #include "../util/QImageUtils.h"
 #include "../util/MaskUtils.h"
+#include "../util/Inpainting.h"
+#include "../util/LaMaInpainting.h"
 
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QStandardItemModel>
+#include <QFormLayout>
+#include <QGroupBox>
 #include <QMessageBox>
+#include <QSpinBox>
+#include <QVBoxLayout>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QFileInfo>
@@ -50,6 +62,9 @@
 #include <QGraphicsScene>
 #include <QScrollBar>
 #include <QWheelEvent>
+#include <QNativeGestureEvent>
+#include <QGestureEvent>
+#include <QPinchGesture>
 
 #include <iostream>
 #include <limits>
@@ -57,6 +72,33 @@
 /* ============================================================
  * Helper
  * ============================================================ */
+// Give each transparent pixel adjacent to an opaque pixel the same RGB (alpha=0).
+// Prevents SmoothTransformation bilinear fringe when the layer is scaled up.
+static void alphaBleed( QImage& img )
+{
+    static const int dx[] = { 1, -1,  0, 0 };
+    static const int dy[] = { 0,  0,  1,-1 };
+    const int W = img.width(), H = img.height();
+    QImage out = img;
+    for ( int y = 0; y < H; ++y ) {
+        const QRgb* src = reinterpret_cast<const QRgb*>(img.constScanLine(y));
+        QRgb*       dst = reinterpret_cast<QRgb*>(out.scanLine(y));
+        for ( int x = 0; x < W; ++x ) {
+            if ( qAlpha(src[x]) ) continue;
+            for ( int d = 0; d < 4; ++d ) {
+                int nx = x + dx[d], ny = y + dy[d];
+                if ( nx < 0 || ny < 0 || nx >= W || ny >= H ) continue;
+                const QRgb* nr = reinterpret_cast<const QRgb*>(img.constScanLine(ny));
+                if ( qAlpha(nr[nx]) ) {
+                    dst[x] = nr[nx] & 0x00FFFFFFu; // same RGB, alpha = 0
+                    break;
+                }
+            }
+        }
+    }
+    img = out;
+}
+
 static qreal pointToSegmentDist( const QPointF& p, const QPointF& a, const QPointF& b )
 {
     const QPointF ab = b - a;
@@ -99,6 +141,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
     setRenderHint(QPainter::Antialiasing);
     setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
     setDragMode(QGraphicsView::NoDrag);
+    grabGesture(Qt::PinchGesture);
     m_undoStack = new QUndoStack(this);
     connect(m_undoStack, &QUndoStack::cleanChanged, this, [this](bool isClean){
       setWindowModified(!isClean);
@@ -707,15 +750,17 @@ void ImageView::loadMaskImage( const QString& filename ) {
     }
     }
     // --- update ---
+    emit maskLoaded(m_maskLabelTypeNames.isEmpty() ? 10 : m_maskLabelTypeNames.size());
     viewport()->update();
   }
 }
 
-void ImageView::setMaskTool( MaskTool t ) { 
+void ImageView::setMaskTool( MaskTool t ) {
  m_maskTool = t == m_maskTool ? MaskTool::None : t;
  if ( m_maskTool != MaskTool::None && m_maskLayer == nullptr ) {
     createMaskLayer(baseLayer()->image().size());
  }
+ viewport()->update();
 }
 
 void ImageView::setMaskCutTool( const QString &maskLabelName, MaskCutTool t ) { 
@@ -1045,6 +1090,9 @@ void ImageView::keyPressEvent( QKeyEvent* event )
         }
       }
     }
+    if ( (event->key() == Qt::Key_Control || event->key() == Qt::Key_Meta)
+         && m_maskTool != MaskTool::None )
+      emit maskToolDisplayChanged( m_maskTool != MaskTool::MaskErase );
     QGraphicsView::keyPressEvent(event);
   }
 }
@@ -1066,6 +1114,9 @@ void ImageView::keyReleaseEvent( QKeyEvent* event )
   if ( event->key() == Qt::Key_Alt || event->key() == Qt::Key_Control
        || event->key() == Qt::Key_Meta ) {
     clearLayerColorEffects();
+    if ( (event->key() == Qt::Key_Control || event->key() == Qt::Key_Meta)
+         && m_maskTool != MaskTool::None )
+      emit maskToolDisplayChanged( m_maskTool == MaskTool::MaskErase );
   }
   QGraphicsView::keyReleaseEvent(event);
 }
@@ -1167,14 +1218,41 @@ void ImageView::mousePressEvent( QMouseEvent* event )
     }
     
     // --- Mask Painting ---
-    if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::Mask ) {
+    if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::Mask
+      || mainWindow->getOperationMode() == MainWindow::MainOperationMode::Inpainting ) {
       qCDebug(logEditor) << "ImageView::mousePressEvent(): Mask processing...";
       if ( m_maskTool != MaskTool::None && (event->button() == Qt::LeftButton || event->button() == Qt::RightButton) ) {
-        // NEW: m_maskStrokeActive = true;
-        // NEW: m_currentMaskStroke.clear();
         m_maskPainting = true;
         m_maskStrokePoints.clear();
-        m_maskStrokePoints << mapToScene(event->pos()).toPoint();
+        QPoint sp = mapToScene(event->pos()).toPoint();
+        m_maskStrokePoints << sp;
+        m_lastMaskScenePos = sp;
+        if ( m_maskLayer ) {
+          const bool isRight = (event->button() == Qt::RightButton);
+          const bool cmdHeld = event->modifiers() & Qt::ControlModifier;
+          const bool effectiveErase = cmdHeld ? (m_maskTool != MaskTool::MaskErase)
+                                              : (m_maskTool == MaskTool::MaskErase);
+          const uchar newValue = isRight ? (effectiveErase ? m_currentMaskLabel : 0)
+                                         : (effectiveErase ? 0 : m_currentMaskLabel);
+          const bool altHeld = event->modifiers() & Qt::AltModifier;
+          const int r = m_maskBrushRadius, rr = r*r;
+          const int w = m_maskLayer->width(), h = m_maskLayer->height();
+          for ( int dy = -r; dy <= r; ++dy )
+            for ( int dx = -r; dx <= r; ++dx ) {
+              if ( dx*dx + dy*dy > rr ) continue;
+              int px = sp.x()+dx, py = sp.y()+dy;
+              if ( px >= 0 && py >= 0 && px < w && py < h ) {
+                const uchar existing = m_maskLayer->pixel(px, py);
+                if ( newValue == 0 ? existing == m_currentMaskLabel
+                                   : existing == 0 || altHeld )
+                  m_maskLayer->setPixel(px, py, newValue);
+              }
+            }
+          const QRect dirtyRect(QPoint(qMax(0, sp.x()-r), qMax(0, sp.y()-r)),
+                                 QPoint(qMin(w-1, sp.x()+r), qMin(h-1, sp.y()+r)));
+          m_maskItem->maskUpdated(dirtyRect);
+          viewport()->update();
+        }
         return;
       }
     }
@@ -1334,30 +1412,41 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
     
     // --- Mask Painting ---
     if ( m_maskPainting && (event->buttons() & Qt::LeftButton || event->buttons() & Qt::RightButton) ) {
-     if ( m_maskLayer ) { // NEW: && m_maskStrokeActive
-        // m_maskStrokePoints << mapToScene(event->pos()).toPoint();
-        // m_maskItem->update();
-        bool isRightButton = event->buttons() & Qt::RightButton ? true : false;
-        int x = int(scenePos.x());
-        int y = int(scenePos.y());
-        if( !(x < 0 || y < 0 || x >= m_maskLayer->width() || y >= m_maskLayer->height()) ) {
-         int r = m_maskBrushRadius;
-         int rr = r*r;
-         uchar newValue = isRightButton ? (m_maskTool == MaskTool::MaskErase ? m_currentMaskLabel : 0) : (m_maskTool == MaskTool::MaskErase ? 0 : m_currentMaskLabel);
-         for( int dy = -r; dy <= r; ++dy ) {
-          for( int dx = -r; dx <= r; ++dx ) {
-            int px = x+dx;
-            int py = y+dy;
-            if( dx*dx + dy*dy > rr ) continue; // Kreis
-            // NEW: uchar oldValue = m_maskLayer->pixel(x,y);
-            // NEW: if ( oldValue == newValue ) continue;
-            // NEW: m_currentMaskStroke.push_back({x,y,oldValue,newValue});
-            m_maskLayer->setPixel(px, py, newValue);
-          }
-         }
-         m_maskItem->maskUpdated();
-         return;
-        }
+     if ( m_maskLayer ) {
+        const bool isRight  = event->buttons() & Qt::RightButton;
+        const bool cmdHeld = event->modifiers() & Qt::ControlModifier;
+        const bool effectiveErase = cmdHeld ? (m_maskTool != MaskTool::MaskErase)
+                                            : (m_maskTool == MaskTool::MaskErase);
+        const uchar newValue = isRight ? (effectiveErase ? m_currentMaskLabel : 0)
+                                       : (effectiveErase ? 0 : m_currentMaskLabel);
+        const bool altHeld = event->modifiers() & Qt::AltModifier;
+        const int r = m_maskBrushRadius, rr = r*r;
+        const int w = m_maskLayer->width(), h = m_maskLayer->height();
+        const int x1 = int(scenePos.x()), y1 = int(scenePos.y());
+        const int x0 = m_lastMaskScenePos.x(),  y0 = m_lastMaskScenePos.y();
+        const int ddx = x1 - x0, ddy = y1 - y0;
+        const int steps = std::max(1, std::max(std::abs(ddx), std::abs(ddy)));
+        auto paintDisk = [&]( int cx, int cy ) {
+          for ( int dy = -r; dy <= r; ++dy )
+            for ( int dx = -r; dx <= r; ++dx ) {
+              if ( dx*dx + dy*dy > rr ) continue;
+              int px = cx+dx, py = cy+dy;
+              if ( px >= 0 && py >= 0 && px < w && py < h ) {
+                const uchar existing = m_maskLayer->pixel(px, py);
+                if ( newValue == 0 ? existing == m_currentMaskLabel
+                                   : existing == 0 || altHeld )
+                  m_maskLayer->setPixel(px, py, newValue);
+              }
+            }
+        };
+        for ( int i = 0; i <= steps; ++i )
+          paintDisk(x0 + ddx*i/steps, y0 + ddy*i/steps);
+        m_lastMaskScenePos = { x1, y1 };
+        const QRect dirtyRect(QPoint(qMax(0, qMin(x0,x1)-r), qMax(0, qMin(y0,y1)-r)),
+                               QPoint(qMin(w-1, qMax(x0,x1)+r), qMin(h-1, qMax(y0,y1)+r)));
+        m_maskItem->maskUpdated(dirtyRect);
+        viewport()->update();
+        return;
      }
     }
 
@@ -1539,11 +1628,76 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
 //    If newScale will be too small (e.g. < 0.001), the BSP-Tree crashed.
 void ImageView::wheelEvent( QWheelEvent* event )
 {
-  if ( ImageView::scaleScene(event->angleDelta().y()>0?+1:-1) ) {
-    event->accept();
-    return;
-  }
-  event->ignore();
+    // Use device type to distinguish trackpad from mouse wheel.
+    // pixelDelta alone is unreliable: macOS routes all scrolling (including
+    // physical mouse wheels) through smooth-scrolling, so pixelDelta is set
+    // for both. device()->type() is the authoritative source.
+    const bool ctrlHeld   = event->modifiers() & Qt::ControlModifier;
+    const bool isTouchpad = event->device() &&
+        event->device()->type() == QInputDevice::DeviceType::TouchPad;
+
+    if ( isTouchpad && !ctrlHeld ) {
+        // Trackpad two-finger swipe → pan
+        const QPoint px = event->pixelDelta();
+        if ( !px.isNull() ) {
+            horizontalScrollBar()->setValue(horizontalScrollBar()->value() - px.x());
+            verticalScrollBar()->setValue(verticalScrollBar()->value()     - px.y());
+        } else {
+            // Touchpad without pixelDelta (rare) → use angleDelta scaled down
+            horizontalScrollBar()->setValue(
+                horizontalScrollBar()->value() - event->angleDelta().x() / 4);
+            verticalScrollBar()->setValue(
+                verticalScrollBar()->value()   - event->angleDelta().y() / 4);
+        }
+        event->accept();
+        return;
+    }
+    // Mouse wheel or Ctrl+trackpad → zoom
+    const int delta = event->angleDelta().y();
+    if ( delta != 0 && ImageView::scaleScene(delta > 0 ? +1 : -1) )
+        event->accept();
+    else
+        event->ignore();
+}
+
+bool ImageView::event( QEvent* e )
+{
+    // macOS + Windows: pinch delivered as QNativeGestureEvent (incremental factor)
+    if ( e->type() == QEvent::NativeGesture ) {
+        auto* ge = static_cast<QNativeGestureEvent*>(e);
+        if ( ge->gestureType() == Qt::ZoomNativeGesture ) {
+            const qreal factor   = 1.0 + ge->value();
+            const qreal newScale = transform().m11() * factor;
+            if ( newScale >= 0.01 && newScale <= 100.0 ) {
+                setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
+                scale(factor, factor);
+                emit scaleChanged(transform().m11());
+                emit viewportChanged(
+                    mapToScene(viewport()->rect()).boundingRect(), sceneRect());
+            }
+            e->accept();
+            return true;
+        }
+    }
+    // Linux (X11/Wayland): pinch delivered as QPinchGesture via Qt gesture framework
+    if ( e->type() == QEvent::Gesture ) {
+        auto* ge = static_cast<QGestureEvent*>(e);
+        if ( auto* pinch = static_cast<QPinchGesture*>(
+                 ge->gesture(Qt::PinchGesture)) ) {
+            const qreal factor   = pinch->scaleFactor();
+            const qreal newScale = transform().m11() * factor;
+            if ( newScale >= 0.01 && newScale <= 100.0 ) {
+                setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
+                scale(factor, factor);
+                emit scaleChanged(transform().m11());
+                emit viewportChanged(
+                    mapToScene(viewport()->rect()).boundingRect(), sceneRect());
+            }
+            ge->accept();
+            return true;
+        }
+    }
+    return QGraphicsView::event(e);
 }
 
 bool ImageView::scaleScene( int direction )
@@ -1568,6 +1722,12 @@ bool ImageView::scaleScene( int direction )
 void ImageView::scrollContentsBy( int dx, int dy )
 {
     QGraphicsView::scrollContentsBy(dx, dy);
+    emit viewportChanged(mapToScene(viewport()->rect()).boundingRect(), sceneRect());
+}
+
+void ImageView::resizeEvent( QResizeEvent* event )
+{
+    QGraphicsView::resizeEvent(event);
     emit viewportChanged(mapToScene(viewport()->rect()).boundingRect(), sceneRect());
 }
 
@@ -1634,6 +1794,18 @@ void ImageView::drawForeground( QPainter* painter, const QRectF& )
             painter->setPen(innerPen);
             painter->drawEllipse(m_cursorPos, innerRadius, innerRadius);
         }
+    }
+    // Mask brush preview circle
+    if ( m_maskTool != MaskTool::None && m_mouseInCanvas ) {
+        QPen outerPen(Qt::white, 0);
+        outerPen.setCosmetic(true);
+        painter->setPen(outerPen);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawEllipse(m_cursorPos, m_maskBrushRadius, m_maskBrushRadius);
+        QPen innerPen(Qt::black, 0, Qt::DashLine);
+        innerPen.setCosmetic(true);
+        painter->setPen(innerPen);
+        painter->drawEllipse(m_cursorPos, m_maskBrushRadius + 1, m_maskBrushRadius + 1);
     }
     
     painter->restore();
@@ -2003,6 +2175,31 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
        }
       }
      }
+    } else if ( m_maskCutTool == MaskCutTool::Inpainting && m_maskLayer != nullptr ) {
+     // Build hole mask: pixels inside lasso where the mask label is set
+     QImage holeMask(src.size(), QImage::Format_Grayscale8);
+     holeMask.fill(0);
+     for ( int y = bounds.top(); y <= bounds.bottom(); ++y ) {
+      const uchar* mrow = mask.constScanLine(y - bounds.top());
+      for ( int x = bounds.left(); x <= bounds.right(); ++x ) {
+        if ( mrow[x - bounds.left()] > 0 && m_maskLayer->pixel(x, y) != 0 )
+          holeMask.setPixel(x, y, 255);
+      }
+     }
+     IMainSystem::instance()->showMessage(tr("Running PatchMatch. Please wait…"));
+     QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+     QImage inpainted = Inpainting::run(src, holeMask);
+     IMainSystem::instance()->showMessage(tr("Inpainting done"));
+     // Cut layer: inpainted fill for the hole, transparent elsewhere
+     for ( int y = 0; y < bounds.height(); ++y ) {
+      uchar* m = mask.scanLine(y);
+      unsigned int ypos = bounds.top() + y;
+      for ( int x = 0; x < bounds.width(); ++x ) {
+        unsigned int xpos = bounds.left() + x;
+        if ( m[x] > 0 && m_maskLayer->pixel(xpos, ypos) != 0 )
+          cut.setPixelColor(x, y, inpainted.pixelColor(xpos, ypos));
+      }
+     }
     } else if ( m_maskCutTool == MaskCutTool::Copy && m_maskLayer != nullptr ) {
      // --- testing ---
      // src  = mainImage
@@ -2073,6 +2270,500 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     // --- Ready ---
     return cmd;
   }
+}
+
+// Renders all visible scene layers into a flat RGB32 image in base-image pixel coords.
+// Layer positions and transforms are applied via sceneTransform().
+QImage ImageView::compositeVisible()
+{
+    LayerItem* base = baseLayer();
+    if ( !base ) return {};
+
+    QImage result = base->image().convertToFormat(QImage::Format_RGB32);
+
+    bool invertible = false;
+    QTransform sceneToBase = base->sceneTransform().inverted(&invertible);
+    if ( !invertible ) return result;
+
+    QPainter p(&result);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    // Paint LassoLayer items bottom-to-top over the base image
+    const auto items = m_scene->items(Qt::AscendingOrder);
+    for ( auto* item : items ) {
+        auto* layer = dynamic_cast<LayerItem*>(item);
+        if ( !layer || !layer->isVisible() ) continue;
+        if ( layer->getType() == LayerItem::MainImage ) continue;
+        p.save();
+        // item-local → scene → base-pixel
+        p.setTransform(layer->sceneTransform() * sceneToBase);
+        p.drawImage(QPointF(0, 0), layer->image());
+        p.restore();
+    }
+    p.end();
+    return result;
+}
+
+void ImageView::applyInpainting()
+{
+    LayerItem* base = baseLayer();
+    if ( !base || !m_maskLayer ) return;
+
+    QImage src = compositeVisible();
+    if ( src.isNull() ) return;
+
+    // Collect which labels are present in the mask (excluding 0)
+    QSet<uchar> presentLabels;
+    for ( int y = 0; y < src.height(); ++y )
+        for ( int x = 0; x < src.width(); ++x ) {
+            uchar v = m_maskLayer->pixel(x, y);
+            if ( v ) presentLabels.insert(v);
+        }
+
+    if ( presentLabels.isEmpty() ) {
+        IMainSystem::instance()->showMessage( tr("No mask painted — nothing to inpaint") );
+        return;
+    }
+
+    // Build hole mask from the current label only
+    QImage holeMask( src.size(), QImage::Format_Grayscale8 );
+    holeMask.fill(0);
+    bool hasHole = false;
+    for ( int y = 0; y < src.height(); ++y ) {
+        uchar* hrow = holeMask.scanLine(y);
+        for ( int x = 0; x < src.width(); ++x ) {
+            if ( m_maskLayer->pixel(x, y) == m_currentMaskLabel ) {
+                hrow[x] = 255;
+                hasHole  = true;
+            }
+        }
+    }
+    if ( !hasHole ) {
+        IMainSystem::instance()->showMessage(
+            tr("Current label has no painted pixels — nothing to inpaint") );
+        return;
+    }
+
+    // ── Options dialog ───────────────────────────────────────────────────────
+    auto estimateBg = [&]() -> int {
+        const int sz = qMin(10, qMin(src.width(), src.height()));
+        QList<int> samples;
+        samples.reserve(sz * sz * 4);
+        for ( int y = 0; y < sz; ++y )
+            for ( int x = 0; x < sz; ++x ) {
+                auto s = [&](int px, int py){ samples << qGray(src.pixel(px, py)); };
+                s(x,                    y);
+                s(src.width()-1-x,      y);
+                s(x,                    src.height()-1-y);
+                s(src.width()-1-x,      src.height()-1-y);
+            }
+        std::sort(samples.begin(), samples.end());
+        return samples[samples.size() / 2];
+    };
+
+    // Check LaMa availability once (cached result)
+    const bool lamaOk = LaMaInpainting::isAvailable();
+
+    QDialog dlg(dynamic_cast<QWidget*>(m_parent));
+    dlg.setWindowTitle(tr("Inpainting"));
+    dlg.setMinimumWidth(460);
+    QVBoxLayout* vlay = new QVBoxLayout(&dlg);
+
+    // ── Method selection ──────────────────────────────────────────────────────
+    QGroupBox* gbMethod = new QGroupBox(tr("Method"));
+    QVBoxLayout* vMethod = new QVBoxLayout(gbMethod);
+    QComboBox* cbMethod = new QComboBox();
+    cbMethod->addItem(tr("Classic (PatchMatch)"), 0);
+    if ( lamaOk )
+        cbMethod->addItem(tr("LaMa  (AI — Resolution-robust Large Mask Inpainting)"), 1);
+    else
+        cbMethod->addItem(tr("LaMa  (not available — lama.onnx missing, see tooltip)"), 1);
+    cbMethod->setToolTip(tr("LaMa ONNX model not found.\n"
+                             "Download lama_fp32.onnx and place it at:\n"
+                             "%1").arg(LaMaInpainting::defaultModelPath()));
+    if ( lamaOk ) {
+        cbMethod->setCurrentIndex(1); // default to LaMa when available
+    } else {
+        QStandardItemModel* sm = qobject_cast<QStandardItemModel*>(cbMethod->model());
+        if ( sm ) sm->item(1)->setEnabled(false);
+    }
+    vMethod->addWidget(cbMethod);
+    vlay->addWidget(gbMethod);
+
+    // ── Reference region (PatchMatch only) ───────────────────────────────────
+    QList<uchar> otherLabels;
+    for ( uchar l : presentLabels )
+        if ( l != m_currentMaskLabel ) otherLabels.append(l);
+    std::sort(otherLabels.begin(), otherLabels.end());
+
+    QGroupBox* gbRef = new QGroupBox(tr("Use reference region as texture source"));
+    gbRef->setCheckable(true);
+    gbRef->setChecked(false);
+    gbRef->setEnabled(!otherLabels.isEmpty());
+    QFormLayout* formRef = new QFormLayout(gbRef);
+
+    QComboBox* cbRefLabel = new QComboBox();
+    for ( uchar l : otherLabels ) {
+        QPixmap swatch(16, 16);
+        swatch.fill(m_maskItem ? m_maskItem->labelColor(l) : Qt::gray);
+        cbRefLabel->addItem(QIcon(swatch), tr("Label %1").arg(l), int(l));
+    }
+    formRef->addRow(tr("Reference label:"), cbRefLabel);
+    vlay->addWidget(gbRef);
+
+    // ── Background filter (PatchMatch only) ───────────────────────────────────
+    QGroupBox* gbFilter = new QGroupBox(tr("Only replace pixels near background value"));
+    gbFilter->setCheckable(true);
+    gbFilter->setChecked(false);
+    QFormLayout* formBg = new QFormLayout(gbFilter);
+
+    QSpinBox* sbBg = new QSpinBox();
+    sbBg->setRange(0, 255);
+    sbBg->setValue(estimateBg());
+    formBg->addRow(tr("Background value (0–255):"), sbBg);
+
+    QSpinBox* sbTol = new QSpinBox();
+    sbTol->setRange(0, 255);
+    sbTol->setValue(30);
+    formBg->addRow(tr("Tolerance:"), sbTol);
+
+    vlay->addWidget(gbFilter);
+
+    // Hide PatchMatch-only options when LaMa is selected
+    auto updateMethodVisibility = [&](int idx){
+        bool pm = (idx == 0);
+        gbRef->setVisible(pm);
+        gbFilter->setVisible(pm);
+        dlg.adjustSize();
+    };
+    connect(cbMethod, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            &dlg, updateMethodVisibility);
+    updateMethodVisibility(cbMethod->currentIndex());
+
+    QDialogButtonBox* btns = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    vlay->addWidget(btns);
+
+    if ( dlg.exec() != QDialog::Accepted ) return;
+
+    InpaintParams p;
+    p.useLama   = (cbMethod->currentData().toInt() == 1);
+    p.useRef    = gbRef->isChecked() && !otherLabels.isEmpty();
+    p.refLabel  = cbRefLabel->currentData().toInt();
+    p.useFilter = gbFilter->isChecked();
+    p.bgValue   = sbBg->value();
+    p.bgTol     = sbTol->value();
+    if ( executeInpainting(p, src, holeMask) )
+        emit inpaintingCompleted();
+}
+
+// ----------------------------------------------------------------------------
+bool ImageView::executeInpainting(const InpaintParams& p, const QImage& src, QImage& holeMask)
+{
+    LayerItem* base = baseLayer();
+    if ( !base ) return false;
+
+    // ── Optional background filter ────────────────────────────────────────────
+    if ( p.useFilter ) {
+        const int bgVal = p.bgValue;
+        const int tol   = p.bgTol;
+        bool anyLeft = false;
+        for ( int y = 0; y < src.height(); ++y ) {
+            uchar* hrow = holeMask.scanLine(y);
+            for ( int x = 0; x < src.width(); ++x ) {
+                if ( !hrow[x] ) continue;
+                if ( std::abs(qGray(src.pixel(x, y)) - bgVal) > tol )
+                    hrow[x] = 0;
+                else
+                    anyLeft = true;
+            }
+        }
+        if ( !anyLeft ) {
+            IMainSystem::instance()->showMessage(
+                tr("No pixels near background value found in mask") );
+            return false;
+        }
+    }
+
+    // ── LaMa path ────────────────────────────────────────────────────────────
+    if ( p.useLama ) {
+        IMainSystem::instance()->showMessage(
+            tr("Running LaMa. Please wait…") );
+        QApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
+        const QString mpath = EditorStyle::instance().lamaModelPath().isEmpty()
+                              ? LaMaInpainting::defaultModelPath()
+                              : EditorStyle::instance().lamaModelPath();
+        QString errMsg;
+        QImage inpainted = LaMaInpainting::run( src, holeMask, mpath, &errMsg );
+        if ( inpainted.isNull() ) {
+            IMainSystem::instance()->showMessage( tr("LaMa failed: ") + errMsg );
+            QMessageBox::warning( dynamic_cast<QWidget*>(m_parent),
+                                  tr("LaMa Inpainting"), errMsg );
+            return false;
+        }
+        {
+            int hx0 = src.width(), hy0 = src.height(), hx1 = 0, hy1 = 0;
+            for ( int y = 0; y < src.height(); ++y ) {
+                const uchar* hrow = holeMask.constScanLine(y);
+                for ( int x = 0; x < src.width(); ++x )
+                    if ( hrow[x] ) {
+                        hx0=qMin(hx0,x); hy0=qMin(hy0,y);
+                        hx1=qMax(hx1,x); hy1=qMax(hy1,y);
+                    }
+            }
+            QRect holeBounds( hx0, hy0, hx1-hx0+1, hy1-hy0+1 );
+            QImage cut( holeBounds.size(), QImage::Format_ARGB32 );
+            cut.fill(Qt::transparent);
+            for ( int y = 0; y < holeBounds.height(); ++y ) {
+                int sy = hy0+y;
+                const uchar* hrow = holeMask.constScanLine(sy);
+                for ( int x = 0; x < holeBounds.width(); ++x ) {
+                    int sx = hx0+x;
+                    if ( hrow[sx] )
+                        cut.setPixelColor(x, y, inpainted.pixelColor(sx, sy));
+                }
+            }
+            alphaBleed(cut);
+            int nidx = 0;
+            for ( int i = 0; i < m_layers.size(); ++i ) nidx = qMax(nidx, m_layers[i]->id());
+            nidx += 1;
+            Layer* layer = new Layer(nidx, cut);
+            layer->m_name = QString("Inpaint %1").arg(nidx);
+            layer->m_creator = "Inpainting";
+            layer->m_modelName = QFileInfo(mpath).fileName();
+            layer->m_bounds = holeBounds;
+            LayerItem* newLayer = new LayerItem(layer->m_name, cut);
+            newLayer->setParent(m_parent); newLayer->setIndex(nidx);
+            newLayer->setLayer(layer); newLayer->setUndoStack(m_undoStack);
+            QImage emptyBackup(holeBounds.size(), QImage::Format_ARGB32);
+            emptyBackup.fill(Qt::transparent);
+            LassoCutCommand* cmd = new LassoCutCommand(base, newLayer, holeBounds, emptyBackup, nidx, "Inpainting");
+            cmd->setSilent(true); m_undoStack->push(cmd); cmd->setSilent(false);
+            if (base->scene()) base->scene()->addItem(newLayer);
+            newLayer->setVisible(true); newLayer->setInActive(false);
+            newLayer->setPos(base->mapToScene(holeBounds.topLeft()));
+            newLayer->setZValue(base->zValue()+1);
+            layer->m_item = newLayer; m_layers.push_back(layer);
+            setActiveLayer(layer->m_name); emit lassoLayerAdded();
+            for (int y=holeBounds.top(); y<=holeBounds.bottom(); ++y) {
+                const uchar* hrow = holeMask.constScanLine(y);
+                for (int x=holeBounds.left(); x<=holeBounds.right(); ++x)
+                    if (hrow[x]) m_maskLayer->setPixel(x,y,0);
+            }
+            if (m_maskItem) m_maskItem->maskUpdated(holeBounds);
+            IMainSystem::instance()->showMessage(tr("LaMa inpainting done"));
+        }
+        return true;
+    }
+
+    // ── Build optional source mask from reference label ───────────────────────
+    QImage sourceMask;
+    if ( p.useRef ) {
+        uchar refLabel = uchar(p.refLabel);
+        sourceMask = QImage( src.size(), QImage::Format_Grayscale8 );
+        sourceMask.fill(0);
+        for ( int y = 0; y < src.height(); ++y ) {
+            uchar* srow = sourceMask.scanLine(y);
+            for ( int x = 0; x < src.width(); ++x )
+                if ( m_maskLayer->pixel(x, y) == refLabel )
+                    srow[x] = 255;
+        }
+    }
+
+    IMainSystem::instance()->showMessage( tr("Running PatchMatch. Please wait…") );
+    QApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
+
+    QImage inpainted = Inpainting::run( src, holeMask, sourceMask );
+
+    int hx0 = src.width(), hy0 = src.height(), hx1 = 0, hy1 = 0;
+    for ( int y = 0; y < src.height(); ++y ) {
+        const uchar* hrow = holeMask.constScanLine(y);
+        for ( int x = 0; x < src.width(); ++x ) {
+            if ( hrow[x] ) {
+                hx0 = qMin(hx0, x); hy0 = qMin(hy0, y);
+                hx1 = qMax(hx1, x); hy1 = qMax(hy1, y);
+            }
+        }
+    }
+    QRect holeBounds( hx0, hy0, hx1 - hx0 + 1, hy1 - hy0 + 1 );
+
+    QImage cut( holeBounds.size(), QImage::Format_ARGB32 );
+    cut.fill( Qt::transparent );
+    for ( int y = 0; y < holeBounds.height(); ++y ) {
+        int sy = hy0 + y;
+        const uchar* hrow = holeMask.constScanLine(sy);
+        for ( int x = 0; x < holeBounds.width(); ++x ) {
+            int sx = hx0 + x;
+            if ( hrow[sx] )
+                cut.setPixelColor( x, y, inpainted.pixelColor(sx, sy) );
+        }
+    }
+    alphaBleed(cut);
+
+    int nidx = 0;
+    for ( int i = 0; i < m_layers.size(); ++i )
+        nidx = qMax( nidx, m_layers[i]->id() );
+    nidx += 1;
+
+    Layer* layer = new Layer( nidx, cut );
+    layer->m_name      = QString("Inpaint %1").arg(nidx);
+    layer->m_creator   = "Inpainting";
+    layer->m_modelName = "PatchMatch";
+    layer->m_bounds    = holeBounds;
+
+    LayerItem* newLayer = new LayerItem( layer->m_name, cut );
+    newLayer->setParent( m_parent );
+    newLayer->setIndex( nidx );
+    newLayer->setLayer( layer );
+    newLayer->setUndoStack( m_undoStack );
+
+    QImage emptyBackup( holeBounds.size(), QImage::Format_ARGB32 );
+    emptyBackup.fill( Qt::transparent );
+    LassoCutCommand* cmd = new LassoCutCommand( base, newLayer, holeBounds, emptyBackup, nidx, "Inpainting" );
+    cmd->setSilent( true );
+    m_undoStack->push( cmd );
+    cmd->setSilent( false );
+
+    if ( base->scene() )
+        base->scene()->addItem( newLayer );
+    newLayer->setVisible( true );
+    newLayer->setInActive( false );
+    newLayer->setPos( base->mapToScene(holeBounds.topLeft()) );
+    newLayer->setZValue( base->zValue() + 1 );
+    layer->m_item = newLayer;
+    m_layers.push_back( layer );
+
+    setActiveLayer( layer->m_name );
+    emit lassoLayerAdded();
+
+    for ( int y = holeBounds.top(); y <= holeBounds.bottom(); ++y ) {
+        const uchar* hrow = holeMask.constScanLine(y);
+        for ( int x = holeBounds.left(); x <= holeBounds.right(); ++x )
+            if ( hrow[x] )
+                m_maskLayer->setPixel( x, y, 0 );
+    }
+    if ( m_maskItem )
+        m_maskItem->maskUpdated( holeBounds );
+
+    IMainSystem::instance()->showMessage( tr("Inpainting done") );
+    return true;
+}
+
+// ----------------------------------------------------------------------------
+void ImageView::setInpaintModel(int idx)
+{
+    m_inpaintParams.useLama = (idx == 1);
+}
+
+// ----------------------------------------------------------------------------
+void ImageView::applyInpaintingDirect()
+{
+    LayerItem* base = baseLayer();
+    if ( !base || !m_maskLayer ) return;
+    QImage src = compositeVisible();
+    if ( src.isNull() ) return;
+
+    QImage holeMask( src.size(), QImage::Format_Grayscale8 );
+    holeMask.fill(0);
+    bool hasHole = false;
+    for ( int y = 0; y < src.height(); ++y ) {
+        uchar* hrow = holeMask.scanLine(y);
+        for ( int x = 0; x < src.width(); ++x )
+            if ( m_maskLayer->pixel(x, y) == m_currentMaskLabel ) {
+                hrow[x] = 255;
+                hasHole  = true;
+            }
+    }
+    if ( !hasHole ) {
+        IMainSystem::instance()->showMessage(
+            tr("Current label has no painted pixels — nothing to inpaint") );
+        return;
+    }
+    if ( executeInpainting(m_inpaintParams, src, holeMask) )
+        emit inpaintingCompleted();
+}
+
+// ----------------------------------------------------------------------------
+void ImageView::showInpaintOptions()
+{
+    if ( m_inpaintParams.useLama ) {
+        IMainSystem::instance()->showMessage(
+            tr("LaMa: no configurable parameters") );
+        QMessageBox::information( dynamic_cast<QWidget*>(m_parent),
+            tr("LaMa Options"),
+            tr("LaMa has no configurable parameters.\n"
+               "The model fills the painted region automatically.") );
+        return;
+    }
+
+    // PatchMatch: scan for other labels
+    QList<uchar> otherLabels;
+    if ( m_maskLayer ) {
+        QSet<uchar> present;
+        LayerItem* base = baseLayer();
+        const int W = base ? base->image().width()  : 0;
+        const int H = base ? base->image().height() : 0;
+        for ( int y = 0; y < H; ++y )
+            for ( int x = 0; x < W; ++x ) {
+                uchar v = m_maskLayer->pixel(x, y);
+                if ( v ) present.insert(v);
+            }
+        for ( uchar l : present )
+            if ( l != m_currentMaskLabel ) otherLabels.append(l);
+        std::sort(otherLabels.begin(), otherLabels.end());
+    }
+
+    QDialog dlg( dynamic_cast<QWidget*>(m_parent) );
+    dlg.setWindowTitle( tr("PatchMatch Options") );
+    dlg.setMinimumWidth(400);
+    QVBoxLayout* vlay = new QVBoxLayout(&dlg);
+
+    QGroupBox* gbRef = new QGroupBox( tr("Use reference region as texture source") );
+    gbRef->setCheckable(true);
+    gbRef->setChecked( m_inpaintParams.useRef && !otherLabels.isEmpty() );
+    gbRef->setEnabled( !otherLabels.isEmpty() );
+    QFormLayout* formRef = new QFormLayout(gbRef);
+    QComboBox* cbRefLabel = new QComboBox();
+    for ( uchar l : otherLabels ) {
+        QPixmap swatch(16, 16);
+        swatch.fill( m_maskItem ? m_maskItem->labelColor(l) : Qt::gray );
+        cbRefLabel->addItem( QIcon(swatch), tr("Label %1").arg(l), int(l) );
+        if ( l == uchar(m_inpaintParams.refLabel) )
+            cbRefLabel->setCurrentIndex( cbRefLabel->count() - 1 );
+    }
+    formRef->addRow( tr("Reference label:"), cbRefLabel );
+    vlay->addWidget(gbRef);
+
+    QGroupBox* gbFilter = new QGroupBox( tr("Only replace pixels near background value") );
+    gbFilter->setCheckable(true);
+    gbFilter->setChecked( m_inpaintParams.useFilter );
+    QFormLayout* formBg = new QFormLayout(gbFilter);
+    QSpinBox* sbBg = new QSpinBox();
+    sbBg->setRange(0, 255);
+    sbBg->setValue( m_inpaintParams.bgValue );
+    formBg->addRow( tr("Background value (0–255):"), sbBg );
+    QSpinBox* sbTol = new QSpinBox();
+    sbTol->setRange(0, 255);
+    sbTol->setValue( m_inpaintParams.bgTol );
+    formBg->addRow( tr("Tolerance:"), sbTol );
+    vlay->addWidget(gbFilter);
+
+    QDialogButtonBox* btns = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel );
+    connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    vlay->addWidget(btns);
+
+    if ( dlg.exec() != QDialog::Accepted ) return;
+
+    m_inpaintParams.useRef    = gbRef->isChecked() && !otherLabels.isEmpty();
+    m_inpaintParams.refLabel  = cbRefLabel->currentData().toInt();
+    m_inpaintParams.useFilter = gbFilter->isChecked();
+    m_inpaintParams.bgValue   = sbBg->value();
+    m_inpaintParams.bgTol     = sbTol->value();
 }
 
 // ---------------------------- --------------- -----------------------------

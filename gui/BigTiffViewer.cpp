@@ -239,8 +239,19 @@ public:
         if (m_levels.isEmpty()) return;
         m_fitted = true;
         fitInView(scene()->sceneRect(), Qt::KeepAspectRatio);
+        m_fitTransform    = transform();
+        m_hasFitTransform = true;
         if (onScaleChanged) onScaleChanged(transform().m11());
         emitViewport();
+    }
+
+    QImage grabFull() {
+        if (!m_hasFitTransform || sceneRect().isEmpty()) return grab().toImage();
+        const QTransform saved = transform();
+        setTransform(m_fitTransform);
+        QImage img = grab().toImage();
+        setTransform(saved);
+        return img;
     }
 
     void emitViewport() {
@@ -663,10 +674,12 @@ public:
     TileCache             m_cache;
     QVector<QRgb>         m_baseLut;
     QVector<QRgb>         m_lut;
-    int                   m_brightness = 0;
-    int                   m_contrast   = 0;
+    int                   m_brightness     = 0;
+    int                   m_contrast       = 0;
     QString               m_lastSaveError;
     QString               m_srcPath;
+    QTransform            m_fitTransform;
+    bool                  m_hasFitTransform = false;
 };
 
 // ── BigTiffViewer ─────────────────────────────────────────────────────────────
@@ -845,6 +858,7 @@ void BigTiffViewer::setColorTable(const QVector<QRgb>& lut) { m_view->setColorTa
 void BigTiffViewer::setBrightness(int v) { m_view->setBrightness(v); }
 void BigTiffViewer::setContrast(int v)   { m_view->setContrast(v); }
 void BigTiffViewer::centerOn(const QPointF& scenePos) { m_view->centerOn(scenePos); m_view->emitViewport(); }
+QImage BigTiffViewer::thumbnail() { return m_view->grabFull(); }
 
 QSize BigTiffViewer::imageSize() const
 {

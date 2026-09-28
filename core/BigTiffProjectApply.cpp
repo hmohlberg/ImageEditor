@@ -18,6 +18,7 @@
 
 #include <tiffio.h>
 
+#include <QByteArray>
 #include <QFile>
 #include <QImage>
 #include <QRect>
@@ -35,6 +36,11 @@
 #include <cmath>
 #include <utility>
 #include <initializer_list>
+
+#ifdef HASLAMA
+#include "Config.h"
+#include "../util/LaMaInpainting.h"
+#endif
 
 // ── TIFF pyramid level ────────────────────────────────────────────────────────
 
@@ -97,6 +103,20 @@ struct PasteOp {
     double det = 1;          // m11*m22 - m12*m21, precomputed
     QPoint itemPos20;        // layer pos() in canvas (newPosition from JSON)
     QRectF dstBBox20;        // bounding box of transformed region at 20 µm
+};
+
+// ── inpainting patch types ────────────────────────────────────────────────────
+
+struct InpaintPatch {
+    QRect  boundsL0;   // bounds at finest BigTIFF resolution (level 0 pixels)
+    QImage resultRGB;  // Format_RGB32 inpainted result at boundsL0 size
+    QImage holeMask;   // Format_Grayscale8 mask (255 = inpainted pixel) at boundsL0 size
+};
+
+struct LevelInpaintPatch {
+    QRect  bounds;     // bounds scaled to current pyramid level
+    QImage result;     // Format_RGB32 scaled to bounds.size()
+    QImage mask;       // Format_Grayscale8 scaled to bounds.size()
 };
 
 // ── parsing ───────────────────────────────────────────────────────────────────
@@ -259,6 +279,164 @@ static bool sourcePixelFor(const LevelOp& lo, const PasteOp& op,
     return true;
 }
 
+// ── BigTIFF region reader (tiled levels only) ─────────────────────────────────
+
+static QImage readBigTiffRegionRGB(
+    TIFF* tif,
+    const ProjLevel& lvl,
+    const QRect& bounds,
+    uint16_t spp)
+{
+    const int x0 = qMax(0, bounds.x());
+    const int y0 = qMax(0, bounds.y());
+    const int x1 = qMin((int)lvl.w, bounds.x() + bounds.width());
+    const int y1 = qMin((int)lvl.h, bounds.y() + bounds.height());
+    if (x1 <= x0 || y1 <= y0) return {};
+
+    const int rw = x1 - x0, rh = y1 - y0;
+    QImage result(rw, rh, QImage::Format_RGB32);
+    result.fill(0);
+
+    const uint32_t tW = lvl.tileW, tH = lvl.tileH;
+    const tsize_t tBytes = (tsize_t)tW * tH * spp;
+    std::vector<uint8_t> tileBuf(tBytes);
+
+    const int startTx = (x0 / (int)tW) * (int)tW;
+    const int startTy = (y0 / (int)tH) * (int)tH;
+
+    for (int ty = startTy; ty < y1; ty += (int)tH) {
+        for (int tx = startTx; tx < x1; tx += (int)tW) {
+            ttile_t idx = TIFFComputeTile(tif, (uint32_t)tx, (uint32_t)ty, 0, 0);
+            if (TIFFReadEncodedTile(tif, idx, tileBuf.data(), tBytes) < 0) continue;
+
+            const int py0 = qMax(y0 - ty, 0);
+            const int py1 = qMin((int)tH, y1 - ty);
+            const int px0 = qMax(x0 - tx, 0);
+            const int px1 = qMin((int)tW, x1 - tx);
+
+            for (int py = py0; py < py1; ++py) {
+                QRgb* dstRow = reinterpret_cast<QRgb*>(result.scanLine(ty + py - y0));
+                for (int px = px0; px < px1; ++px) {
+                    const uint8_t* src = &tileBuf[((size_t)py * tW + px) * spp];
+                    if (spp == 1)
+                        dstRow[tx + px - x0] = qRgb(src[0], src[0], src[0]);
+                    else
+                        dstRow[tx + px - x0] = qRgb(src[0], src[1], src[2]);
+                }
+            }
+        }
+    }
+    return result;
+}
+
+// ── inpainting patch parser ───────────────────────────────────────────────────
+
+static QVector<InpaintPatch> parseInpaintPatches(
+    const QJsonObject& project,
+    TIFF* tif,
+    const QVector<ProjLevel>& levels,
+    int scaleFactor,
+    uint16_t spp)
+{
+    QVector<InpaintPatch> patches;
+    if (levels.isEmpty()) return patches;
+    const ProjLevel& finest = levels[0];
+    if (!finest.tiled) return patches;   // stripped finest level is unusual; skip
+
+    for (const QJsonValue& lv : project["layers"].toArray()) {
+        QJsonObject layerObj = lv.toObject();
+        if (layerObj.value("creator").toString() != "Inpainting") continue;
+        if (!layerObj.contains("data")) continue;
+
+        // Decode saved ARGB32 result PNG
+        QByteArray raw = QByteArray::fromBase64(layerObj["data"].toString().toLatin1());
+        QImage savedResult;
+        if (!savedResult.loadFromData(raw, "PNG")) continue;
+        if (savedResult.format() != QImage::Format_ARGB32)
+            savedResult = savedResult.convertToFormat(QImage::Format_ARGB32);
+
+        const int sw = savedResult.width(), sh = savedResult.height();
+
+        // Extract hole mask from alpha channel (alpha > 0 → inpainted pixel)
+        QImage savedMask(sw, sh, QImage::Format_Grayscale8);
+        for (int y = 0; y < sh; ++y) {
+            const QRgb* srcRow = reinterpret_cast<const QRgb*>(savedResult.constScanLine(y));
+            uint8_t* dstRow = savedMask.scanLine(y);
+            for (int x = 0; x < sw; ++x)
+                dstRow[x] = (qAlpha(srcRow[x]) > 0) ? 255 : 0;
+        }
+
+        // Scale bounds from project (20µm) coords to BigTIFF full-res pixels
+        const int px20 = layerObj.value("x").toInt(0);
+        const int py20 = layerObj.value("y").toInt(0);
+        QRect boundsL0(px20 * scaleFactor, py20 * scaleFactor,
+                       sw * scaleFactor,   sh * scaleFactor);
+        boundsL0 = boundsL0.intersected(QRect(0, 0, (int)finest.w, (int)finest.h));
+        if (boundsL0.isEmpty()) continue;
+
+        // Read BigTIFF source region at full resolution
+        TIFFSetDirectory(tif, (uint16_t)finest.dirIdx);
+        QImage srcRegion = readBigTiffRegionRGB(tif, finest, boundsL0, spp);
+        if (srcRegion.isNull()) continue;
+
+        // Scale hole mask to full BigTIFF resolution
+        QImage scaledMask = savedMask.scaled(
+            boundsL0.width(), boundsL0.height(),
+            Qt::IgnoreAspectRatio, Qt::FastTransformation);
+        if (scaledMask.format() != QImage::Format_Grayscale8)
+            scaledMask = scaledMask.convertToFormat(QImage::Format_Grayscale8);
+
+        QImage resultRGB;
+
+#ifdef HASLAMA
+        {
+            QString errMsg;
+            const QString modelPath = EditorStyle::instance().lamaModelPath().isEmpty()
+                                      ? LaMaInpainting::defaultModelPath()
+                                      : EditorStyle::instance().lamaModelPath();
+            QImage inpainted = LaMaInpainting::run(srcRegion, scaledMask, modelPath, &errMsg);
+            if (!inpainted.isNull()) {
+                resultRGB = inpainted.convertToFormat(QImage::Format_RGB32);
+                qInfo() << "LaMa inpainting applied at BigTIFF resolution:"
+                        << boundsL0.width() << "x" << boundsL0.height();
+            } else {
+                qWarning() << "LaMa failed for inpainting patch:" << errMsg
+                           << "- falling back to upscaled saved result.";
+            }
+        }
+#endif
+
+        if (resultRGB.isNull()) {
+            // Fallback: upscale the saved result and composite over the source region
+            resultRGB = srcRegion.copy();
+            if (resultRGB.format() != QImage::Format_RGB32)
+                resultRGB = resultRGB.convertToFormat(QImage::Format_RGB32);
+            QImage scaledSaved = savedResult.scaled(
+                boundsL0.width(), boundsL0.height(),
+                Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                .convertToFormat(QImage::Format_ARGB32);
+            for (int y = 0; y < boundsL0.height(); ++y) {
+                QRgb* dstRow = reinterpret_cast<QRgb*>(resultRGB.scanLine(y));
+                const QRgb* srcSaved = reinterpret_cast<const QRgb*>(scaledSaved.constScanLine(y));
+                for (int x = 0; x < boundsL0.width(); ++x) {
+                    if (qAlpha(srcSaved[x]) > 0)
+                        dstRow[x] = qRgb(qRed(srcSaved[x]), qGreen(srcSaved[x]), qBlue(srcSaved[x]));
+                }
+            }
+        }
+
+        InpaintPatch patch;
+        patch.boundsL0  = boundsL0;
+        patch.resultRGB = resultRGB;
+        patch.holeMask  = scaledMask;
+        patches.append(patch);
+        qInfo() << "Inpainting patch ready: project bounds=("
+                << px20 << "," << py20 << "+" << sw << "x" << sh
+                << ") → BigTIFF bounds=" << boundsL0;
+    }
+    return patches;
+}
+
 // ── source-tile cache ─────────────────────────────────────────────────────────
 
 struct SrcCache {
@@ -284,6 +462,7 @@ static bool processTiledLevel(
     const ProjLevel& lvl,
     const QVector<LevelOp>& levelOps,
     const QVector<PasteOp>& ops,
+    const QVector<LevelInpaintPatch>& patches,
     uint16_t spp,
     int& done, int totalTiles,
     bool& cancelled,
@@ -304,18 +483,20 @@ static bool processTiledLevel(
             QRectF tileRect((double)tileX, (double)tileY,
                             (double)outTW, (double)outTH);
 
-            bool needsErase = false, needsPaste = false;
+            bool needsErase = false, needsPaste = false, needsPatch = false;
             for (const auto& lo : levelOps) {
                 if (tileRect.intersects(QRectF(lo.srcL))) needsErase = true;
                 if (tileRect.intersects(lo.dstBBoxL))    needsPaste = true;
             }
+            for (const auto& p : patches)
+                if (tileRect.intersects(QRectF(p.bounds))) needsPatch = true;
 
             // Load input tile
             std::fill(tileBuf.begin(), tileBuf.end(), 0);
             ttile_t mainIdx = TIFFComputeTile(in, tileX, tileY, 0, 0);
             TIFFReadEncodedTile(in, mainIdx, tileBuf.data(), tileBytes);
 
-            if (needsErase || needsPaste) {
+            if (needsErase || needsPaste || needsPatch) {
                 for (uint32_t py = 0; py < outTH; ++py) {
                     uint32_t gy = tileY + py;
                     if (gy >= lvl.h) break;
@@ -359,6 +540,31 @@ static bool processTiledLevel(
                             std::memcpy(&tileBuf[off],
                                         srcTile + (soy * outTW + sox) * spp, spp);
                         }
+
+                        // Phase 3: apply inpainting patches
+                        if (needsPatch) {
+                            for (const auto& p : patches) {
+                                if (!p.bounds.contains((int)gx, (int)gy)) continue;
+                                const int lx = (int)gx - p.bounds.x();
+                                const int ly = (int)gy - p.bounds.y();
+                                const int pw = p.bounds.width(), ph = p.bounds.height();
+                                const int mx = qBound(0, lx * p.mask.width()  / pw, p.mask.width()  - 1);
+                                const int my = qBound(0, ly * p.mask.height() / ph, p.mask.height() - 1);
+                                if (p.mask.constScanLine(my)[mx] == 0) continue;
+                                const int rx = qBound(0, lx * p.result.width()  / pw, p.result.width()  - 1);
+                                const int ry = qBound(0, ly * p.result.height() / ph, p.result.height() - 1);
+                                const QRgb pixel = *reinterpret_cast<const QRgb*>(
+                                    p.result.constScanLine(ry) + rx * sizeof(QRgb));
+                                if (spp == 1) {
+                                    tileBuf[off] = (uint8_t)qGray(pixel);
+                                } else {
+                                    tileBuf[off]   = (uint8_t)qRed(pixel);
+                                    if (spp >= 2) tileBuf[off+1] = (uint8_t)qGreen(pixel);
+                                    if (spp >= 3) tileBuf[off+2] = (uint8_t)qBlue(pixel);
+                                }
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -377,6 +583,7 @@ static bool processStrippedLevel(
     const ProjLevel& lvl,
     const QVector<LevelOp>& levelOps,
     const QVector<PasteOp>& ops,
+    const QVector<LevelInpaintPatch>& patches,
     uint16_t spp,
     int& done, int totalTiles,
     bool& cancelled,
@@ -446,6 +653,29 @@ static bool processStrippedLevel(
                             if (spp == 4) outBuf[off+3] = TIFFGetA(srcAbgr);
                         }
                     }
+
+                    // Phase 3: apply inpainting patches
+                    for (const auto& p : patches) {
+                        if (!p.bounds.contains((int)gx, (int)gy)) continue;
+                        const int lx = (int)gx - p.bounds.x();
+                        const int ly = (int)gy - p.bounds.y();
+                        const int pw = p.bounds.width(), ph = p.bounds.height();
+                        const int mx = qBound(0, lx * p.mask.width()  / pw, p.mask.width()  - 1);
+                        const int my = qBound(0, ly * p.mask.height() / ph, p.mask.height() - 1);
+                        if (p.mask.constScanLine(my)[mx] == 0) continue;
+                        const int rx = qBound(0, lx * p.result.width()  / pw, p.result.width()  - 1);
+                        const int ry = qBound(0, ly * p.result.height() / ph, p.result.height() - 1);
+                        const QRgb pixel = *reinterpret_cast<const QRgb*>(
+                            p.result.constScanLine(ry) + rx * sizeof(QRgb));
+                        if (spp == 1) {
+                            outBuf[off] = (uint8_t)qGray(pixel);
+                        } else {
+                            outBuf[off]   = (uint8_t)qRed(pixel);
+                            if (spp >= 2) outBuf[off+1] = (uint8_t)qGreen(pixel);
+                            if (spp >= 3) outBuf[off+2] = (uint8_t)qBlue(pixel);
+                        }
+                        break;
+                    }
                 }
             }
 
@@ -472,9 +702,6 @@ bool bigTiffApplyProject(
     };
 
     QVector<PasteOp> ops = parseOps(project);
-    if (ops.isEmpty())
-        return fail("No applicable operations found in project "
-                    "(need LassoCutCommand + MoveLayer or TransformLayer).");
 
     TIFFSetWarningHandler(nullptr);
 
@@ -492,6 +719,18 @@ bool bigTiffApplyProject(
         TIFFClose(in); TIFFClose(in2);
         return fail("No valid IFDs found in input.");
     }
+
+    // Determine spp from finest level for patch parsing
+    TIFFSetDirectory(in, (uint16_t)levels[0].dirIdx);
+    uint16_t spp0 = 1;
+    TIFFGetField(in, TIFFTAG_SAMPLESPERPIXEL, &spp0);
+
+    // Parse inpainting patches (reads BigTIFF regions + runs LaMa at full res)
+    QVector<InpaintPatch> rawPatches = parseInpaintPatches(project, in, levels, scaleFactor, spp0);
+
+    if (ops.isEmpty() && rawPatches.isEmpty())
+        return fail("No applicable operations found in project "
+                    "(need LassoCutCommand + MoveLayer/TransformLayer, or Inpainting layers).");
 
     TIFF* out = TIFFOpen(outputPath.toLocal8Bit().constData(), "w8");
     if (!out) {
@@ -584,6 +823,32 @@ bool bigTiffApplyProject(
         uint32_t outTW = lvl.tiled ? lvl.tileW : 256u;
         uint32_t outTH = lvl.tiled ? lvl.tileH : 256u;
 
+        // Scale inpainting patches to current pyramid level
+        const double levelScale = (double)lvl.w / levels[0].w;
+        QVector<LevelInpaintPatch> levelPatches;
+        levelPatches.reserve(rawPatches.size());
+        for (const auto& p : rawPatches) {
+            LevelInpaintPatch lp;
+            lp.bounds = QRect(
+                (int)std::round(p.boundsL0.x()      * levelScale),
+                (int)std::round(p.boundsL0.y()      * levelScale),
+                qMax(1, (int)std::round(p.boundsL0.width()  * levelScale)),
+                qMax(1, (int)std::round(p.boundsL0.height() * levelScale)));
+            lp.result = (lp.bounds.size() == p.resultRGB.size())
+                        ? p.resultRGB
+                        : p.resultRGB.scaled(lp.bounds.size(),
+                                             Qt::IgnoreAspectRatio,
+                                             Qt::SmoothTransformation)
+                                     .convertToFormat(QImage::Format_RGB32);
+            lp.mask = (lp.bounds.size() == p.holeMask.size())
+                      ? p.holeMask
+                      : p.holeMask.scaled(lp.bounds.size(),
+                                          Qt::IgnoreAspectRatio,
+                                          Qt::FastTransformation)
+                                  .convertToFormat(QImage::Format_Grayscale8);
+            levelPatches.append(lp);
+        }
+
         TIFFSetField(out, TIFFTAG_IMAGEWIDTH,      lvl.w);
         TIFFSetField(out, TIFFTAG_IMAGELENGTH,     lvl.h);
         TIFFSetField(out, TIFFTAG_TILEWIDTH,       outTW);
@@ -598,10 +863,10 @@ bool bigTiffApplyProject(
             TIFFSetField(out, TIFFTAG_SUBFILETYPE, (uint32_t)FILETYPE_REDUCEDIMAGE);
 
         if (lvl.tiled)
-            processTiledLevel(in, in2, out, lvl, levelOps, ops, spp,
+            processTiledLevel(in, in2, out, lvl, levelOps, ops, levelPatches, spp,
                               done, totalTiles, cancelled, progress);
         else
-            processStrippedLevel(in, out, lvl, levelOps, ops, spp,
+            processStrippedLevel(in, out, lvl, levelOps, ops, levelPatches, spp,
                                  done, totalTiles, cancelled, progress);
 
         TIFFWriteDirectory(out);

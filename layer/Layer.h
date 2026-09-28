@@ -44,6 +44,7 @@ class Layer {
     
     QString m_name;
     QString m_creator;
+    QString m_modelName;
     
     bool m_visible = true;
     bool m_active = true;

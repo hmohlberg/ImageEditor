@@ -294,6 +294,16 @@ QString LayerItem::name() const {
 void LayerItem::updatePixmap() {
   if ( qobject_cast<QApplication*>(qApp) ) {
     setPixmap(QPixmap::fromImage(m_image));
+    if ( m_redOverlay ) {
+      const QPixmap& px = pixmap();
+      if ( !px.isNull() ) {
+        m_redOverlayPixmap = QPixmap(px.size());
+        m_redOverlayPixmap.fill(QColor(255, 0, 0, 100));
+        QPainter op(&m_redOverlayPixmap);
+        op.setCompositionMode(QPainter::CompositionMode_DestinationIn);
+        op.drawPixmap(0, 0, px);
+      }
+    }
   }
 }
 
@@ -552,6 +562,16 @@ void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option
       painter->setPen(m_lassoPen);
       painter->setBrush(Qt::NoBrush);
       painter->drawRect(boundingRect());
+    }
+    // rotation centre marker
+    if ( m_operationMode == OperationMode::Rotate && ( isSelected() || m_isMultiSelected ) ) {
+      const QPointF c   = boundingRect().center();
+      const qreal   arm = 8.0;
+      QPen crossPen(Qt::red, 1.5);
+      crossPen.setCosmetic(true);
+      painter->setPen(crossPen);
+      painter->drawLine(c + QPointF(-arm, 0), c + QPointF(arm, 0));
+      painter->drawLine(c + QPointF(0, -arm), c + QPointF(0, arm));
     }
     // render cage
     if ( m_cageEnabled ) {

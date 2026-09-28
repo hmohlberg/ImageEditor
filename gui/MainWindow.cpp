@@ -52,12 +52,43 @@
 #include "../util/MaskUtils.h"
 #include "../util/ItemDelegate.h"
 #include "../util/QWidgetUtils.h"
+#include "../util/LaMaInpainting.h"
 
 #ifdef HASITK
  #include "itkMultiThreaderBase.h"
 #endif 
 
 #include <algorithm>
+
+// Give each transparent pixel adjacent to an opaque pixel the same RGB (alpha=0)
+// so SmoothTransformation bilinear interpolation doesn't introduce white fringing.
+// This is re-applied after PNG load because Qt's premultiplied-alpha round-trip
+// zeros out the RGB components of transparent pixels.
+static void alphaBleedImage( QImage& img )
+{
+    static const int dx[] = { 1, -1,  0, 0 };
+    static const int dy[] = { 0,  0,  1,-1 };
+    const int W = img.width(), H = img.height();
+    QImage out = img;
+    for ( int y = 0; y < H; ++y ) {
+        const QRgb* src = reinterpret_cast<const QRgb*>(img.constScanLine(y));
+        QRgb*       dst = reinterpret_cast<QRgb*>(out.scanLine(y));
+        for ( int x = 0; x < W; ++x ) {
+            if ( qAlpha(src[x]) ) continue;
+            for ( int d = 0; d < 4; ++d ) {
+                int nx = x + dx[d], ny = y + dy[d];
+                if ( nx < 0 || ny < 0 || nx >= W || ny >= H ) continue;
+                const QRgb* nr = reinterpret_cast<const QRgb*>(img.constScanLine(ny));
+                if ( qAlpha(nr[nx]) ) {
+                    dst[x] = nr[nx] & 0x00FFFFFFu;
+                    break;
+                }
+            }
+        }
+    }
+    img = out;
+}
+
 #include <QCloseEvent>
 #include <QMessageBox>
 #include <QWidgetAction>
@@ -1034,6 +1065,48 @@ void MainWindow::openHdf5(const QString& filePath)
 }
 #endif
 
+// Debounced overview thumbnail refresh after any LUT / B&C change.
+// Works for all three viewers (ImageView, BigTIFF, HDF5).
+void MainWindow::scheduleOverviewRefresh()
+{
+    if (!m_overviewWidget) return;
+    auto* t = findChild<QTimer*>("ovRefresh");
+    if (!t) {
+        t = new QTimer(this);
+        t->setObjectName("ovRefresh");
+        t->setSingleShot(true);
+        connect(t, &QTimer::timeout, this, [this] {
+            if (!m_overviewWidget) return;
+            QImage thumb;
+            const int idx = m_centralStack->currentIndex();
+#ifdef HASTIFF
+            if (idx == 2 && m_bigTiffViewer->isOpen())
+                thumb = m_bigTiffViewer->thumbnail();
+#endif
+#ifdef HASHDF5
+            if (idx == 3 && m_hdf5Viewer->isOpen())
+                thumb = m_hdf5Viewer->thumbnail();
+#endif
+            if (idx == 0) {
+                QGraphicsScene* sc = m_imageView->getScene();
+                if (sc && !sc->sceneRect().isEmpty()) {
+                    const QRectF sr = sc->sceneRect();
+                    const qreal s   = qMin(512.0 / sr.width(), 512.0 / sr.height());
+                    const QSize  sz(qMax(1, qRound(sr.width() * s)),
+                                    qMax(1, qRound(sr.height() * s)));
+                    thumb = QImage(sz, QImage::Format_RGB32);
+                    thumb.fill(Qt::black);
+                    QPainter p(&thumb);
+                    sc->render(&p, QRectF(QPointF(0, 0), sz), sr);
+                }
+            }
+            if (!thumb.isNull())
+                m_overviewWidget->setImage(thumb);
+        });
+    }
+    t->start(120);
+}
+
 void MainWindow::saveAsImage()
 {
   qCDebug(logEditor) << "MainWindow::saveAsImage(): Processing...";
@@ -1143,41 +1216,55 @@ bool MainWindow::saveProject( const QString& filePath )
            layerArray.append(layerObj);
            continue;
          }
-         bool binaryMasking = layer->m_bounds.isNull() ? false : EditorStyle::instance().binaryMasking();
-         QByteArray ba;
-         QBuffer buffer(&ba);
-         buffer.open(QIODevice::WriteOnly);
-         if ( binaryMasking ) {
-          if ( !layer->m_binaryMask ) {
-            QImage alphaImage = layer->m_image.convertToFormat(QImage::Format_Alpha8);
-            QImage indexedImage = alphaImage.convertToFormat(QImage::Format_Indexed8);
-            QList<QRgb> palette;
-            for ( int i = 0; i < 256; ++i ) {
-             if ( i == 0 ) 
-              palette.append(qRgba(0, 0, 0, 255));
-             else 
-              palette.append(qRgba(255, 255, 255, 255));
-            }
-            indexedImage.setColorTable(palette);
-            for ( int y = 0; y < indexedImage.height(); ++y ) {
-             uchar *pixels = indexedImage.scanLine(y);
-             for ( int x = 0; x < indexedImage.width(); ++x ) {
-              pixels[x] = (pixels[x] > 0) ? 255 : 0;
-             }
-            }
-            indexedImage.save(&buffer, "PNG");
-          } else {
+         // Inpainting layers: embed PNG directly, always store position
+         if ( layer->creator() == "Inpainting" ) {
+           QByteArray ba;
+           QBuffer buffer(&ba);
+           buffer.open(QIODevice::WriteOnly);
            layer->m_image.save(&buffer, "PNG");
-          }
+           layerObj["data"]      = QString::fromUtf8(ba.toBase64());
+           layerObj["x"]         = layer->m_bounds.x();
+           layerObj["y"]         = layer->m_bounds.y();
+           layerObj["width"]     = layer->m_bounds.width();
+           layerObj["height"]    = layer->m_bounds.height();
+           if ( !layer->m_modelName.isEmpty() )
+               layerObj["model"] = layer->m_modelName;
          } else {
-          layer->m_image.save(&buffer, "PNG");
-          binaryMasking = false;
-         }
-         layerObj["data"] = QString::fromUtf8(ba.toBase64());
-         layerObj["binaryMask"] = binaryMasking;
-         if ( binaryMasking == true ) {
-           layerObj["x"] = layer->m_bounds.x();
-           layerObj["y"] = layer->m_bounds.y();
+           bool binaryMasking = layer->m_bounds.isNull() ? false : EditorStyle::instance().binaryMasking();
+           QByteArray ba;
+           QBuffer buffer(&ba);
+           buffer.open(QIODevice::WriteOnly);
+           if ( binaryMasking ) {
+            if ( !layer->m_binaryMask ) {
+              QImage alphaImage = layer->m_image.convertToFormat(QImage::Format_Alpha8);
+              QImage indexedImage = alphaImage.convertToFormat(QImage::Format_Indexed8);
+              QList<QRgb> palette;
+              for ( int i = 0; i < 256; ++i ) {
+               if ( i == 0 )
+                palette.append(qRgba(0, 0, 0, 255));
+               else
+                palette.append(qRgba(255, 255, 255, 255));
+              }
+              indexedImage.setColorTable(palette);
+              for ( int y = 0; y < indexedImage.height(); ++y ) {
+               uchar *pixels = indexedImage.scanLine(y);
+               for ( int x = 0; x < indexedImage.width(); ++x )
+                pixels[x] = (pixels[x] > 0) ? 255 : 0;
+              }
+              indexedImage.save(&buffer, "PNG");
+            } else {
+             layer->m_image.save(&buffer, "PNG");
+            }
+           } else {
+            layer->m_image.save(&buffer, "PNG");
+            binaryMasking = false;
+           }
+           layerObj["data"]        = QString::fromUtf8(ba.toBase64());
+           layerObj["binaryMask"]  = binaryMasking;
+           if ( binaryMasking ) {
+             layerObj["x"] = layer->m_bounds.x();
+             layerObj["y"] = layer->m_bounds.y();
+           }
          }
         }
         layerObj["opacity"] = layer->opacity();
@@ -1288,6 +1375,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
          QByteArray ba = QByteArray::fromBase64(imgBase64.toUtf8());
          QImage mask;
          mask.loadFromData(ba,"PNG");
+         const QString creator = layerObj.value("creator").toString();
          bool isBinaryMask = layerObj.value("binaryMask").toBool(false);
          int x = layerObj.value("x").toInt(-1);
          int y = layerObj.value("y").toInt(-1);
@@ -1307,8 +1395,14 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
            }
          }
          rect = QRect(x,y,mask.width(), mask.height());
-         // binary masking
-         if ( isBinaryMask ) {
+         // binary masking (skip for inpainting layers — they carry real pixel data)
+         if ( creator == "Inpainting" ) {
+            if ( mask.format() != QImage::Format_ARGB32 )
+                mask = mask.convertToFormat(QImage::Format_ARGB32);
+            alphaBleedImage(mask);
+            newLayer = new LayerItem(name, mask);
+            isBinaryMask = false;
+         } else if ( isBinaryMask ) {
            QImage mainImage = m_layerItem->image();
            QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
            subImage = subImage.convertToFormat(QImage::Format_ARGB32);
@@ -1355,8 +1449,10 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
          newLayer->setUndoStack(m_imageView->undoStack());
          Layer* layer = new Layer(id,mask);
          layer->m_binaryMask = isBinaryMask;
-         layer->m_name = name;
-         layer->m_item = newLayer;
+         layer->m_name      = name;
+         layer->m_creator   = creator;
+         layer->m_modelName = layerObj.value("model").toString();
+         layer->m_item    = newLayer;
          layer->m_bounds = rect;
          newLayer->setLayer(layer);
          m_imageView->layers().push_back(layer);
@@ -1495,7 +1591,30 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
       }
     }
     
-    // --- 5. set clean flag in undo stack ---
+    // --- 5. Fix z-order and inpainting positions after load ---
+    // loadImage() calls scene->clear() and re-adds the base layer at z=1. All other layers
+    // added in Pass 1 default to z=0, which places them behind the base. Fresh creation sets
+    // z = base+1 via createNewLayer()/executeInpainting(), but that code does not run on load.
+    // Fix: collect all non-base layers, sort by id (= creation order) so the layer created
+    // first gets the lowest z, and assign ascending z-values starting at base+1. Inpainting
+    // layers additionally need their scene position corrected (image coords → scene coords).
+    if ( m_layerItem ) {
+        const qreal baseZ = m_layerItem->zValue();
+        QList<Layer*> sortedLayers;
+        for ( Layer* layer : m_imageView->layers() )
+            if ( layer->m_item && layer->m_item != m_layerItem )
+                sortedLayers.append(layer);
+        std::sort(sortedLayers.begin(), sortedLayers.end(),
+                  [](Layer* a, Layer* b){ return a->id() < b->id(); });
+        for ( int i = 0; i < sortedLayers.size(); ++i ) {
+            Layer* layer = sortedLayers[i];
+            layer->m_item->setZValue(baseZ + 1.0 + i);
+            if ( layer->creator() == "Inpainting" && !layer->m_bounds.isNull() )
+                layer->m_item->setPos(m_layerItem->mapToScene(QPointF(layer->m_bounds.topLeft())));
+        }
+    }
+
+    // --- 6. set clean flag in undo stack ---
     m_imageView->undoStack()->setClean();
     
     return true;
@@ -1686,7 +1805,16 @@ void MainWindow::createDockWidgets()
        if ( m_overviewWidget && m_overviewDock && m_overviewDock->isVisible() )
            m_overviewWidget->setVisibleRect(vis, full);
    });
+   connect(m_overviewDock, &QDockWidget::visibilityChanged, this, [this](bool visible) {
+       if ( visible && m_overviewWidget && m_imageView ) {
+           const QRectF vis  = m_imageView->mapToScene(m_imageView->viewport()->rect()).boundingRect();
+           const QRectF full = m_imageView->sceneRect();
+           m_overviewWidget->setVisibleRect(vis, full);
+       }
+   });
    connect(m_overviewWidget, &OverviewWidget::centerRequested, this, [this](const QPointF& scenePos) {
+       m_statusPosLabel->setText(QString("|  Pos: %1, %2")
+           .arg(qRound(scenePos.x())).arg(qRound(scenePos.y())));
 #ifdef HASTIFF
        if ( m_centralStack->currentIndex() == 2 ) { m_bigTiffViewer->centerOn(scenePos); return; }
 #endif
@@ -2518,6 +2646,14 @@ void MainWindow::createActions()
         if ( on ) m_paintMaskImageAction->setChecked(false);
         m_imageView->setMaskTool(on?ImageView::MaskErase:ImageView::None);
     });
+    connect(m_imageView, &ImageView::maskToolDisplayChanged, this, [=](bool showAsErase){
+        m_paintMaskImageAction->blockSignals(true);
+        m_eraseMaskImageAction->blockSignals(true);
+        m_paintMaskImageAction->setChecked(!showAsErase);
+        m_eraseMaskImageAction->setChecked(showAsErase);
+        m_paintMaskImageAction->blockSignals(false);
+        m_eraseMaskImageAction->blockSignals(false);
+    });
     
     // control actions
     m_paintControlAction = new QAction("Paint", this);
@@ -2538,6 +2674,14 @@ void MainWindow::createActions()
         "Select the active class in the toolbar and paint to create or refine a pixel-wise "
         "segmentation mask. Each class is stored as a separate colour channel.");
     connect(m_maskControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
+
+    m_inpaintingControlAction = new QAction("Inpainting", this);
+    m_inpaintingControlAction->setCheckable(true);
+    m_inpaintingControlAction->setToolTip(
+        "<b>Inpainting mode</b><br>"
+        "Paint the region to be inpainted, then click <b>Run</b> to fill it automatically "
+        "using PatchMatch or LaMa AI inpainting. The result is placed on a new layer.");
+    connect(m_inpaintingControlAction, &QAction::toggled, this, &MainWindow::updateControlButtonState);
 
     m_layerControlAction = new QAction("Layer", this);
     m_layerControlAction->setCheckable(true);
@@ -2625,62 +2769,86 @@ void MainWindow::updateControlButtonState()
     bool isC = sender() == m_maskControlAction ? 1 : 0;
     bool isD = sender() == m_polygonControlAction ? 1 : 0;
     bool isE = sender() == m_layerControlAction ? 1 : 0;
+    bool isF = sender() == m_inpaintingControlAction ? 1 : 0;
     // --- ---
-    bool paintIsChecked = m_paintControlAction->isChecked();
-    bool lassoIsChecked = m_lassoControlAction->isChecked();
-    bool maskIsChecked = m_maskControlAction->isChecked();
-    bool polygonIsChecked = m_polygonControlAction->isChecked();
-    bool layerIsChecked = m_layerControlAction->isChecked();
+    bool paintIsChecked     = m_paintControlAction->isChecked();
+    bool lassoIsChecked     = m_lassoControlAction->isChecked();
+    bool maskIsChecked      = m_maskControlAction->isChecked();
+    bool polygonIsChecked   = m_polygonControlAction->isChecked();
+    bool layerIsChecked     = m_layerControlAction->isChecked();
+    bool inpaintIsChecked   = m_inpaintingControlAction->isChecked();
     // --- ---
-    if ( isA && paintIsChecked && (lassoIsChecked || maskIsChecked || polygonIsChecked || layerIsChecked) ) {
+    if ( isA && paintIsChecked && (lassoIsChecked || maskIsChecked || inpaintIsChecked || polygonIsChecked || layerIsChecked) ) {
      m_lassoControlAction->setChecked(false);
      m_maskControlAction->setChecked(false);
+     m_inpaintingControlAction->setChecked(false);
      m_polygonControlAction->setChecked(false);
      m_layerControlAction->setChecked(false);
      m_polygonToolbar->setVisible(false);
-     m_lassoToolbar->setVisible(false); 
+     m_lassoToolbar->setVisible(false);
      m_maskToolbar->setVisible(false);
+     m_inpaintingToolbar->setVisible(false);
      m_layerToolbar->setVisible(false);
     }
-    if ( isB && lassoIsChecked && (paintIsChecked || maskIsChecked || polygonIsChecked || layerIsChecked) ) {
+    if ( isB && lassoIsChecked && (paintIsChecked || maskIsChecked || inpaintIsChecked || polygonIsChecked || layerIsChecked) ) {
      m_paintControlAction->setChecked(false);
      m_maskControlAction->setChecked(false);
+     m_inpaintingControlAction->setChecked(false);
      m_polygonControlAction->setChecked(false);
      m_layerControlAction->setChecked(false);
      m_polygonToolbar->setVisible(false);
      m_editToolbar->setVisible(false);
      m_maskToolbar->setVisible(false);
+     m_inpaintingToolbar->setVisible(false);
      m_layerToolbar->setVisible(false);
     }
-    if ( isC && maskIsChecked && (paintIsChecked || lassoIsChecked || polygonIsChecked || layerIsChecked) ) {
+    if ( isC && maskIsChecked && (paintIsChecked || lassoIsChecked || inpaintIsChecked || polygonIsChecked || layerIsChecked) ) {
      m_paintControlAction->setChecked(false);
      m_lassoControlAction->setChecked(false);
+     m_inpaintingControlAction->setChecked(false);
      m_polygonControlAction->setChecked(false);
      m_layerControlAction->setChecked(false);
      m_polygonToolbar->setVisible(false);
      m_editToolbar->setVisible(false);
      m_lassoToolbar->setVisible(false);
+     m_inpaintingToolbar->setVisible(false);
      m_layerToolbar->setVisible(false);
     }
-    if ( isD && polygonIsChecked && (paintIsChecked || lassoIsChecked || maskIsChecked || layerIsChecked) ) {
+    if ( isD && polygonIsChecked && (paintIsChecked || lassoIsChecked || maskIsChecked || inpaintIsChecked || layerIsChecked) ) {
      m_paintControlAction->setChecked(false);
      m_lassoControlAction->setChecked(false);
      m_maskControlAction->setChecked(false);
+     m_inpaintingControlAction->setChecked(false);
      m_layerControlAction->setChecked(false);
      m_editToolbar->setVisible(false);
      m_lassoToolbar->setVisible(false);
      m_maskToolbar->setVisible(false);
+     m_inpaintingToolbar->setVisible(false);
      m_layerToolbar->setVisible(false);
     }
-    if ( isE && layerIsChecked && (paintIsChecked || lassoIsChecked || maskIsChecked || polygonIsChecked) ) {
+    if ( isE && layerIsChecked && (paintIsChecked || lassoIsChecked || maskIsChecked || inpaintIsChecked || polygonIsChecked) ) {
      m_paintControlAction->setChecked(false);
      m_lassoControlAction->setChecked(false);
      m_maskControlAction->setChecked(false);
+     m_inpaintingControlAction->setChecked(false);
      m_polygonControlAction->setChecked(false);
      m_editToolbar->setVisible(false);
      m_lassoToolbar->setVisible(false);
      m_maskToolbar->setVisible(false);
+     m_inpaintingToolbar->setVisible(false);
      m_polygonToolbar->setVisible(false);
+    }
+    if ( isF && inpaintIsChecked && (paintIsChecked || lassoIsChecked || maskIsChecked || polygonIsChecked || layerIsChecked) ) {
+     m_paintControlAction->setChecked(false);
+     m_lassoControlAction->setChecked(false);
+     m_maskControlAction->setChecked(false);
+     m_polygonControlAction->setChecked(false);
+     m_layerControlAction->setChecked(false);
+     m_polygonToolbar->setVisible(false);
+     m_editToolbar->setVisible(false);
+     m_lassoToolbar->setVisible(false);
+     m_maskToolbar->setVisible(false);
+     m_layerToolbar->setVisible(false);
     }
     // --- ---
     if ( !isE ) {
@@ -2691,19 +2859,25 @@ void MainWindow::updateControlButtonState()
      m_editToolbar->setVisible(true);
      m_operationMode = MainOperationMode::Paint;
     } else if ( m_lassoControlAction->isChecked() ) {
-     m_lassoToolbar->setVisible(true);   
+     m_lassoToolbar->setVisible(true);
      m_operationMode = MainOperationMode::FreeSelection;
     } else if ( m_maskControlAction->isChecked() ) {
-     m_maskToolbar->setVisible(true);   
+     m_maskToolbar->setVisible(true);
      m_operationMode = MainOperationMode::Mask;
+    } else if ( m_inpaintingControlAction->isChecked() ) {
+     m_inpaintingToolbar->setVisible(true);
+     m_imageView->setMaskLabel(1);
+     m_operationMode = MainOperationMode::Inpainting;
     } else if ( m_polygonControlAction->isChecked() ) {
      m_polygonToolbar->setVisible(true);
      m_operationMode = MainOperationMode::Polygon;
      m_imageView->setPolygonIndex( static_cast<quint8>(activePolygon("")), true );
     } else if ( m_layerControlAction->isChecked() ) {
-     m_layerToolbar->setVisible(true);  
-     m_operationMode = MainOperationMode::ImageLayer; 
+     m_layerToolbar->setVisible(true);
+     m_operationMode = MainOperationMode::ImageLayer;
     }
+    m_imageView->setMaskOverlayVisible( m_operationMode == MainOperationMode::Mask
+                                      || m_operationMode == MainOperationMode::Inpainting );
   }
 }
 
@@ -2880,6 +3054,7 @@ void MainWindow::createToolbars()
 #ifdef HASHDF5
        m_hdf5Viewer->setColorTable(lut);
 #endif
+       scheduleOverviewRefresh();
     });
 
     fileToolbar->addAction(m_showDockWidgets);
@@ -2927,6 +3102,7 @@ void MainWindow::createToolbars()
     
     controlToolbar->addAction(m_paintControlAction);
     controlToolbar->addAction(m_maskControlAction);
+    controlToolbar->addAction(m_inpaintingControlAction);
     controlToolbar->addAction(m_lassoControlAction);
     controlToolbar->addAction(m_polygonControlAction);
     controlToolbar->addAction(m_layerControlAction);
@@ -3306,12 +3482,13 @@ void MainWindow::createToolbars()
     m_maskToolbar->addAction(m_createMaskImageAction);
     QLabel* maskIndexLabel = new QLabel(" Index:");
     m_maskToolbar->addWidget(maskIndexLabel);
-    QComboBox* maskIndexBox = buildDefaultColorComboBox();
-    maskIndexBox->setToolTip(
+    m_maskIndexBox = buildDefaultColorComboBox("Label", 10);
+    m_maskIndexBox->setToolTip(
         "<b>Active class</b><br>"
         "Select the semantic class to paint with. Each class is shown with its assigned colour. "
         "The Paint and Erase tools affect only the currently selected class.");
-    m_maskToolbar->addWidget(maskIndexBox);
+    m_maskToolbar->addWidget(m_maskIndexBox);
+    QComboBox* maskIndexBox = m_maskIndexBox; // alias for the lambdas below
     QLabel* classTypeLabel = new QLabel(" Type:");
     m_maskToolbar->addWidget(classTypeLabel);
     QComboBox* applyClassImageItem = new QComboBox();
@@ -3331,7 +3508,10 @@ void MainWindow::createToolbars()
        if( c.isDigit() ) numOnly.append(c);
       }
       m_imageView->setMaskLabel(numOnly.toInt());
+      if ( m_maskIndexBox && m_maskIndexBox->currentIndex() == m_maskIndexBox->count() - 1 )
+        extendMaskComboBox();
     });
+    connect(m_imageView, &ImageView::maskLoaded, this, &MainWindow::populateMaskComboBox);
     connect(applyClassImageItem, &QComboBox::currentTextChanged, this, [this,maskIndexBox](const QString& text){
       QString maskClassName = maskIndexBox->currentText();
       if ( text.startsWith("Ignore") ) {
@@ -3371,6 +3551,90 @@ void MainWindow::createToolbars()
     });
     m_maskToolbar->addWidget(maskOpacitySlider);
     m_maskToolbar->setVisible(false);
+
+    // ============================================================
+    // create inpainting toolbar
+    // ============================================================
+    m_inpaintingToolbar = addToolBar(tr("Inpainting"));
+
+    m_inpaintPaintAction = new QAction(tr("Brush"), m_inpaintingToolbar);
+    m_inpaintPaintAction->setCheckable(true);
+    m_inpaintPaintAction->setToolTip("<b>Brush</b><br>Paint the region to be inpainted.");
+    m_inpaintingToolbar->addAction(m_inpaintPaintAction);
+
+    m_inpaintEraseAction = new QAction(tr("Eraser"), m_inpaintingToolbar);
+    m_inpaintEraseAction->setCheckable(true);
+    m_inpaintEraseAction->setToolTip("<b>Eraser</b><br>Erase parts of the painted inpainting region.");
+    m_inpaintingToolbar->addAction(m_inpaintEraseAction);
+
+    connect(m_inpaintPaintAction, &QAction::toggled, this, [this](bool on) {
+        if ( on ) m_inpaintEraseAction->setChecked(false);
+        m_imageView->setMaskTool(on ? ImageView::MaskPaint : ImageView::None);
+    });
+    connect(m_inpaintEraseAction, &QAction::toggled, this, [this](bool on) {
+        if ( on ) m_inpaintPaintAction->setChecked(false);
+        m_imageView->setMaskTool(on ? ImageView::MaskErase : ImageView::None);
+    });
+
+    // Reset brush/eraser when leaving inpainting mode or after a successful run
+    auto resetInpaintBrush = [this](){
+        m_inpaintPaintAction->setChecked(false);
+        m_inpaintEraseAction->setChecked(false);
+    };
+    connect(m_inpaintingControlAction, &QAction::toggled, this, [=](bool on){
+        if ( !on ) resetInpaintBrush();
+    });
+    connect(m_imageView, &ImageView::inpaintingCompleted, this, resetInpaintBrush);
+
+    QLabel* inpaintBrushLabel = new QLabel(" Brush size:");
+    m_inpaintingToolbar->addWidget(inpaintBrushLabel);
+    QSpinBox* inpaintBrushSpin = new QSpinBox();
+    inpaintBrushSpin->setFocusPolicy(Qt::ClickFocus);
+    inpaintBrushSpin->setRange(1, 200);
+    inpaintBrushSpin->setValue(5);
+    inpaintBrushSpin->setToolTip("<b>Brush size</b><br>Radius of the inpainting brush in pixels (1–200).");
+    m_inpaintingToolbar->addWidget(inpaintBrushSpin);
+    connect(inpaintBrushSpin, QOverload<int>::of(&QSpinBox::valueChanged),
+            m_imageView, &ImageView::setMaskBrushRadius);
+
+    m_inpaintingToolbar->addWidget(QWidgetUtils::getSeparatorLine());
+
+    // ── Model combobox ────────────────────────────────────────────────────────
+    m_inpaintingToolbar->addWidget(new QLabel(tr(" Model:")));
+    m_inpaintModelCombo = new QComboBox();
+    m_inpaintModelCombo->addItem(tr("Classic (PatchMatch)"), 0);
+    const bool lamaOkTb = LaMaInpainting::isAvailable();
+    if ( lamaOkTb ) {
+        m_inpaintModelCombo->addItem(tr("LaMa (AI)"), 1);
+    } else {
+        m_inpaintModelCombo->addItem(tr("LaMa (not available)"), 1);
+        auto* sm = qobject_cast<QStandardItemModel*>(m_inpaintModelCombo->model());
+        if ( sm ) sm->item(1)->setEnabled(false);
+    }
+    m_inpaintModelCombo->setToolTip(tr("<b>Inpainting model</b><br>"
+        "Classic: PatchMatch algorithm.<br>"
+        "LaMa: AI-based inpainting for large regions."));
+    m_inpaintingToolbar->addWidget(m_inpaintModelCombo);
+    connect(m_inpaintModelCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            m_imageView, &ImageView::setInpaintModel);
+    if ( lamaOkTb )
+        m_inpaintModelCombo->setCurrentIndex(1); // fires signal → setInpaintModel(1)
+
+    // ── Options button ────────────────────────────────────────────────────────
+    QPushButton* inpaintOptionsBtn = new QPushButton(tr("Options"), this);
+    inpaintOptionsBtn->setToolTip(tr("<b>Options</b><br>Configure model-specific inpainting parameters."));
+    m_inpaintingToolbar->addWidget(inpaintOptionsBtn);
+    connect(inpaintOptionsBtn, &QPushButton::clicked, m_imageView, &ImageView::showInpaintOptions);
+
+    // ── Run button ────────────────────────────────────────────────────────────
+    QPushButton* inpaintRunBtn = new QPushButton(tr("Run"), this);
+    inpaintRunBtn->setToolTip(tr("<b>Run inpainting</b><br>"
+        "Fill the painted region using the selected model. "
+        "The result is placed on a new layer."));
+    m_inpaintingToolbar->addWidget(inpaintRunBtn);
+    connect(inpaintRunBtn, &QPushButton::clicked, m_imageView, &ImageView::applyInpaintingDirect);
+
+    m_inpaintingToolbar->setVisible(false);
 
     // ============================================================
     // create lasso toolbar
@@ -3537,6 +3801,7 @@ void MainWindow::showMessage( const QString& message, int msgType )
         m_messageLabel->setStyleSheet("QLabel { color : yellow; font-weight: normal; }");
         m_messageLabel->setText(message);
       }
+      m_messageLabel->repaint();
       // QTimer::singleShot(5000, m_messageLabel, &QLabel::clear);
     }
   }
@@ -3663,6 +3928,7 @@ void MainWindow::showConfig()
       m_hdf5Viewer->setBrightness(b);
       m_hdf5Viewer->setContrast(c);
 #endif
+      scheduleOverviewRefresh();
   });
   dlg.exec();
   // Apply showOverviewMap toggle immediately (only when dock panel is open).
@@ -3682,6 +3948,7 @@ void MainWindow::showConfig()
       m_hdf5Viewer->setBrightness(b);
       m_hdf5Viewer->setContrast(c);
 #endif
+      scheduleOverviewRefresh();
   }
   // Refresh all cage control points and overlay items so size/colour changes take effect immediately.
   if ( m_imageView && m_imageView->getScene() ) {
@@ -3886,6 +4153,44 @@ void MainWindow::extendPolygonComboBox()
                           QStyle::PM_MenuButtonIndicator, nullptr, m_polygonIndexBox)
                     + 8;
         m_polygonIndexBox->setMinimumWidth(w);
+    }
+}
+
+void MainWindow::extendMaskComboBox()
+{
+    if ( !m_maskIndexBox ) return;
+    const int nextIdx = m_maskIndexBox->count() + 1; // labels start at 1; count() == last label
+    const QVector<QColor> colors = defaultMaskColors();
+    if ( nextIdx >= colors.size() ) return;
+    const QColor& color = colors[nextIdx];
+    QPixmap pixmap(24, 24);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setBrush(color);
+    painter.setPen(QPen(Qt::black, 1));
+    painter.drawRoundedRect(2, 2, 20, 20, 4, 4);
+    painter.end();
+    m_maskIndexBox->addItem(QIcon(pixmap), QString("Label %1").arg(nextIdx));
+}
+
+void MainWindow::populateMaskComboBox(int numClasses)
+{
+    if ( !m_maskIndexBox ) return;
+    const int n = qMax(1, numClasses);
+    const QVector<QColor> colors = defaultMaskColors();
+    m_maskIndexBox->clear();
+    for ( int i = 1; i <= n && i < colors.size(); ++i ) {
+        const QColor& color = colors[i];
+        QPixmap pixmap(24, 24);
+        pixmap.fill(Qt::transparent);
+        QPainter painter(&pixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setBrush(color);
+        painter.setPen(QPen(Qt::black, 1));
+        painter.drawRoundedRect(2, 2, 20, 20, 4, 4);
+        painter.end();
+        m_maskIndexBox->addItem(QIcon(pixmap), QString("Label %1").arg(i));
     }
 }
 

@@ -49,17 +49,19 @@ class MaskLayerItem : public QGraphicsItem {
     QColor labelColor( int index ) {
       return m_labelColors.at(index);
     }
-    /// @brief Invalidates the cached image so the overlay is redrawn on the next paint call.
-    void maskUpdated();
-    
+    /// @brief Invalidates the cached image. Pass a non-empty rect for incremental update.
+    void maskUpdated(const QRect& dirtyRect = QRect());
+
   protected:
     void paint( QPainter* p, const QStyleOptionGraphicsItem*, QWidget* ) override;
 
   private:
     MaskLayer* m_layer = nullptr;
     qreal m_opacityFactor = 0.4;
-    QImage m_cachedImage; 
+    QImage m_cachedImage;
     bool m_dirty = true;
-    QVector<QColor> m_labelColors; // size 10
+    bool m_fullDirty = true;
+    QRect m_dirtyRect;
+    QVector<QColor> m_labelColors;
     
 };

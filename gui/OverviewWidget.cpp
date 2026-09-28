@@ -108,24 +108,11 @@ void OverviewWidget::mousePressEvent(QMouseEvent* e)
 {
     if ( !m_hasContent || m_fullScene.isEmpty() ) return;
     if ( e->button() == Qt::LeftButton ) {
-        m_dragging      = true;
-        m_dragStart     = e->pos();
-        m_dragSceneStart = m_visibleScene.center();
-        // If click is outside the red rect, jump immediately to that point.
         const QPointF sp = widgetToScene(e->pos());
-        const QRect dr = drawRect();
-        const qreal sx = qreal(dr.width())  / m_fullScene.width();
-        const qreal sy = qreal(dr.height()) / m_fullScene.height();
-        QRectF redRect(
-            dr.left() + (m_visibleScene.left() - m_fullScene.left()) * sx,
-            dr.top()  + (m_visibleScene.top()  - m_fullScene.top())  * sy,
-            m_visibleScene.width()  * sx,
-            m_visibleScene.height() * sy
-        );
-        if ( !redRect.contains(e->pos()) ) {
-            m_dragSceneStart = sp;
-            emit centerRequested(sp);
-        }
+        m_dragging       = true;
+        m_dragStart      = e->pos();
+        m_dragSceneStart = sp;
+        emit centerRequested(sp);
     }
 }
 

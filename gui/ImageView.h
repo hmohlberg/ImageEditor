@@ -60,6 +60,15 @@ class ImageView : public QGraphicsView
 
     enum MaskTool { None, MaskPaint, MaskErase };
     enum MaskCutTool { Ignore, Mask, OnlyMask, Copy, Inpainting };
+
+    struct InpaintParams {
+        bool useLama   = false;
+        bool useRef    = false;
+        int  refLabel  = 0;
+        bool useFilter = false;
+        int  bgValue   = 128;
+        int  bgTol     = 30;
+    };
     
     explicit ImageView( QWidget* parent = nullptr );
 
@@ -112,6 +121,7 @@ class ImageView : public QGraphicsView
     void setPaintToolEnabled( bool enabled );
     void setBrushPreviewVisible( bool visible ) { m_showBrushPreview = visible; viewport()->update(); }
     void setMaskOpacity( qreal value ) { if ( m_maskItem ) m_maskItem->setOpacityFactor(value); }
+    void setMaskOverlayVisible( bool visible ) { if ( m_maskItem ) m_maskItem->setVisible(visible); }
     void setMaskLabel( quint8 index ) { m_currentMaskLabel = index; }
     void setPolygonIndex( quint8 index, bool doUpdate = false );
     void setActiveCageLayer( LayerItem* item ) { m_selectedCageLayer = item; }
@@ -142,6 +152,10 @@ class ImageView : public QGraphicsView
     void createMaskLayer( const QSize& size );
     void saveMaskImage( const QString& filename );
     void loadMaskImage( const QString& filename );
+    void applyInpainting();
+    void applyInpaintingDirect();
+    void setInpaintModel( int idx );
+    void showInpaintOptions();
     void removeOperationsByIdUndoStack( int id = -1 );
     void removeOperationsByIndexUndoStack( const QString& name, int index = 0 );
     void rebuildUndoStack();
@@ -160,6 +174,7 @@ class ImageView : public QGraphicsView
 
  signals:
 
+    void inpaintingCompleted();
     void cursorColorChanged( const QColor& color );
     void pickedColorChanged( const QColor& color );
     void cursorPositionChanged( int x, int y );
@@ -169,6 +184,8 @@ class ImageView : public QGraphicsView
     void polygonHasLayer(bool hasLayer);
     void polygonNeedsUpdate(bool needsUpdate);
     void viewportChanged(QRectF visibleScene, QRectF fullScene);
+    void maskLoaded(int numClasses);
+    void maskToolDisplayChanged(bool showAsErase);
 
  protected:
 
@@ -180,7 +197,9 @@ class ImageView : public QGraphicsView
     void mouseReleaseEvent( QMouseEvent* event ) override;
     void mouseDoubleClickEvent( QMouseEvent* event ) override;
     void wheelEvent( QWheelEvent* event ) override;
+    bool event( QEvent* event ) override;
     void drawForeground( QPainter* painter, const QRectF& rect ) override;
+    void resizeEvent( QResizeEvent* event ) override;
     void leaveEvent( QEvent* event ) override;
     void enterEvent( QEnterEvent* event ) override;
 
@@ -189,6 +208,8 @@ class ImageView : public QGraphicsView
     void clearLayerColorEffects();
     void initCageWarpForLayer( LayerItem* layerItem );
     LassoCutCommand* createNewLayer( const QPolygonF& polygon, const QString& name );
+    QImage compositeVisible();
+    bool executeInpainting( const InpaintParams& p, const QImage& src, QImage& holeMask );
     void setEnableTransformMode( LayerItem* layer );
     void disableTransformMode();
     void setEnablePerspectiveWarp( LayerItem* layer );
@@ -239,6 +260,7 @@ class ImageView : public QGraphicsView
     bool m_maskEraser = false;
     
     quint8 m_currentMaskLabel = 1;
+    InpaintParams m_inpaintParams;
     quint8 m_polygonIndex = 1;
     qreal m_brushHardness = 1.0;
     QColor m_brushColor = Qt::white;
@@ -252,6 +274,7 @@ class ImageView : public QGraphicsView
     
     QPointF m_cursorPos;
     QPoint m_lastMousePos;
+    QPoint m_lastMaskScenePos;
     QPolygon m_lassoPolygon; 
     QGraphicsPolygonItem* m_lassoPreview = nullptr;
     QGraphicsRectItem* m_lassoBoundingBox = nullptr;

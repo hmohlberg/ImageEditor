@@ -18,6 +18,7 @@
 
 #include <QColor>
 #include <QHash>
+#include <QImage>
 #include <QRectF>
 #include <QRgb>
 #include <QSize>
@@ -51,6 +52,7 @@ public:
     void    setContrast(int v);
     bool    saveTiff(const QString& outputPath);
     void    centerOn(const QPointF& scenePos);
+    QImage  thumbnail();
 
 signals:
     void closeRequested();

@@ -21,6 +21,7 @@
 
 class QTabWidget;
 class QCheckBox;
+class QLabel;
 class QSlider;
 class QSpinBox;
 class QDoubleSpinBox;
@@ -56,6 +57,7 @@ private:
     QWidget* buildLassoTab();
     QWidget* buildPolygonTab();
     QWidget* buildImageLayerTab();
+    QWidget* buildModelsTab();
 
     // ---- Main ----
     QCheckBox*  m_enableLogging     = nullptr;
@@ -116,6 +118,11 @@ private:
     // ---- ImageHeader ----
     QSlider* m_brightnessSlider = nullptr;
     QSlider* m_contrastSlider   = nullptr;
+
+    // ---- Models ----
+    QLineEdit*   m_lamaModelPath    = nullptr;
+    QPushButton* m_lamaModelBrowse  = nullptr;
+    QLabel*      m_lamaModelStatus  = nullptr;
 
 signals:
     void displayAdjustmentChanged(int brightness, int contrast);

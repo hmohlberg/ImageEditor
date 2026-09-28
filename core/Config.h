@@ -155,6 +155,8 @@
       // github:// shorthand base URL
       m_githubBaseUrl = settings.value("Network/githubBaseUrl",
           "https://raw.githubusercontent.com/hmohlberg/ImageEditor/main/samples").toString();
+      // Models
+      m_lamaModelPath = settings.value("Models/lamaModelPath", QString()).toString();
       // ImageHeader display adjustments
       m_brightness = settings.value("ImageHeader/brightness", 0).toInt();
       m_contrast   = settings.value("ImageHeader/contrast",   0).toInt();
@@ -226,6 +228,7 @@
     InterpolationMode interpolationMode() const { return m_interpolationMode; }
     QString path() const { return m_path; }
     QString githubBaseUrl() const { return m_githubBaseUrl; }
+    QString lamaModelPath() const { return m_lamaModelPath; }
 
     // Setters (used by ConfigDialog to apply changes at runtime)
     void setBrightness(int v) { m_brightness = qBound(-100, v, 100); }
@@ -268,6 +271,7 @@
     void setInterpolationMode(InterpolationMode v) { m_interpolationMode = v; }
     void setPath(const QString& v) { m_path = v; }
     void setGithubBaseUrl(const QString& v) { m_githubBaseUrl = v; }
+    void setLamaModelPath(const QString& v) { m_lamaModelPath = v; }
 
     void resetToDefaults() {
       m_lassoColor        = Qt::red;
@@ -361,6 +365,7 @@
       s.setValue("ImageLayer/interpolationMode", im);
       s.setValue("Main/pixelScale",       m_pixelScale);
       s.setValue("Network/githubBaseUrl", m_githubBaseUrl);
+      s.setValue("Models/lamaModelPath",  m_lamaModelPath);
       s.setValue("ImageHeader/brightness", m_brightness);
       s.setValue("ImageHeader/contrast",   m_contrast);
       s.sync();
@@ -426,6 +431,7 @@
     QString m_version;
     QString m_path;
     QString m_githubBaseUrl;
+    QString m_lamaModelPath;
     
     Qt::TransformationMode m_transformationMode;
     InterpolationMode m_interpolationMode;

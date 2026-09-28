@@ -1,0 +1,26 @@
+{
+    "layers": [
+        {
+            "filename": "clean_pm3736o_gb_proc.png",
+            "filetime": "2026-01-27 19:21:01",
+            "id": "0",
+            "md5checksum": "2094a6bf732ef1836d41d3e362eb5779",
+            "name": "MainImage",
+            "pathname": "/Users/hmohlberg/Projects/Software/HITools/progs/qt/ImageEditor/samples/images"
+        },
+        {
+            "data": "",
+            "id": 2,
+            "name": "Lasso layer 2",
+            "opacity": 1
+        },
+        {
+            "data": "";
+            "id": 1,
+            "name": "Lasso layer 1",
+            "opacity": 1
+        }
+    ],
+    "undoStack": [
+    ]
+}

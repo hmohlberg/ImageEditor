@@ -52,7 +52,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     
  public:
 
-    enum MainOperationMode { None, Paint, Mask, FreeSelection, Polygon, ImageLayer, CreateLasso, CreatePolygon };
+    enum MainOperationMode { None, Paint, Mask, Inpainting, FreeSelection, Polygon, ImageLayer, CreateLasso, CreatePolygon };
     
     static QString mainOperationModeName( int mode );
                 
@@ -119,6 +119,7 @@ class MainWindow : public QMainWindow, public IMainSystem
 #ifdef HASHDF5
     void openHdf5(const QString& filePath);
 #endif
+    void scheduleOverviewRefresh();
 
     void updateButtonState();
     void updateControlButtonState();
@@ -143,6 +144,8 @@ class MainWindow : public QMainWindow, public IMainSystem
     
     QComboBox* buildDefaultColorComboBox( const QString& name = "Label", int maxItems = -1 );
     void extendPolygonComboBox();
+    void extendMaskComboBox();
+    void populateMaskComboBox(int numClasses);
     
     ImageView*       m_imageView       = nullptr;
     LayerEditorView* m_layerEditorView = nullptr;
@@ -170,6 +173,10 @@ class MainWindow : public QMainWindow, public IMainSystem
     QToolBar* m_lassoToolbar = nullptr;
     QToolBar* m_layerToolbar = nullptr;
     QToolBar* m_maskToolbar = nullptr;
+    QToolBar* m_inpaintingToolbar = nullptr;
+    QComboBox* m_inpaintModelCombo = nullptr;
+    QAction* m_inpaintPaintAction  = nullptr;
+    QAction* m_inpaintEraseAction  = nullptr;
     QToolBar* m_polygonToolbar = nullptr;
     
     QToolBar* m_canvasWarpLayerToolbar = nullptr;
@@ -193,6 +200,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     QAction* m_paintControlAction = nullptr;
     QAction* m_lassoControlAction = nullptr;
     QAction* m_maskControlAction = nullptr;
+    QAction* m_inpaintingControlAction = nullptr;
     QAction* m_layerControlAction = nullptr;
     QAction* m_polygonControlAction = nullptr;
     QAction* m_polygonCreateLayerAction = nullptr;
@@ -218,6 +226,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     QLabel* m_statusColorSwatch = nullptr;
     
     QComboBox* m_polygonIndexBox = nullptr;
+    QComboBox* m_maskIndexBox    = nullptr;
     QComboBox* m_transformLayerItem = nullptr;
     QComboBox* m_polygonOperationItem = nullptr;
     QComboBox* m_selectLayerItem = nullptr;

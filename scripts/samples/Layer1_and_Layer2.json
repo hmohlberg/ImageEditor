@@ -1,0 +1,88 @@
+{
+    "layers": [
+        {
+            "filename": "clean_pm3736o_gb_proc.png",
+            "filetime": "2026-01-27 19:21:01",
+            "id": "0",
+            "md5checksum": "2094a6bf732ef1836d41d3e362eb5779",
+            "name": "MainImage",
+            "pathname": "/Users/hmohlberg/Projects/Software/HITools/progs/qt/ImageEditor/samples/images"
+        },
+        {
+            "data": "",
+            "id": 2,
+            "name": "Lasso layer 2",
+            "opacity": 1
+        },
+        {
+            "data": "";
+            "id": 1,
+            "name": "Lasso layer 1",
+            "opacity": 1
+        }
+    ],
+    "undoStack": [
+        {
+            "name": "Lasso layer",
+            "newLayerId": 1,
+            "originalLayerId": 0,
+            "rect": {
+                "height": 189,
+                "width": 307,
+                "x": 3588,
+                "y": 2871
+            },
+            "text": "Lasso layer Cut",
+            "type": "LassoCutCommand"
+        },
+        {
+            "fromX": 3588,
+            "fromY": 2871,
+            "layerId": 1,
+            "text": "Move Layer 1",
+            "toX": 3001,
+            "toY": 2883,
+            "type": "MoveLayer"
+        },
+        {
+            "fromX": 3001,
+            "fromY": 2883,
+            "layerId": 1,
+            "text": "Move Layer 1",
+            "toX": 3588,
+            "toY": 2871,
+            "type": "MoveLayer"
+        },
+        {
+            "name": "Lasso layer",
+            "newLayerId": 2,
+            "originalLayerId": 0,
+            "rect": {
+                "height": 229,
+                "width": 277,
+                "x": 3097,
+                "y": 2743
+            },
+            "text": "Lasso layer Cut",
+            "type": "LassoCutCommand"
+        },
+        {
+            "fromX": 3097,
+            "fromY": 2743,
+            "layerId": 2,
+            "text": "Move Layer 2",
+            "toX": 3040,
+            "toY": 2786,
+            "type": "MoveLayer"
+        },
+        {
+            "fromX": 3588,
+            "fromY": 2871,
+            "layerId": 1,
+            "text": "Move Layer 1",
+            "toX": 3639,
+            "toY": 2932,
+            "type": "MoveLayer"
+        }
+    ]
+}

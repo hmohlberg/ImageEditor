@@ -175,6 +175,8 @@ public:
     void fitAll() {
         if (m_levels.isEmpty()) return;
         fitInView(scene()->sceneRect(), Qt::KeepAspectRatio);
+        m_fitTransform    = transform();
+        m_hasFitTransform = true;
         emitViewport();
     }
 
@@ -183,8 +185,17 @@ public:
             onViewportChanged(mapToScene(viewport()->rect()).boundingRect(), sceneRect());
     }
 
-    // Grab the view's rendered content — called only after the first paint cycle.
-    QImage grabRendered() { return grab().toImage(); }
+    // Render the full scene at thumbnail scale.
+    // Temporarily restores the fit-all transform so drawBackground() picks the
+    // coarsest pyramid level regardless of the user's current zoom.
+    QImage grabFull() {
+        if (!m_hasFitTransform || sceneRect().isEmpty()) return grab().toImage();
+        const QTransform saved = transform();
+        setTransform(m_fitTransform);
+        QImage img = grab().toImage();
+        setTransform(saved);
+        return img;
+    }
 
     std::function<void(QRectF, QRectF)> onViewportChanged;
 
@@ -351,9 +362,11 @@ private:
     Hdf5TileCache      m_cache;
     QVector<QRgb>      m_baseLut;
     QVector<QRgb>      m_lut;
-    bool               m_lutIsIdentity = true;
-    int                m_brightness = 0;
-    int                m_contrast   = 0;
+    bool               m_lutIsIdentity  = true;
+    int                m_brightness     = 0;
+    int                m_contrast       = 0;
+    QTransform         m_fitTransform;
+    bool               m_hasFitTransform = false;
 };
 
 // ── Hdf5Viewer ────────────────────────────────────────────────────────────────
@@ -430,7 +443,7 @@ void Hdf5Viewer::setBrightness(int v) { m_view->setBrightness(v); }
 void Hdf5Viewer::setContrast(int v)   { m_view->setContrast(v); }
 
 void Hdf5Viewer::centerOn(const QPointF& scenePos) { m_view->centerOn(scenePos); m_view->emitViewport(); }
-QImage Hdf5Viewer::thumbnail() { return m_view->grabRendered(); }
+QImage Hdf5Viewer::thumbnail() { return m_view->grabFull(); }
 
 void Hdf5Viewer::zoomIn()  { m_view->zoomBy(1.25); }
 void Hdf5Viewer::zoomOut() { m_view->zoomBy(1.0/1.25); }

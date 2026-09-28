@@ -23,12 +23,18 @@
 // Apply a JSON project file to a BigTIFF, scaling all project coordinates
 // by scaleFactor (project is at 20-µm, BigTIFF at 1-µm → scaleFactor = 20).
 //
-// Supported operations (in undoStack):
+// Supported operations:
 //   LassoCutCommand + MoveLayer:      cut a binary-masked region, paste at a
 //                                     new position (simple translation).
 //   LassoCutCommand + TransformLayer: cut a binary-masked region, apply an
 //                                     affine transform (rotation/scale/shear)
 //                                     and paste the result.
+//   Inpainting layers (creator="Inpainting"):
+//                                     re-runs LaMa inpainting at the BigTIFF's
+//                                     native resolution (when compiled with
+//                                     HASLAMA), or upscales the saved result as
+//                                     fallback.  The hole mask is recovered from
+//                                     the alpha channel of the saved result PNG.
 //
 // Multiple layers with different operations per layer are supported; each
 // operation is associated with its mask via the layerId field.

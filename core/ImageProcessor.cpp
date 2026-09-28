@@ -140,7 +140,8 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
     for ( const QJsonValue& v : layerArray ) {
      if ( v.isObject() ) {
       QJsonObject layerObj = v.toObject();
-      QString name = layerObj["name"].toString();
+      QString name    = layerObj["name"].toString();
+      QString creator = layerObj.value("creator").toString();
       int id = layerObj["id"].toInt();
       qInfo() << " " << name << ": id =" << id;
       if ( id != 0 ) {
@@ -203,6 +204,11 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
             }
           }
           newLayer = new LayerItem("SubImage",subImage); 
+         } else if ( creator == "Inpainting" ) {
+          if ( mask.format() != QImage::Format_ARGB32 )
+            mask = mask.convertToFormat(QImage::Format_ARGB32);
+          newLayer = new LayerItem("InpaintResult", mask);
+          newLayer->setPos(QPointF(x, y));
          } else {
           newLayer = new LayerItem("MaskImage",mask);
          }
@@ -213,7 +219,7 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
          m_layers << newLayer;
          nCreatedLayers += 1;
          // build new json stack
-         if ( !isBinaryMask ) {
+         if ( !isBinaryMask && creator != "Inpainting" ) {
           layerObj["data"] = newLayer->getAlphaMaskData();
           layerObj["binaryMask"] = true;
           layerObj["x"] = x;

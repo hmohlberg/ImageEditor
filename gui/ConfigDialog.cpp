@@ -18,6 +18,7 @@
 #include "ConfigDialog.h"
 #include "../core/Config.h"
 #include "../util/GpuInfo.h"
+#include "../util/LaMaInpainting.h"
 
 #include <QTabWidget>
 #include <QCheckBox>
@@ -91,6 +92,7 @@ ConfigDialog::ConfigDialog(QWidget* parent)
     tabs->addTab(buildLassoTab(),       tr("Lasso"));
     tabs->addTab(buildPolygonTab(),     tr("Polygon"));
     tabs->addTab(buildImageLayerTab(),  tr("ImageLayer"));
+    tabs->addTab(buildModelsTab(),      tr("Models"));
 
     // button row
     QPushButton* loadBtn    = new QPushButton(tr("Load"),    this);
@@ -407,6 +409,66 @@ QWidget* ConfigDialog::buildImageLayerTab()
     return w;
 }
 
+QWidget* ConfigDialog::buildModelsTab()
+{
+    QWidget* w = new QWidget;
+    QVBoxLayout* vl = new QVBoxLayout(w);
+    vl->setAlignment(Qt::AlignTop);
+
+    QGroupBox* gb = new QGroupBox(tr("LaMa inpainting model"));
+    QFormLayout* f = new QFormLayout(gb);
+    f->setRowWrapPolicy(QFormLayout::WrapLongRows);
+
+    m_lamaModelPath = new QLineEdit;
+    m_lamaModelPath->setPlaceholderText(LaMaInpainting::defaultModelPath());
+    m_lamaModelPath->setToolTip(tr("Path to the LaMa ONNX model file (lama.onnx). "
+                                   "Leave empty to use the default location shown as placeholder."));
+
+    m_lamaModelBrowse = new QPushButton(tr("Browse…"));
+    m_lamaModelBrowse->setToolTip(tr("Select the LaMa ONNX model file"));
+
+    QHBoxLayout* hl = new QHBoxLayout;
+    hl->setContentsMargins(0,0,0,0);
+    hl->addWidget(m_lamaModelPath);
+    hl->addWidget(m_lamaModelBrowse);
+    QWidget* pathRow = new QWidget;
+    pathRow->setLayout(hl);
+
+    m_lamaModelStatus = new QLabel;
+
+    auto updateStatus = [this]() {
+        QString path = m_lamaModelPath->text().trimmed();
+        if (path.isEmpty()) path = LaMaInpainting::defaultModelPath();
+        const bool exists = QFileInfo::exists(path);
+        m_lamaModelStatus->setText(exists
+            ? tr("<span style='color:#4caf50;'>&#10003; Model file found</span>")
+            : tr("<span style='color:#f44336;'>&#10007; Model file not found</span>"));
+    };
+
+    connect(m_lamaModelPath, &QLineEdit::textChanged, this, updateStatus);
+    connect(m_lamaModelBrowse, &QPushButton::clicked, this, [this, updateStatus]() {
+        const QString start = m_lamaModelPath->text().trimmed().isEmpty()
+                              ? LaMaInpainting::defaultModelPath()
+                              : m_lamaModelPath->text().trimmed();
+        const QString path = QFileDialog::getOpenFileName(
+            this, tr("Select LaMa ONNX model"), start,
+            tr("ONNX model (*.onnx);;All files (*)"));
+        if (!path.isEmpty()) {
+            m_lamaModelPath->setText(path);
+            updateStatus();
+        }
+    });
+
+    auto* pathLbl = new QLabel(tr("Model path"));
+    pathLbl->setToolTip(m_lamaModelPath->toolTip());
+    f->addRow(pathLbl, pathRow);
+    f->addRow(tr("Status"), m_lamaModelStatus);
+
+    vl->addWidget(gb);
+    updateStatus();
+    return w;
+}
+
 // ---------------------------------------------------------------------------
 // load / apply
 // ---------------------------------------------------------------------------
@@ -469,6 +531,9 @@ void ConfigDialog::loadFromStyle()
     // ImageHeader (sliders disabled — see buildMainTab)
     if ( m_brightnessSlider ) m_brightnessSlider->setValue(s.brightness());
     if ( m_contrastSlider )   m_contrastSlider->setValue(s.contrast());
+
+    // Models
+    m_lamaModelPath->setText(s.lamaModelPath());
 
     // ImageLayer
     m_integerMoveOnly->setChecked(s.allowIntegerMoveOnly());
@@ -538,6 +603,9 @@ void ConfigDialog::applyToStyle()
     // ImageHeader (sliders disabled — see buildMainTab)
     if ( m_brightnessSlider ) s.setBrightness(m_brightnessSlider->value());
     if ( m_contrastSlider )   s.setContrast(m_contrastSlider->value());
+
+    // Models
+    s.setLamaModelPath(m_lamaModelPath->text().trimmed());
 
     // ImageLayer
     s.setAllowIntegerMoveOnly(m_integerMoveOnly->isChecked());

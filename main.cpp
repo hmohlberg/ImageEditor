@@ -41,6 +41,7 @@
 #include <QGuiApplication>
 #include "util/GpuInfo.h"
 
+#include <iomanip>
 #include <iostream>
 #include <unistd.h>
 
@@ -64,7 +65,9 @@
 #ifdef HASITK
 #  include <itkConfigure.h>
 #endif
-
+#ifdef HASLAMA
+#  include <onnxruntime_c_api.h>
+#endif
 
 // ---------------------- Init ----------------------
 IMainSystem* IMainSystem::m_instance = nullptr;
@@ -368,7 +371,11 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   }
   
   // --- Check required options ---
-  if ( !parser.isSet(fileOption) && !parser.isSet(projectFileOption) && !parser.isSet(guiOption)) {
+  if ( !parser.isSet(fileOption) && !parser.isSet(projectFileOption) && !parser.isSet(guiOption)
+#ifdef MACOS_BUNDLE_BUILD
+       && argc > 1  // bundle launch from Finder has no args — default to GUI
+#endif
+  ) {
    qCritical() << "Error: Missing path to image file and history file. Need at least one!";
    parser.showHelp();
   }
@@ -625,6 +632,58 @@ static void printVersionInfo( int argc, char* argv[] )
     checkForUpdates();
 }
 
+static void printThirdParty()
+{
+    auto row = [](const char* name, const std::string& ver,
+                  const char* license, const char* url) {
+        // Truncate version to 15 chars to keep columns aligned
+        std::string v = ver.size() > 15 ? ver.substr(0, 12) + "..." : ver;
+        std::cout << "  " << std::left
+                  << std::setw(28) << name
+                  << std::setw(16) << v
+                  << std::setw(22) << license
+                  << url << std::endl;
+    };
+    std::cout << "Third-party libraries and models:" << std::endl;
+    std::cout << "  " << std::left
+              << std::setw(28) << "Name"
+              << std::setw(16) << "Version"
+              << std::setw(22) << "License"
+              << "Source" << std::endl;
+    std::cout << "  " << std::string(90, '-') << std::endl;
+
+    row("Qt",                    QT_VERSION_STR,       "LGPL 3.0",          "https://www.qt.io");
+#ifdef TIFFLIB_VERSION_STR_MAJ_MIN_MIC
+    row("libtiff",               TIFFLIB_VERSION_STR_MAJ_MIN_MIC, "LibTIFF (BSD-like)", "http://libtiff.gitlab.io/libtiff/");
+#else
+    row("libtiff",               TIFFLIB_VERSION_STR,  "LibTIFF (BSD-like)", "http://libtiff.gitlab.io/libtiff/");
+#endif
+#ifdef HASHDF5
+    row("HDF5",                  H5_VERSION,           "BSD-style",         "https://www.hdfgroup.org/solutions/hdf5/");
+#endif
+#ifdef HASLAMA
+    row("ONNX Runtime",          "API " + std::to_string(ORT_API_VERSION), "MIT", "https://onnxruntime.ai");
+    row("LaMa (big-lama ONNX)", "—",                  "Apache 2.0",        "https://github.com/advimman/lama");
+#endif
+#ifdef HASITK
+    row("ITK",
+        std::to_string(ITK_VERSION_MAJOR) + "." +
+        std::to_string(ITK_VERSION_MINOR) + "." +
+        std::to_string(ITK_VERSION_PATCH),
+        "Apache 2.0", "https://itk.org");
+#endif
+    {
+        const std::string sslVer = QSslSocket::sslLibraryVersionString().toStdString();
+        row("OpenSSL", sslVer.empty() ? "not available" : sslVer,
+            "Apache 2.0", "https://www.openssl.org");
+    }
+    std::cout << std::endl;
+    std::cout << "  LaMa citation:" << std::endl;
+    std::cout << "    R. Suvorov et al., \"Resolution-robust Large Mask Inpainting" << std::endl;
+    std::cout << "    with Fourier Convolutions\", WACV 2022." << std::endl;
+    std::cout << "    Samsung Research. Apache License 2.0." << std::endl;
+}
+
 static void printGpuInfo()
 {
     const GpuInfo info = GpuInfo::query();
@@ -650,17 +709,20 @@ static void printAbout( int argc, char* argv[] )
         std::cout << "  GPU:             not available (offscreen/headless mode)" << std::endl;
         checkForUpdates();
         std::cout << std::endl;
+        printThirdParty();
+        std::cout << std::endl;
         printAuthors();
         std::cout << std::endl;
         printLicense();
     } else {
-        // QGuiApplication is required for QOffscreenSurface / OpenGL context creation.
         QGuiApplication app(argc, argv);
         app.setApplicationName("ImageEditor");
         app.setApplicationVersion(APP_VERSION);
         printBuildInfo();
         printGpuInfo();
         checkForUpdates();
+        std::cout << std::endl;
+        printThirdParty();
         std::cout << std::endl;
         printAuthors();
         std::cout << std::endl;

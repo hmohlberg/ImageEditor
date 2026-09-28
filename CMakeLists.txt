@@ -51,6 +51,7 @@ configure_file(
 include_directories("${CMAKE_BINARY_DIR}")
 option(WITH_TIFF "Enable BigTIFF support via libtiff" ON)
 option(WITH_HDF5 "Enable HDF5 support" ON)
+option(BUILD_MACOS_BUNDLE "Build macOS .app bundle for distribution (requires icons/AppIcon.icns)" OFF)
 
 # libtiff find (optional — needed for BigTIFF support)
 if(WITH_TIFF)
@@ -104,6 +105,30 @@ else()
   message(STATUS "HDF5 not found - HDF5 support will not be built")
 endif()
 
+# onnxruntime (optional — needed for LaMa inpainting)
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(ONNXRUNTIME QUIET libonnxruntime)
+endif()
+if(ONNXRUNTIME_FOUND)
+    message(STATUS "Found onnxruntime ${ONNXRUNTIME_VERSION} via pkg-config — LaMa inpainting enabled")
+else()
+    # Fallback: manual search (Windows / no pkg-config)
+    find_library(ONNXRUNTIME_LIB onnxruntime
+        PATHS /opt/homebrew/lib /usr/local/lib /usr/lib)
+    find_path(ONNXRUNTIME_INC onnxruntime_cxx_api.h
+        PATH_SUFFIXES onnxruntime onnxruntime/core/session
+        PATHS /opt/homebrew/include /usr/local/include /usr/include)
+    if(ONNXRUNTIME_LIB AND ONNXRUNTIME_INC)
+        set(ONNXRUNTIME_FOUND TRUE)
+        set(ONNXRUNTIME_LIBRARIES ${ONNXRUNTIME_LIB})
+        set(ONNXRUNTIME_INCLUDE_DIRS ${ONNXRUNTIME_INC})
+        message(STATUS "Found onnxruntime (manual) — LaMa inpainting enabled")
+    else()
+        message(STATUS "onnxruntime not found — LaMa inpainting disabled (brew install onnxruntime)")
+    endif()
+endif()
+
 # Quellen
 set(SOURCES
     main.cpp
@@ -155,6 +180,8 @@ set(SOURCES
     undo/MaskPaintCommand.cpp
     util/QUndoSortDialog.cpp
     util/GpuInfo.cpp
+    util/Inpainting.cpp
+    util/LaMaInpainting.cpp
 )
 
 set(HEADERS
@@ -202,15 +229,37 @@ set(HEADERS
     util/QUndoSortDialog.h
     util/GeometryUtils.h
     util/GpuInfo.h
+    util/Inpainting.h
+    util/LaMaInpainting.h
     undo/CageEditCommand.h
 )
 
 # Qt6 Executable
 qt_standard_project_setup()
-qt_add_executable(${PROJECT_NAME} 
+qt_add_executable(${PROJECT_NAME}
    ${SOURCES}
    resources.qrc
 )
+
+if(APPLE AND BUILD_MACOS_BUNDLE)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE MACOS_BUNDLE_BUILD)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE                      TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME          "${PROJECT_NAME}"
+        MACOSX_BUNDLE_BUNDLE_VERSION       "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_LONG_VERSION_STRING  "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_GUI_IDENTIFIER       "de.fz-juelich.imageeditor"
+        MACOSX_BUNDLE_ICON_FILE            "AppIcon.icns"
+    )
+    set(_icns "${CMAKE_SOURCE_DIR}/icons/AppIcon.icns")
+    if(EXISTS "${_icns}")
+        target_sources(${PROJECT_NAME} PRIVATE "${_icns}")
+        set_source_files_properties("${_icns}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+    else()
+        message(WARNING "icons/AppIcon.icns not found — run scripts/create_icon.sh first")
+    endif()
+endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets Qt6::Svg Qt6::Network)
 if(ITK_FOUND)
@@ -245,6 +294,25 @@ if(HDF5_FOUND)
     target_include_directories(ImageEditor PRIVATE ${HDF5_INCLUDE_DIRS})
     target_link_libraries(ImageEditor PRIVATE ${HDF5_LIBRARIES})
     target_compile_definitions(ImageEditor PRIVATE HASHDF5)
+endif()
+if(ONNXRUNTIME_FOUND)
+    target_include_directories(ImageEditor PRIVATE ${ONNXRUNTIME_INCLUDE_DIRS})
+    target_link_libraries(ImageEditor PRIVATE ${ONNXRUNTIME_LIBRARIES})
+    target_compile_definitions(ImageEditor PRIVATE HASLAMA)
+    if(APPLE)
+        # Embed the dylib rpath so the app finds it at runtime
+        foreach(_lib ${ONNXRUNTIME_LIBRARIES})
+            if(EXISTS "${_lib}")
+                get_filename_component(_ort_dir "${_lib}" DIRECTORY)
+            endif()
+        endforeach()
+        if(NOT _ort_dir)
+            set(_ort_dir "/opt/homebrew/lib")
+        endif()
+        set_target_properties(${PROJECT_NAME} PROPERTIES
+            BUILD_RPATH  "${_ort_dir}"
+            INSTALL_RPATH "${_ort_dir}")
+    endif()
 endif()
 
 # Automatische Suche nach Plugins ermöglichen

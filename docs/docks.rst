@@ -1,13 +1,38 @@
 Dock Panels
 ===========
 
-ImageEditor has two dock panels anchored to the right side of the main window:
-**Layers** and **Undo History**.  Both panels can be shown or hidden from the
-**View** menu and are dockable (they can be undocked into floating windows).
+ImageEditor has up to three dock panels anchored to the right side of the main
+window: **Overview**, **Layers**, and **Undo History**.  All panels can be
+shown or hidden from the **View** menu and are dockable (they can be undocked
+into floating windows).
 
 .. contents::
    :local:
    :depth: 2
+
+Overview Dock
+-------------
+
+The Overview dock shows a miniature thumbnail of the full image.  A blue
+rectangle inside the thumbnail marks the portion of the image currently visible
+in the main canvas, giving you a navigation guide when you are zoomed in.
+
+**Enabling the dock**
+
+The Overview dock is hidden by default.  Enable it in the **Configuration
+dialog** under **Main → Show overview map in layers dock**.  Once enabled,
+the dock appears above the Layers dock on the right side.
+
+**Interaction**
+
+The thumbnail updates automatically after zooming, panning, or reloading the
+image.  You cannot click the thumbnail to pan the canvas; use the scroll bars
+or the mouse-wheel inside the main canvas instead.
+
+.. note::
+   For BigTIFF and HDF5 files the thumbnail is captured from the rendered
+   canvas content (``QWidget::grab``), which means it is only generated
+   after the image has been fully loaded into the tile viewer.
 
 Layers Dock
 -----------

@@ -228,7 +228,16 @@ LassoCutCommand* LassoCutCommand::fromJson( const QJsonObject& obj, const QList<
     QString name = obj.value("name").toString("Unknown");
     QJsonObject r = obj["rect"].toObject();
     QRect rect(r["x"].toInt(),r["y"].toInt(),r["width"].toInt(),r["height"].toInt());
-    // >>>
-    return new LassoCutCommand(originalLayer,newLayer,rect,newLayer->originalImage(),newLayerId,name);
+    // Inpainting layers overlay the base without modifying it. Use an empty (fully transparent)
+    // backup so that undo/redo do not paint the inpainted patch into the base image, which would
+    // make the result appear baked-in even after the overlay layer has been hidden.
+    QImage backup;
+    if ( name == "Inpainting" ) {
+        backup = QImage(rect.size(), QImage::Format_ARGB32);
+        backup.fill(Qt::transparent);
+    } else {
+        backup = newLayer->originalImage();
+    }
+    return new LassoCutCommand(originalLayer,newLayer,rect,backup,newLayerId,name);
   }
 }
