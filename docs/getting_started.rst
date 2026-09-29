@@ -1,10 +1,10 @@
 Getting Started
 ===============
 
-.. image:: images/getting_started/getting-started-01.png
+.. image:: images/getting_started/getting_started-01.png
    :alt: ImageEditor user interface
 
-.. image:: images/getting_started/getting-started-02.png
+.. image:: images/getting_started/getting_started-02.png
    :alt: ImageEditor user interface
 
 
@@ -14,7 +14,7 @@ Getting Started
 Click **Open** in the top left and load an image from your files or a
 sample image, e.g. ``/ImageEditor/samples/images/pm2382o.png``.
 
-.. image:: images/getting_started/getting-started-03.png
+.. image:: images/getting_started/getting_started-03.png
    :alt: Open an image
 
 
@@ -27,7 +27,7 @@ sample image, e.g. ``/ImageEditor/samples/images/pm2382o.png``.
   top menu row.
 * **Fit**: Zoom out to fit the image into your current window.
 
-.. image:: images/getting_started/getting-started-04.png
+.. image:: images/getting_started/getting_started-04.png
    :alt: Zoom and pan controls
 
 
@@ -40,7 +40,7 @@ Lasso
 * Selecting **Free selection** changes the corresponding menu on the right.
 * Select **Create new lasso**.
 
-.. image:: images/getting_started/getting-started-05.png
+.. image:: images/getting_started/getting_started-05.png
    :alt: Create a new lasso
 
 * Hold your left mouse button and draw around the image area you would
@@ -49,7 +49,7 @@ Lasso
 * You have created your first layer, which is added to the list of layers
   in the **Layers** dock on the right.
 
-.. image:: images/getting_started/getting-started-06.png
+.. image:: images/getting_started/getting_started-06.png
    :alt: Lasso layer
 
 
@@ -59,7 +59,7 @@ Polygon
 * Selecting **Polygon** changes the corresponding menu on the right.
 * Select **Create new polygon**.
 
-.. image:: images/getting_started/getting-started-07.png
+.. image:: images/getting_started/getting_started-07.png
    :alt: Create a new polygon
 
 * Set a series of points around the image area you would like to edit.
@@ -72,5 +72,5 @@ Polygon
 
    Polygon confirmation on macOS is still to be confirmed.
 
-.. image:: images/getting_started/getting-started-08.png
+.. image:: images/getting_started/getting_started-08.png
    :alt: Polygon layer
