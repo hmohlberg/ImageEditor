@@ -61,7 +61,9 @@ The ImageEditor application requires **Qt6**. Below is a list of Linux distribut
 
 ---
 
-### Installation on Linux
+## Installation
+
+### On Linux
 
 ```bash
 # Update package lists
@@ -94,7 +96,7 @@ sudo apt install libhdf5-dev
 
 > **qt6-declarative-dev** is *not* required for the default build. Install it only if you need Qt Quick / QML support.
 
-### macOS
+### On macOS
 
 ```bash
 # CMake
@@ -128,6 +130,7 @@ brew install hdf5
   ```
 * Leave the Linux environment by entering `exit`
 * To run ImageEditor open the file in `ImageEditor/bin/windows/wsl.bat`
+  The wsl.bat-file includes a check with github for a newer programm version and will update automatically. If you start changing files locally you should take care that they will not cause merge conflicts.
 
 ### Windows with WSL and Ubuntu 24.04
 
