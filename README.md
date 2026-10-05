@@ -2,13 +2,15 @@
 
 Copyright 2026, Forschungszentrum Jülich GmbH
 
-Author: Hartmut Mohlberg<br>
+Authors: Hartmut Mohlberg<br>
 Contributors: Claude Lepage, Lindsay B. Lewis, Daniel Krötz, Paule-J. Toussaint, Susanne Wenzel<br>
 Institute of Neuroscience and Medicine (INM-1), Forschungszentrum Jülich GmbH
 
 ---
 
 A versatile Qt6-based image processing tool with JSON-history support, designed to run on Debian Linux, macOS, and Windows (via WSL). It supports both a Graphical User Interface and a headless batch mode for server environments.
+
+📖 **Full documentation:** [imageeditor.readthedocs.io](https://imageeditor.readthedocs.io)
 
 ## Table of Contents
 
@@ -150,6 +152,12 @@ sudo apt install libtiff-dev
 
 # Optional: HDF5 C library — required for HDF5 image viewer
 sudo apt install libhdf5-dev
+
+# Optional: onnxruntime — required for AI inpainting with the LaMa model
+# No official Debian/Ubuntu package exists; install from the GitHub releases page:
+# https://github.com/microsoft/onnxruntime/releases
+# Download the Linux x64 tgz, then:
+#   sudo tar -xzf onnxruntime-linux-x64-*.tgz -C /usr/local --strip-components=1
 ```
 
 > **libtiff version:** `libtiff-dev` on Debian 12+ and Ubuntu 22.04+ provides libtiff 4.x, which satisfies the ≥ 4.0 requirement. Run `dpkg -s libtiff-dev | grep Version` to verify.
@@ -172,6 +180,9 @@ brew install libtiff
 
 # Optional: HDF5 — required for HDF5 image viewer
 brew install hdf5
+
+# Optional: onnxruntime — required for AI inpainting with the LaMa model
+brew install onnxruntime
 ```
 
 > **Qt not found by CMake?** Run `export CMAKE_PREFIX_PATH=$(brew --prefix qt)` before invoking cmake, or add it to your shell profile.
@@ -188,7 +199,7 @@ brew install hdf5
   sudo apt-get install qt6-base-dev qt6-declarative-dev qt6-svg-dev git cmake
   sudo apt-get install libtiff-dev libxkbcommon-dev libxkbcommon-x11-dev
   sudo apt-get install libhdf5-dev   # optional, for HDF5 viewer
-  sudo git clone https://github.com/hmohlberg/ImageEditor.git
+  git clone https://github.com/hmohlberg/ImageEditor.git
   ```
 * Leave the Linux environment by entering `exit`
 * To run ImageEditor open the file in `ImageEditor/bin/windows/wsl.bat`
