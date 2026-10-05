@@ -332,3 +332,85 @@ if(APPLE)
         COMMENT "Kopiere Qt TLS-Plugins nach ${QT_TLS_DEST}"
     )
 endif()
+
+# ============================================================
+# Install rules
+# ============================================================
+include(GNUInstallDirs)
+
+install(TARGETS ${PROJECT_NAME}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+# ============================================================
+# CPack — Debian .deb package (Linux only)
+# ============================================================
+if(UNIX AND NOT APPLE)
+    # Auto-detect Debian architecture (amd64, arm64, …)
+    execute_process(
+        COMMAND dpkg --print-architecture
+        OUTPUT_VARIABLE _deb_arch
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(NOT _deb_arch)
+        set(_deb_arch "${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+
+    # Build runtime dependency list based on detected optional libraries.
+    # Qt6 packages use the t64 naming on Debian 13+ so we accept both with |.
+    set(_deb_deps
+        "libqt6core6 | libqt6core6t64, \
+libqt6gui6 | libqt6gui6t64, \
+libqt6widgets6 | libqt6widgets6t64, \
+libqt6opengl6 | libqt6opengl6t64, \
+libqt6svg6, \
+libqt6network6 | libqt6network6t64, \
+libgl1"
+    )
+    if(TIFF_FOUND)
+        string(APPEND _deb_deps ", libtiff6 | libtiff5")
+    endif()
+    if(HDF5_FOUND)
+        string(APPEND _deb_deps ", libhdf5-103-1 | libhdf5-103 | libhdf5-dev")
+    endif()
+
+    # .desktop file for the application menu
+    file(WRITE "${CMAKE_BINARY_DIR}/imageeditor.desktop"
+        "[Desktop Entry]\n"
+        "Name=ImageEditor\n"
+        "Comment=Qt6-based image processing tool\n"
+        "Exec=${CMAKE_INSTALL_FULL_BINDIR}/ImageEditor\n"
+        "Icon=imageeditor\n"
+        "Terminal=false\n"
+        "Type=Application\n"
+        "Categories=Graphics;Science;\n"
+    )
+    install(FILES "${CMAKE_BINARY_DIR}/imageeditor.desktop"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
+    )
+
+    set(CPACK_GENERATOR                     "DEB")
+    set(CPACK_PACKAGE_NAME                  "imageeditor")
+    set(CPACK_PACKAGE_VERSION               "${PROJECT_VERSION}")
+    set(CPACK_PACKAGE_CONTACT               "Hartmut Mohlberg <h.mohlberg@fz-juelich.de>")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+        "Qt6-based image processing tool with JSON-history support")
+    set(CPACK_PACKAGE_DESCRIPTION
+"ImageEditor is a versatile Qt6 image processing tool for interactive and
+batch image manipulation. Features include lasso cut, polygon selection,
+layer transforms (move, rotate, scale, mirror, perspective warp, cage warp),
+AI inpainting (LaMa/PatchMatch), BigTIFF/HDF5 pyramid viewers, and a
+JSON-based project history for reproducible workflows.")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER     "Hartmut Mohlberg <h.mohlberg@fz-juelich.de>")
+    set(CPACK_DEBIAN_PACKAGE_SECTION        "graphics")
+    set(CPACK_DEBIAN_PACKAGE_PRIORITY       "optional")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS        "${_deb_deps}")
+    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE   "${_deb_arch}")
+    set(CPACK_PACKAGE_FILE_NAME
+        "${CPACK_PACKAGE_NAME}_${PROJECT_VERSION}_${_deb_arch}")
+    set(CPACK_STRIP_FILES                   TRUE)
+    set(CPACK_RESOURCE_FILE_LICENSE         "${CMAKE_SOURCE_DIR}/LICENSE.txt")
+
+    include(CPack)
+endif()

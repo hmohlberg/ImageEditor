@@ -25,6 +25,7 @@ A versatile Qt6-based image processing tool with JSON-history support, designed 
   - [Windows with WSL and Ubuntu 24.04](#windows-with-wsl-and-ubuntu-2404)
   - [Build Process](#build-process)
   - [CMake Options](#cmake-options)
+  - [Debian Package (.deb)](#debian-package-deb)
   - [MS Windows (native)](#ms-windows-not-yet-tested)
 - [Usage & CLI Options](#usage--cli-options)
   - [Command Line Arguments](#command-line-arguments)
@@ -246,6 +247,25 @@ Example — build a macOS app bundle:
 cmake -DBUILD_MACOS_BUNDLE=ON ..
 make -j$(sysctl -n hw.ncpu)
 ```
+
+### Debian Package (.deb)
+
+After a successful build, a `.deb` installer can be generated with CPack:
+
+```bash
+cd build
+cpack
+```
+
+This produces a file named `imageeditor_1.0.2_amd64.deb` (architecture is detected automatically via `dpkg --print-architecture`).
+
+Install the package with:
+```bash
+sudo dpkg -i imageeditor_1.0.2_amd64.deb
+sudo apt-get install -f   # resolve any missing runtime dependencies
+```
+
+The package installs the `ImageEditor` binary to `/usr/local/bin/` and registers a `.desktop` entry so it appears in the application menu.
 
 ---
 
