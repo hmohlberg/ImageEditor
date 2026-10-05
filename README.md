@@ -10,7 +10,7 @@ Institute of Neuroscience and Medicine (INM-1), Forschungszentrum Jülich GmbH
 
 A versatile Qt6-based image processing tool with JSON-history support, designed to run on Debian Linux, macOS, and Windows (via WSL). It supports both a Graphical User Interface and a headless batch mode for server environments.
 
-<a href="https://imageeditor.readthedocs.io/en/latest/" target="_blank"><img src="https://readthedocs.org/projects/imageeditor/badge/?version=latest" alt="Documentation"></a>
+[![Documentation](https://readthedocs.org/projects/imageeditor/badge/?version=latest)](https://imageeditor.readthedocs.io/en/latest/)
 
 ## Table of Contents
 
