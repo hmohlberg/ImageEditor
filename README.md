@@ -2,7 +2,7 @@
 
 Copyright 2026, Forschungszentrum Jülich GmbH
 
-Authors: Hartmut Mohlberg<br>
+Author: Hartmut Mohlberg<br>
 Contributors: Claude Lepage, Lindsay B. Lewis, Daniel Krötz, Paule-J. Toussaint, Susanne Wenzel<br>
 Institute of Neuroscience and Medicine (INM-1), Forschungszentrum Jülich GmbH
 
