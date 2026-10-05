@@ -88,6 +88,9 @@ sudo apt install libtiff-dev
 
 # Optional: HDF5 C library — required for HDF5 image viewer
 sudo apt install libhdf5-dev
+
+# clone this repository
+git clone https://github.com/hmohlberg/ImageEditor.git /where/you/want/it
 ```
 
 > **libtiff version:** `libtiff-dev` on Debian 12+ and Ubuntu 22.04+ provides libtiff 4.x, which satisfies the ≥ 4.0 requirement. Run `dpkg -s libtiff-dev | grep Version` to verify.
@@ -95,6 +98,8 @@ sudo apt install libhdf5-dev
 > **HDF5:** If `libhdf5-dev` is not installed, CMake will print a notice and the HDF5 viewer will simply not be compiled. All other functionality remains unaffected.
 
 > **qt6-declarative-dev** is *not* required for the default build. Install it only if you need Qt Quick / QML support.
+
+If the precompiled binary under `bin` does not work for you you need to continue [compile](#build-process) yourself.
 
 ### On macOS
 
