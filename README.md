@@ -7,16 +7,18 @@ Institute of Neuroscience and Medicine (INM-1), Forschungszentrum Jülich GmbH
 
 ---
 
-A versatile Qt6-based image processing tool with JSON-history support, designed to run on Debian Linux and macOS. It supports both a Graphical User Interface and a headless batch mode for server environments.
+A versatile Qt6-based image processing tool with JSON-history support, designed to run on Debian Linux, macOS, and Windows (via WSL). It supports both a Graphical User Interface and a headless batch mode for server environments.
 
 ## Features
 
 - **Interactive image manipulation tools**: Paint, lasso cut, polygon selection, layer transform (move, rotate, scale, mirror, perspective warp, cage warp). All operations are fully documented and saved in a JSON project file for later replay.
+- **AI Inpainting** *(optional)*: Fill selected regions automatically using the **LaMa** deep-learning model or the classical **PatchMatch** algorithm. Results appear on a new, fully undoable layer. Requires `onnxruntime` for LaMa.
 - **Batch Processing**: Apply JSON transformation histories via CLI without a GUI.
 - **JSON Project Support**: Load and apply transformation histories from JSON files.
 - **Offscreen Optimized**: Suitable for headless servers using the Qt `offscreen` platform plugin.
 - **BigTIFF / Pyramid TIFF Viewer**: Tile-based, pan/zoomable viewer for very large TIFF and BigTIFF files stored as image pyramids (multi-resolution IFDs). Supports all standard TIFF compression codecs via libtiff. Requires `libtiff` ≥ 4.0.
 - **HDF5 Image Viewer** *(optional)*: Tile-based viewer for large HDF5 image datasets with built-in pyramid support (`/pyramid/00`–`/pyramid/N`). Reads RGB and grayscale datasets with chunk-based tile loading. Requires `libhdf5`.
+- **Overview Minimap**: Optional thumbnail of the full image shown in the Overview dock; a blue rectangle marks the currently visible portion of the canvas.
 - **Color LUT / Color Table**: A toolbar color-table selector applies lookup tables (LUT) to the image view and all active layers simultaneously. Includes general-purpose LUTs (Jet, Viridis, Plasma, Inferno, Hot, Cold, Copper) as well as histology-specific LUTs (Nissl, Myelin).
 - **Configurable appearance**: Control point size/color, grid color, cage warp color, lasso color, handle color, and cursor appearance are all adjustable in the Config dialog.
 - **Persistent window geometry**: Window size and position are saved between sessions.
@@ -25,9 +27,41 @@ A versatile Qt6-based image processing tool with JSON-history support, designed 
 
 ---
 
-## Prerequisites
+## Pre-built Binaries
 
-### Toolchain Requirements
+Ready-to-run binaries for version **1.0.2** are available in the `bin/` subdirectories of this repository:
+
+| Platform | Directory | Notes |
+| :--- | :--- | :--- |
+| **Debian / Ubuntu** | `bin/debian/` | Built on Debian 13 (Trixie) with Qt 6.8. |
+| **macOS** | `bin/macos/` | Signed `.dmg` bundle; requires macOS 13 (Ventura) or later. |
+| **Windows (WSL)** | `bin/windows/` | Run `wsl.bat` to launch ImageEditor inside WSL from Windows Explorer. |
+
+### Debian / Ubuntu
+
+```bash
+cd bin/debian
+./ImageEditor
+```
+
+### macOS
+
+Open `bin/macos/ImageEditor-1.0.2.dmg`, drag **ImageEditor.app** to your Applications folder, and launch it from there.
+
+### Windows (via WSL)
+
+1. Make sure WSL is installed (see [Building from Source — Windows with WSL](#windows-with-wsl-and-debian) below for setup).
+2. Double-click `bin/windows/wsl.bat`.
+
+> If you prefer to build from source instead, follow the instructions in the [Building from Source](#building-from-source) section below.
+
+---
+
+## Building from Source
+
+### Prerequisites
+
+#### Toolchain Requirements
 
 | Requirement | Minimum version | Notes |
 | :--- | :--- | :--- |
@@ -36,12 +70,13 @@ A versatile Qt6-based image processing tool with JSON-history support, designed 
 | **Qt6** | 6.5 (recommended 6.6+) | Components: Core, Gui, Widgets, OpenGL, OpenGLWidgets, Svg, Network |
 | **libtiff** | 4.0 | Required for BigTIFF/Pyramid TIFF viewer. `TIFFIsBigTIFF` must be present (libtiff < 4.0 is rejected). libtiff ≥ 4.5 additionally enables exact version display in the About dialog. |
 | **libhdf5** | any recent | *Optional.* Required only for the HDF5 image viewer (C interface). |
+| **onnxruntime** | any recent | *Optional.* Required only for AI inpainting with the LaMa model. |
 
-### Qt6 Availability by Linux Distribution
+#### Qt6 Availability by Linux Distribution
 
 The ImageEditor application requires **Qt6**. Below is a list of Linux distributions that provide native support for Qt6 through their official package repositories (`apt`).
 
-#### Supported Ubuntu Versions
+##### Supported Ubuntu Versions
 | Ubuntu Version | Release Name | Qt6 Support | Native Repo Version |
 | :--- | :--- | :--- | :--- |
 | **Ubuntu 26.04** | Resolute Raccoon | ✅ Supported | Qt 6.10.x |
@@ -50,7 +85,7 @@ The ImageEditor application requires **Qt6**. Below is a list of Linux distribut
 | **Ubuntu 22.04 LTS** | Jammy Jellyfish | ❌ No | Qt 6.2.4 |
 | **Ubuntu 20.04 LTS** | Focal Fossa | ❌ No | (Qt 5 only) |
 
-#### Supported Debian Versions
+##### Supported Debian Versions
 | Debian Version | Release Name | Qt6 Support | Native Repo Version |
 | :--- | :--- | :--- | :--- |
 | **Debian 13** | Trixie | ✅ Testing | Qt 6.8.x |
@@ -61,7 +96,7 @@ The ImageEditor application requires **Qt6**. Below is a list of Linux distribut
 
 ---
 
-### Installation on Linux
+#### Installation on Linux
 
 ```bash
 # Update package lists
@@ -94,7 +129,7 @@ sudo apt install libhdf5-dev
 
 > **qt6-declarative-dev** is *not* required for the default build. Install it only if you need Qt Quick / QML support.
 
-### macOS
+#### macOS
 
 ```bash
 # CMake
@@ -114,7 +149,7 @@ brew install hdf5
 
 > **libtiff version:** Homebrew installs the latest libtiff (currently 4.6.x), which satisfies all requirements including the ≥ 4.5 version-display feature.
 
-### Windows with WSL and Debian
+#### Windows with WSL and Debian
 
 * Create a directory where ImageEditor should be installed, open the Powershell there (Open the folder → Right-click → Open in terminal) and enter `wsl --install Debian`
 * Wait for Download and Installation to finish — at the end you will be asked to create a username and password.
@@ -129,7 +164,7 @@ brew install hdf5
 * Leave the Linux environment by entering `exit`
 * To run ImageEditor open the file in `ImageEditor/bin/windows/wsl.bat`
 
-### Windows with WSL and Ubuntu 24.04
+#### Windows with WSL and Ubuntu 24.04
 
 ```bash
 wsl --install Ubuntu-24.04
@@ -151,7 +186,7 @@ export GALLIUM_DRIVER=d3d12
 
 ---
 
-## Build Process
+### Build Process
 
 ```bash
 # Enter the project directory
@@ -171,10 +206,17 @@ make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
 | :--- | :--- | :--- |
 | `WITH_TIFF` | `ON` | Enable BigTIFF/Pyramid TIFF support via libtiff. |
 | `WITH_HDF5` | `ON` | Enable HDF5 image viewer support. |
+| `BUILD_MACOS_BUNDLE` | `OFF` | Build a self-contained macOS `.app` bundle (macOS only). Used by `scripts/create_dmg.sh` to produce a distributable DMG. |
 
 Example — build without HDF5:
 ```bash
 cmake -DWITH_HDF5=OFF ..
+```
+
+Example — build a macOS app bundle:
+```bash
+cmake -DBUILD_MACOS_BUNDLE=ON ..
+make -j$(sysctl -n hw.ncpu)
 ```
 
 ---

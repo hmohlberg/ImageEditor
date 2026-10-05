@@ -2546,6 +2546,8 @@ bool ImageView::executeInpainting(const InpaintParams& p, const QImage& src, QIm
             newLayer->setVisible(true); newLayer->setInActive(false);
             newLayer->setPos(base->mapToScene(holeBounds.topLeft()));
             newLayer->setZValue(base->zValue()+1);
+            newLayer->setFlag(QGraphicsItem::ItemIsMovable, false);
+            newLayer->resetDragStartPos();
             layer->m_item = newLayer; m_layers.push_back(layer);
             setActiveLayer(layer->m_name); emit lassoLayerAdded();
             for (int y=holeBounds.top(); y<=holeBounds.bottom(); ++y) {
@@ -2633,6 +2635,8 @@ bool ImageView::executeInpainting(const InpaintParams& p, const QImage& src, QIm
     newLayer->setInActive( false );
     newLayer->setPos( base->mapToScene(holeBounds.topLeft()) );
     newLayer->setZValue( base->zValue() + 1 );
+    newLayer->setFlag( QGraphicsItem::ItemIsMovable, false );
+    newLayer->resetDragStartPos();
     layer->m_item = newLayer;
     m_layers.push_back( layer );
 

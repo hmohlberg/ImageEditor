@@ -1430,7 +1430,8 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
       QGraphicsPixmapItem::mouseReleaseEvent(event);
       return;
     }
-    if ( m_operationMode == OperationMode::Translate ) {
+    if ( m_operationMode == OperationMode::Translate &&
+         !( m_layer && m_layer->creator() == "Inpainting" ) ) {
         // Build group: primary (this) + co-selected layers
         ImageView* view = getParentImageView();
         QList<LayerItem*> group;

@@ -1609,8 +1609,13 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
         for ( int i = 0; i < sortedLayers.size(); ++i ) {
             Layer* layer = sortedLayers[i];
             layer->m_item->setZValue(baseZ + 1.0 + i);
-            if ( layer->creator() == "Inpainting" && !layer->m_bounds.isNull() )
-                layer->m_item->setPos(m_layerItem->mapToScene(QPointF(layer->m_bounds.topLeft())));
+            if ( layer->creator() == "Inpainting" ) {
+                if ( !layer->m_bounds.isNull() )
+                    layer->m_item->setPos(m_layerItem->mapToScene(QPointF(layer->m_bounds.topLeft())));
+                layer->m_item->setFlag(QGraphicsItem::ItemIsMovable, false);
+                if ( auto* li = dynamic_cast<LayerItem*>(layer->m_item) )
+                    li->resetDragStartPos();
+            }
         }
     }
 
@@ -1970,13 +1975,13 @@ void MainWindow::selectLayerItem( const QString &itemName )
          item->setSelected(true);
         }
       }
-      // update active layer
+      // update active layer — match by layer ID stored in combo data, not by name suffix
+      int targetId = m_selectLayerItem->itemData(m_selectLayerItem->currentIndex()).toInt();
       for ( Layer* l : m_imageView->layers() ) {
          if ( l->m_item ) {
           LayerItem *layerItem = dynamic_cast<LayerItem*>(l->m_item);
           if ( layerItem != nullptr ) {
-            QString name = l->name().section(' ', -2, -1);
-            if ( name == itemName ) {
+            if ( l->id() == targetId ) {
               layerItem->setIsSelected(6,true);
               layerItem->setZValue(3);
             } else {
@@ -2088,6 +2093,16 @@ void MainWindow::setSelectedLayer( int caller, const QString &name, bool forcedE
     qCDebug(logEditor) << "MainWindow::setSelectedLayer(): index =" << index;
     bool isEnabled = index == -1 ? false : true;
     isEnabled = forcedEnabled ? true : isEnabled;
+    // Inpainting layers are composited overlays — block all geometric transforms.
+    if ( isEnabled ) {
+        const int layerId = m_selectLayerItem->itemData(index).toInt();
+        for ( Layer* l : m_imageView->layers() ) {
+            if ( l->id() == layerId && l->creator() == "Inpainting" ) {
+                isEnabled = false;
+                break;
+            }
+        }
+    }
     m_translateLayerToolbar->setEnabled(isEnabled);
     m_canvasWarpLayerToolbar->setEnabled(isEnabled);
     m_rotateLayerToolbar->setEnabled(isEnabled);
@@ -3611,6 +3626,7 @@ void MainWindow::createToolbars()
         auto* sm = qobject_cast<QStandardItemModel*>(m_inpaintModelCombo->model());
         if ( sm ) sm->item(1)->setEnabled(false);
     }
+    m_inpaintModelCombo->setFocusPolicy(Qt::NoFocus);
     m_inpaintModelCombo->setToolTip(tr("<b>Inpainting model</b><br>"
         "Classic: PatchMatch algorithm.<br>"
         "LaMa: AI-based inpainting for large regions."));
@@ -3622,12 +3638,14 @@ void MainWindow::createToolbars()
 
     // ── Options button ────────────────────────────────────────────────────────
     QPushButton* inpaintOptionsBtn = new QPushButton(tr("Options"), this);
+    inpaintOptionsBtn->setFocusPolicy(Qt::NoFocus);
     inpaintOptionsBtn->setToolTip(tr("<b>Options</b><br>Configure model-specific inpainting parameters."));
     m_inpaintingToolbar->addWidget(inpaintOptionsBtn);
     connect(inpaintOptionsBtn, &QPushButton::clicked, m_imageView, &ImageView::showInpaintOptions);
 
     // ── Run button ────────────────────────────────────────────────────────────
     QPushButton* inpaintRunBtn = new QPushButton(tr("Run"), this);
+    inpaintRunBtn->setFocusPolicy(Qt::NoFocus);
     inpaintRunBtn->setToolTip(tr("<b>Run inpainting</b><br>"
         "Fill the painted region using the selected model. "
         "The result is placed on a new layer."));
@@ -3931,6 +3949,18 @@ void MainWindow::showConfig()
       scheduleOverviewRefresh();
   });
   dlg.exec();
+  // Re-check LaMa availability — model path may have changed in the config dialog.
+  if ( m_inpaintModelCombo ) {
+      auto* sm = qobject_cast<QStandardItemModel*>(m_inpaintModelCombo->model());
+      if ( sm && sm->rowCount() > 1 ) {
+          const bool lamaOk = LaMaInpainting::isAvailable();
+          QStandardItem* lamaItem = sm->item(1);
+          lamaItem->setText(lamaOk ? tr("LaMa (AI)") : tr("LaMa (not available)"));
+          lamaItem->setEnabled(lamaOk);
+          if ( !lamaOk && m_inpaintModelCombo->currentIndex() == 1 )
+              m_inpaintModelCombo->setCurrentIndex(0);
+      }
+  }
   // Apply showOverviewMap toggle immediately (only when dock panel is open).
   if ( m_overviewDock && m_layerDock->isVisible() )
       m_overviewDock->setVisible(EditorStyle::instance().showOverviewMap());
