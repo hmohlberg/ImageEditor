@@ -9,6 +9,33 @@ Institute of Neuroscience and Medicine (INM-1), Forschungszentrum Jülich GmbH
 
 A versatile Qt6-based image processing tool with JSON-history support, designed to run on Debian Linux, macOS, and Windows (via WSL). It supports both a Graphical User Interface and a headless batch mode for server environments.
 
+## Table of Contents
+
+- [Features](#features)
+- [Pre-built Binaries](#pre-built-binaries)
+  - [Debian / Ubuntu](#debian--ubuntu)
+  - [macOS](#macos)
+  - [Windows (via WSL)](#windows-via-wsl)
+- [Building from Source](#building-from-source)
+  - [Toolchain Requirements](#toolchain-requirements)
+  - [Installation on Linux](#installation-on-linux)
+  - [macOS](#macos-1)
+  - [Windows with WSL and Debian](#windows-with-wsl-and-debian)
+  - [Windows with WSL and Ubuntu 24.04](#windows-with-wsl-and-ubuntu-2404)
+  - [Build Process](#build-process)
+  - [CMake Options](#cmake-options)
+  - [MS Windows (native)](#ms-windows-not-yet-tested)
+- [Usage & CLI Options](#usage--cli-options)
+  - [Command Line Arguments](#command-line-arguments)
+  - [Examples](#examples)
+- [Technical Notes](#technical-notes)
+  - [BigTIFF / Pyramid TIFF Viewer](#bigtiff--pyramid-tiff-viewer)
+  - [BigTIFF Batch Processing](#bigtiff-batch-processing)
+  - [HDF5 Image Viewer](#hdf5-image-viewer)
+- [Acknowledgements](#acknowledgements)
+
+---
+
 ## Features
 
 - **Interactive image manipulation tools**: Paint, lasso cut, polygon selection, layer transform (move, rotate, scale, mirror, perspective warp, cage warp). All operations are fully documented and saved in a JSON project file for later replay.
