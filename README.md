@@ -73,18 +73,20 @@ Ready-to-run executables for version **1.0.2** are included directly in the `bin
 | **macOS** | `bin/macos/` | Requires macOS 13 (Ventura) or later. |
 | **Windows (WSL)** | `bin/windows/` | Run `wsl.bat` to launch ImageEditor inside WSL from Windows Explorer. |
 
+> **Note:** When launched from the command line without arguments, ImageEditor runs in batch mode and prints help information to the console. Pass `--gui` to open the graphical window:
+
 **Debian / Ubuntu:**
 ```bash
 cd bin/debian
-./ImageEditor
+./ImageEditor --gui
 ```
 
 **macOS:**
 ```bash
-open bin/macos/ImageEditor.app
+bin/macos/ImageEditor --gui
 ```
 
-**Windows (via WSL):** double-click `bin/windows/wsl.bat`. WSL must be installed first — see [Windows with WSL and Debian](#windows-with-wsl-and-debian).
+**Windows (via WSL):** double-click `bin/windows/wsl.bat` — the launcher passes `--gui` automatically. WSL must be installed first — see [Windows with WSL and Debian](#windows-with-wsl-and-debian).
 
 ---
 
