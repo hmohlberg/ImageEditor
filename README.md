@@ -46,7 +46,7 @@ A versatile Qt6-based image processing tool with JSON-history support, designed 
   PatchMatch works out of the box. To use the LaMa model:
   1. Download the `onnxruntime` shared library for your platform from the [onnxruntime releases page](https://github.com/microsoft/onnxruntime/releases) (or `brew install onnxruntime` on macOS).
   2. Download the LaMa ONNX model file.
-  3. Enter the path to the model file either in the **Config file** (`[Inpainting] model_path = /path/to/lama.onnx`) or via **Edit → Config → Inpainting** in the application.
+  3. Enter the path to the model file either in the **Config file** (`[Inpainting] model_path = /path/to/lama.onnx`) or via **Config → Models → LaMa inpainting model** in the application.
 - **Batch Processing**: Apply JSON transformation histories via CLI without a GUI.
 - **JSON Project Support**: Load and apply transformation histories from JSON files.
 - **Offscreen Optimized**: Suitable for headless servers using the Qt `offscreen` platform plugin.
