@@ -88,6 +88,8 @@ class TransformLayerCommand : public AbstractCommand
     QTransform m_oldTransform;
     QTransform m_newTransform;
     QTransform m_totalTransform;
+    QTransform m_oldTotalTransform;
+    bool m_hasTotalTransformSnapshot = false;
 
     QPointF m_positionAdjust;
     

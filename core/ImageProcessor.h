@@ -39,7 +39,7 @@ class ImageProcessor {
     QJsonDocument document() const { return m_jsonDocument; }
     
     // --------------------------  --------------------------
-    void setIntermediatePath( const QString& path = "", const QString& outname = "" );
+    void setIntermediatePath( const QString& templateFile = "" );
     bool setOutputImage( int ident );
     bool process( const QString& filePath, bool forcedAlphaMasking=false, bool processHistory=true );
     void printself();
@@ -48,6 +48,7 @@ class ImageProcessor {
  private:
 
     QString saveIntermediate( AbstractCommand *cmd, const QString &name, int step );
+    QImage  compositeLayers() const;
 
     bool m_skipMainImage = false;
     bool m_saveIntermediate = false;
@@ -57,8 +58,7 @@ class ImageProcessor {
     
     QJsonDocument m_jsonDocument;
     
-    QString m_intermediatePath = "";
-    QString m_basename = "";
+    QString m_intermediateBase = "";
     
     QUndoStack* m_undoStack = nullptr;
     

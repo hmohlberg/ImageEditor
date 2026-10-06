@@ -40,6 +40,10 @@ TransformLayerCommand::TransformLayerCommand( LayerItem* layer,
   {
     m_layerId = layer->id();
     m_totalTransform = m_newTransform;
+    if ( m_trafoType == LayerTransformType::Rotate ) {
+      m_oldTotalTransform        = layer->totalTransform();
+      m_hasTotalTransformSnapshot = true;
+    }
     setText(name);
     if ( m_trafoType == LayerTransformType::Rotate ) {
       QByteArray rotateLayerSvg = 
@@ -141,14 +145,15 @@ void TransformLayerCommand::restoreSceneTopLeft( LayerItem* layer, const QRectF&
 }
 
 // -------------------------------- Merge transforms --------------------------------
-bool TransformLayerCommand::mergeWith( const QUndoCommand *other ) 
+bool TransformLayerCommand::mergeWith( const QUndoCommand *other )
 {
   qCDebug(logEditor) << "TransformLayerCommand::mergeWith(): Processing...";
   {
     if ( other->id() != id() ) return false;
     const TransformLayerCommand *otherCmd = static_cast<const TransformLayerCommand*>(other);
-    if ( m_layer != otherCmd->m_layer || otherCmd->trafoType() != trafoType() ) return false; 
-    m_newTransform *= otherCmd->m_newTransform;
+    if ( m_layer != otherCmd->m_layer || otherCmd->trafoType() != trafoType() ) return false;
+    m_newTransform    *= otherCmd->m_newTransform;
+    m_positionAdjust  += otherCmd->m_positionAdjust;
     return true;
   }
 }
@@ -157,28 +162,36 @@ bool TransformLayerCommand::mergeWith( const QUndoCommand *other )
 // -------------------------------- Undo/Redo --------------------------------
 // ---------------------------------------------------------------------------
 
-void TransformLayerCommand::undo() 
+void TransformLayerCommand::undo()
 {
   qCDebug(logEditor) << "TransformLayerCommand::undo(): Processing...";
   {
     if ( !m_layer || m_deleted ) return;
-    const QRectF oldSceneRect = m_layer->sceneBoundingRect();
-    bool invertible = false;
-    QTransform inv = m_newTransform.inverted(&invertible);
-    if ( invertible ) {
-      if ( m_trafoType == LayerTransformType::Scale ) {
-        m_layer->shiftTo(m_oldPos+QPointF(inv.dx(),inv.dy()));
-      }
-      m_layer->setImageTransform(inv);
-      m_totalTransform *= inv;
+    if ( m_trafoType == LayerTransformType::Rotate && m_hasTotalTransformSnapshot ) {
+      // Absolute restoration: bypass incremental inverse entirely.
+      // m_oldTotalTransform and m_oldPos are the exact layer state before this
+      // command's first redo() ran, so restoring them is lossless.
+      m_layer->restoreTransformState(m_oldTotalTransform, m_oldPos);
     } else {
-      // old errornous code
-      m_layer->resetTotalTransform();
-      m_layer->setImageTransform(m_oldTransform);
-      m_totalTransform = QTransform();
-    }
-    if ( m_trafoType == LayerTransformType::Scale ) {
-      m_layer->setCageVisible(LayerItem::OperationMode::Scale,false);
+      const QRectF oldSceneRect = m_layer->sceneBoundingRect();
+      bool invertible = false;
+      QTransform inv = m_newTransform.inverted(&invertible);
+      if ( invertible ) {
+        if ( m_trafoType == LayerTransformType::Scale ) {
+          m_layer->shiftTo(m_oldPos+QPointF(inv.dx(),inv.dy()));
+        }
+        m_layer->setImageTransform(inv);
+        m_totalTransform *= inv;
+      } else {
+        m_layer->resetTotalTransform();
+        m_layer->setImageTransform(m_oldTransform);
+        m_totalTransform = QTransform();
+      }
+      if ( m_trafoType == LayerTransformType::Scale ) {
+        m_layer->setCageVisible(LayerItem::OperationMode::Scale,false);
+      } else if ( m_trafoType == LayerTransformType::Rotate && !m_positionAdjust.isNull() ) {
+        m_layer->setPos(m_layer->pos() - m_positionAdjust);
+      }
     }
     printMessage(true);
   }
@@ -241,8 +254,15 @@ QJsonObject TransformLayerCommand::toJson() const
     newTransformObj["m21"] = m_newTransform.m21(); newTransformObj["m22"] = m_newTransform.m22(); newTransformObj["m23"] = m_newTransform.m23();
     newTransformObj["m31"] = m_newTransform.m31(); newTransformObj["m32"] = m_newTransform.m32(); newTransformObj["m33"] = m_newTransform.m33();
     obj["newTransform"] = newTransformObj;
-    
-    return obj; 
+    if ( m_hasTotalTransformSnapshot ) {
+        QJsonObject ottObj;
+        ottObj["m11"] = m_oldTotalTransform.m11(); ottObj["m12"] = m_oldTotalTransform.m12(); ottObj["m13"] = m_oldTotalTransform.m13();
+        ottObj["m21"] = m_oldTotalTransform.m21(); ottObj["m22"] = m_oldTotalTransform.m22(); ottObj["m23"] = m_oldTotalTransform.m23();
+        ottObj["m31"] = m_oldTotalTransform.m31(); ottObj["m32"] = m_oldTotalTransform.m32(); ottObj["m33"] = m_oldTotalTransform.m33();
+        obj["oldTotalTransform"] = ottObj;
+    }
+
+    return obj;
 }
 
 TransformLayerCommand* TransformLayerCommand::fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent )
@@ -289,7 +309,7 @@ TransformLayerCommand* TransformLayerCommand::fromJson( const QJsonObject& obj, 
     );
     
     // >>>
-    return new TransformLayerCommand(
+    auto* cmd = new TransformLayerCommand(
         layer,
         oldPos,
         newPos,
@@ -299,5 +319,18 @@ TransformLayerCommand* TransformLayerCommand::fromJson( const QJsonObject& obj, 
         name,
         trafoType
     );
+    // The constructor may have set m_hasTotalTransformSnapshot based on the layer's
+    // current state, which is meaningless here.  Authoritative value comes from JSON.
+    cmd->m_hasTotalTransformSnapshot = false;
+    if ( obj.contains("oldTotalTransform") ) {
+        QJsonObject ottObj = obj["oldTotalTransform"].toObject();
+        cmd->m_oldTotalTransform = QTransform(
+            ottObj["m11"].toDouble(), ottObj["m12"].toDouble(), ottObj["m13"].toDouble(),
+            ottObj["m21"].toDouble(), ottObj["m22"].toDouble(), ottObj["m23"].toDouble(),
+            ottObj["m31"].toDouble(), ottObj["m32"].toDouble(), ottObj["m33"].toDouble()
+        );
+        cmd->m_hasTotalTransformSnapshot = true;
+    }
+    return cmd;
   }
 }

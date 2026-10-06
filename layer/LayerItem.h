@@ -101,7 +101,9 @@ class LayerItem : public QGraphicsPixmapItem
     LayerItem( const QString& name, const QImage& image, QGraphicsItem* parent = nullptr );
     ~LayerItem();
 
-    QRectF boundingRect() const override;
+    QRectF      boundingRect() const override;
+    QPainterPath shape()       const override;
+    bool        contains(const QPointF& point) const override;
 
     /**
      * @brief Paints a single brush stroke segment directly into the layer image.
@@ -147,6 +149,9 @@ class LayerItem : public QGraphicsPixmapItem
     void setTotalTransform( const QTransform &transform ) {
       m_totalTransform = transform;
     }
+    /// @brief Restores exact transform state for undo: sets m_totalTransform directly,
+    ///        regenerates m_image, and restores pos() without any scene-center adjustment.
+    void restoreTransformState( const QTransform& totalTransform, const QPointF& restoredPos );
 
     void setIsSelected( int caller, bool isSelected );
     /// @brief Applies a mirror preset: 0 = none, 1 = horizontal, 2 = vertical.
@@ -160,6 +165,16 @@ class LayerItem : public QGraphicsPixmapItem
     void scale( double xscale, double yscale );
     void setRotationAngle( double value );
     double getRotationAngle() const { return m_currentRotation; }
+
+    // pivot() returns item-local coords for painting/hit-testing.
+    // m_pivot is stored in scene coords so it survives pixmap changes after rotation.
+    QPointF pivot() const { return m_hasPivot ? mapFromScene(m_pivot) : boundingRect().center(); }
+    QPointF pivotScene() const { return m_hasPivot ? m_pivot : mapToScene(boundingRect().center()); }
+    void setPivot(const QPointF& scenePos) { prepareGeometryChange(); m_pivot = scenePos; m_hasPivot = true; update(); }
+    void resetPivot() { prepareGeometryChange(); m_hasPivot = false; m_pivot = {}; m_pivotSelected = false; m_pivotDragging = false; update(); }
+    bool beginPivotDragIfHit(const QPointF& scenePos);
+    void updatePivotTo(const QPointF& scenePos);
+    void finishPivotDrag();
     void setImageRect( const QRectF& rect );
     /**
      * @brief Applies an additional transform to the layer.
@@ -293,6 +308,13 @@ class LayerItem : public QGraphicsPixmapItem
     double m_currentRotation = 0.0;
     double m_startMouseAngle = 0.0;
     double m_startLayerRotation = 0.0;
+
+    QPointF m_pivot;               // scene coordinates
+    bool    m_hasPivot        = false;
+    bool    m_pivotSelected   = false;
+    bool    m_pivotDragging   = false;
+    bool    m_pivotWasSet     = false; // m_hasPivot value at drag start (for SetPivotCommand)
+    QPointF m_pivotAtDragStart;        // scene coordinates at drag start
     
     OperationMode m_operationMode = LayerItem::Translate;
     OperationMode m_polygonOperationMode = LayerItem::AddPoint;

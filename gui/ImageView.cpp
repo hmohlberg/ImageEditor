@@ -1155,10 +1155,6 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         const QList<QGraphicsItem*> itemsUnderCursor = scene()->items(scenePos);
         LayerItem* clickedLayer = itemsUnderCursor.isEmpty() ? nullptr : dynamic_cast<LayerItem*>(itemsUnderCursor.first());
         if ( clickedLayer && clickedLayer->getType() == LayerItem::MainImage ) {
-          // qDebug() << "ImageView::mousePressEvent(): Processing MainImage click...";
-          // THIS WILL DESELECT ANY LAYER AND CAUSED A COUPLE OF PROBLEMS:
-          //   mainWindow->showMessage("Deselected layer");
-          //   mainWindow->setSelectedLayer(5,"");
           event->accept();
           return;
         }
@@ -1295,8 +1291,28 @@ void ImageView::mousePressEvent( QMouseEvent* event )
       }
     }
 
+    // Qt's internal itemsAtPosition (1×1 rect query + viewport transform) may
+    // miss the pivot area even when our POINT query finds the layer, causing
+    // clearSelection() to fire.  Intercept pivot clicks here and bypass that
+    // broken dispatch path entirely.
+    if ( mainWindow->getOperationMode() == MainWindow::MainOperationMode::ImageLayer
+         && event->button() == Qt::LeftButton ) {
+        const QList<QGraphicsItem*> pivotItems = scene()->items(scenePos);
+        for ( QGraphicsItem* gi : pivotItems ) {
+            LayerItem* layer = dynamic_cast<LayerItem*>(gi);
+            if ( !layer || layer->getType() == LayerItem::MainImage ) break;
+            if ( layer->isSelected() && layer->operationMode() == LayerItem::Rotate
+                 && layer->beginPivotDragIfHit(scenePos) ) {
+                m_pivotDragLayer  = layer;
+                m_pivotDragActive = true;
+                event->accept();
+                return;
+            }
+            break;
+        }
+    }
     QGraphicsView::mousePressEvent(event);
-  
+
   }
 }
 
@@ -1395,6 +1411,13 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
         horizontalScrollBar()->setValue(horizontalScrollBar()->value() - delta.x());
         verticalScrollBar()->setValue(verticalScrollBar()->value() - delta.y());
         m_lastMousePos = event->pos();
+        return;
+    }
+
+    // --- Pivot drag (handled here to avoid Qt's itemsAtPosition dispatch) ---
+    if ( m_pivotDragActive && m_pivotDragLayer && (event->buttons() & Qt::LeftButton) ) {
+        m_pivotDragLayer->updatePivotTo(scenePos);
+        event->accept();
         return;
     }
 
@@ -1620,6 +1643,15 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
         return;
     } 
     
+    // --- Pivot drag release ---
+    if ( m_pivotDragActive && m_pivotDragLayer && event->button() == Qt::LeftButton ) {
+        m_pivotDragLayer->finishPivotDrag();
+        m_pivotDragLayer  = nullptr;
+        m_pivotDragActive = false;
+        event->accept();
+        return;
+    }
+
     QGraphicsView::mouseReleaseEvent(event);
   }
 }
@@ -1628,16 +1660,27 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
 //    If newScale will be too small (e.g. < 0.001), the BSP-Tree crashed.
 void ImageView::wheelEvent( QWheelEvent* event )
 {
-    // Use device type to distinguish trackpad from mouse wheel.
-    // pixelDelta alone is unreliable: macOS routes all scrolling (including
-    // physical mouse wheels) through smooth-scrolling, so pixelDelta is set
-    // for both. device()->type() is the authoritative source.
-    const bool ctrlHeld   = event->modifiers() & Qt::ControlModifier;
-    const bool isTouchpad = event->device() &&
+    const bool ctrlHeld = event->modifiers() & Qt::ControlModifier;
+
+    // Distinguish touchpad smooth-scroll from physical mouse wheel.
+    //
+    // Primary signal: device()->type().  Reliable on macOS and X11.
+    //
+    // Secondary signal (Wayland guard): physical mouse wheels always produce
+    // angleDelta in exact multiples of 120 (one notch = 15°, 8 units/°).
+    // Touchpad smooth-scroll sends arbitrary small values.  On Wayland some
+    // compositors merge all pointer devices under a single logical device and
+    // may report type TouchPad for a physical mouse; the step-size check
+    // overrides that mis-classification.
+    const QPoint angle = event->angleDelta();
+    const bool angleIsDiscreteStep = !angle.isNull() &&
+        (angle.x() % 120 == 0) && (angle.y() % 120 == 0);
+    const bool deviceIsTouchpad = event->device() &&
         event->device()->type() == QInputDevice::DeviceType::TouchPad;
+    const bool isTouchpad = deviceIsTouchpad && !angleIsDiscreteStep;
 
     if ( isTouchpad && !ctrlHeld ) {
-        // Trackpad two-finger swipe → pan
+        // Touchpad two-finger swipe → pan
         const QPoint px = event->pixelDelta();
         if ( !px.isNull() ) {
             horizontalScrollBar()->setValue(horizontalScrollBar()->value() - px.x());
@@ -1645,15 +1688,20 @@ void ImageView::wheelEvent( QWheelEvent* event )
         } else {
             // Touchpad without pixelDelta (rare) → use angleDelta scaled down
             horizontalScrollBar()->setValue(
-                horizontalScrollBar()->value() - event->angleDelta().x() / 4);
+                horizontalScrollBar()->value() - angle.x() / 4);
             verticalScrollBar()->setValue(
-                verticalScrollBar()->value()   - event->angleDelta().y() / 4);
+                verticalScrollBar()->value()   - angle.y() / 4);
         }
         event->accept();
         return;
     }
-    // Mouse wheel or Ctrl+trackpad → zoom
-    const int delta = event->angleDelta().y();
+
+    // Mouse wheel or Ctrl+touchpad → zoom.
+    // Wayland fallback: some compositors omit wl_pointer.axis_discrete so Qt
+    // leaves angleDelta at zero; use pixelDelta.y() direction in that case.
+    int delta = angle.y();
+    if ( delta == 0 )
+        delta = event->pixelDelta().y();
     if ( delta != 0 && ImageView::scaleScene(delta > 0 ? +1 : -1) )
         event->accept();
     else

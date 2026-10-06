@@ -34,6 +34,7 @@
 #include "../undo/MirrorLayerCommand.h"
 #include "../undo/MoveLayerCommand.h"
 #include "../undo/CageWarpCommand.h"
+#include "../undo/SetPivotCommand.h"
 
 #include <iostream>
 #include <algorithm>
@@ -55,15 +56,53 @@ ImageProcessor::ImageProcessor()
 }
 
 // ----------------------- Methods -----------------------
+QImage ImageProcessor::compositeLayers() const
+{
+  QImage result;
+  for ( auto* item : m_layers ) {
+    auto* layer = dynamic_cast<LayerItem*>(item);
+    if ( layer && layer->id() == 0 ) {
+      result = layer->image();
+      break;
+    }
+  }
+  if ( result.isNull() ) return result;
+
+  auto sortedLayers = m_layers;
+  std::sort(sortedLayers.begin(), sortedLayers.end(), [](QGraphicsItem* a, QGraphicsItem* b) {
+    auto* layerA = dynamic_cast<LayerItem*>(a);
+    auto* layerB = dynamic_cast<LayerItem*>(b);
+    if ( !layerA || !layerB ) return false;
+    long areaA = (long)layerA->image().width() * layerA->image().height();
+    long areaB = (long)layerB->image().width() * layerB->image().height();
+    return areaA > areaB;
+  });
+
+  QPainter painter(&result);
+  painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+  for ( auto* item : sortedLayers ) {
+    auto* layer = dynamic_cast<LayerItem*>(item);
+    if ( layer && layer->id() != 0 ) {
+      QImage overlayImage = layer->image();
+      if ( !overlayImage.isNull() ) {
+        int x = static_cast<int>(layer->pos().x());
+        int y = static_cast<int>(layer->pos().y());
+        painter.drawImage(x, y, overlayImage);
+      }
+    }
+  }
+  painter.end();
+  return result;
+}
+
 QString ImageProcessor::saveIntermediate( AbstractCommand *cmd, const QString &name, int step )
 {
-  if ( m_saveIntermediate && cmd != nullptr ) {
-    QString outfilename = QString("%1/%2_%3.png").arg(m_intermediatePath).arg(m_basename).arg(1000+step);
-    LayerItem *layer = cmd->layer();
-    if ( layer != nullptr ) {
-        qInfo() << layer->pos() << " - " << layer->image().rect();
-        layer->image().save(outfilename);
-        return QString("%1 %2 %3\n").arg(1000+step).arg(name).arg(outfilename);
+  if ( m_saveIntermediate ) {
+    QString outfilename = QString("%1_%2.png").arg(m_intermediateBase).arg(step, 4, 10, QChar('0'));
+    QImage composited = compositeLayers();
+    if ( !composited.isNull() ) {
+      composited.save(outfilename);
+      return QString("%1 %2 %3\n").arg(step, 4, 10, QChar('0')).arg(name).arg(outfilename);
     }
   }
   return "";
@@ -80,14 +119,18 @@ void ImageProcessor::buildMainImageLayer() {
    }
 }
 
-void ImageProcessor::setIntermediatePath( const QString& path, const QString& outname ) 
+void ImageProcessor::setIntermediatePath( const QString& templateFile )
 {
-    m_intermediatePath = path;
-    if ( outname.length() > 0 ) {
-       QFileInfo fileInfo(outname);
-       m_basename = fileInfo.baseName();
+    if ( templateFile.isEmpty() ) {
+        m_saveIntermediate = false;
+        m_intermediateBase = "";
+        return;
     }
-    m_saveIntermediate = path.length() > 0 ? true : false;
+    if ( templateFile.endsWith(".png", Qt::CaseInsensitive) )
+        m_intermediateBase = templateFile.left(templateFile.length() - 4);
+    else
+        m_intermediateBase = templateFile;
+    m_saveIntermediate = true;
 }
 
 bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, bool processHistory ) 
@@ -302,6 +345,8 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
            cmd = TransformLayerCommand::fromJson(cmdObj, m_layers);
         } else if ( type == "PerspectiveWarp" || type == "PerspectiveWarpCommand" ) {
            cmd = PerspectiveWarpCommand::fromJson(cmdObj, m_layers);
+        } else if ( type == "SetPivot" ) {
+           cmd = SetPivotCommand::fromJson(cmdObj, m_layers);
         } else if ( type == "DeleteUndoEntry" || type == "DeleteUndoEntryCommand" ) {
            cmd = DeleteUndoEntryCommand::fromJson(m_undoStack, cmdObj, m_layers);
         } else {
@@ -318,7 +363,7 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
       nStep += 1;
     }
     if ( m_saveIntermediate && infoTextLines != "" ) {
-      QString outfilename = QString("%1/%2.info").arg(m_intermediatePath).arg(m_basename);
+      QString outfilename = QString("%1.info").arg(m_intermediateBase);
       QFile file(outfilename);
       if ( file.open(QIODevice::WriteOnly | QIODevice::Text) ) {
         QTextStream out(&file);

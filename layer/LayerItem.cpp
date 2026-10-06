@@ -28,6 +28,7 @@
 #include "../undo/TransformLayerCommand.h"
 #include "../undo/MirrorLayerCommand.h"
 #include "../undo/MoveLayerCommand.h"
+#include "../undo/SetPivotCommand.h"
 #include "../undo/CageWarpCommand.h"
 #include "../undo/CageEditCommand.h"
 #include "../util/Interpolation.h"
@@ -44,6 +45,7 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsScene>
 #include <QPainter>
+#include <QtMath>
 #include <QBuffer>
 #include <iostream>
 
@@ -127,14 +129,86 @@ QRectF LayerItem::boundingRect() const
    if ( m_cageMesh.isActive() ) {
       QRectF cageRect = QPolygonF(m_cageMesh.points()).boundingRect();
       QRectF united = pixmapRect.united(cageRect);
-      // qDebug() << pixmapRect << ": " << cageRect << " - united: " << united;
       return united;
+   }
+   // Expand to include the pivot cross when it lies outside the pixmap
+   if ( m_hasPivot && m_operationMode == OperationMode::Rotate ) {
+      const QPointF p = mapFromScene(m_pivot);
+      const qreal   r = 16.0;
+      pixmapRect = pixmapRect.united(QRectF(p.x() - r, p.y() - r, r * 2, r * 2));
    }
    return pixmapRect;
 }
 
+QPainterPath LayerItem::shape() const
+{
+    QPainterPath path = QGraphicsPixmapItem::shape();
+    if ( m_hasPivot && m_operationMode == OperationMode::Rotate ) {
+        const QPointF p = mapFromScene(m_pivot);
+        const qreal   r = 16.0;
+        path.addRect(QRectF(p.x() - r, p.y() - r, r * 2, r * 2));
+    }
+    return path;
+}
+
+// QGraphicsPixmapItem with BoundingRectShape bypasses virtual shape() in its contains()
+// and tests against the raw pixmap rect directly.  Override contains() so that hits in
+// the pivot area are recognised even when the pivot lies outside the pixmap.
+bool LayerItem::contains(const QPointF& point) const
+{
+    const bool base = QGraphicsPixmapItem::contains(point);
+    if ( base )
+        return true;
+    if ( m_hasPivot && m_operationMode == OperationMode::Rotate ) {
+        const QPointF p = mapFromScene(m_pivot);
+        const qreal   r = 16.0;
+        return QRectF(p.x() - r, p.y() - r, r * 2, r * 2).contains(point);
+    }
+    return false;
+}
+
+// Called by ImageView::mousePressEvent to bypass Qt's internal itemsAtPosition
+// dispatch (which uses a 1×1 rect query and may miss the pivot area).  Sets up
+// the pivot drag state and returns true if scenePos hits the pivot marker.
+bool LayerItem::beginPivotDragIfHit(const QPointF& scenePos)
+{
+    if ( m_operationMode != OperationMode::Rotate || !isSelected() )
+        return false;
+    const QPointF itemPos = mapFromScene(scenePos);
+    if ( QLineF(itemPos, pivot()).length() > 12.0 )
+        return false;
+    m_pivotAtDragStart     = pivotScene();
+    m_pivot                = m_pivotAtDragStart;
+    m_pivotDragging        = true;
+    m_pivotSelected        = true;
+    m_pivotWasSet          = m_hasPivot;
+    m_mouseOperationActive = true;
+    m_startPos             = pos();
+    update();
+    return true;
+}
+
+void LayerItem::updatePivotTo(const QPointF& scenePos)
+{
+    prepareGeometryChange();
+    m_pivot    = scenePos;
+    m_hasPivot = true;
+    update();
+}
+
+void LayerItem::finishPivotDrag()
+{
+    const QPointF newPivotScene = m_pivot;
+    m_pivotDragging = false;
+    m_pivotSelected = false;
+    update();
+    if ( m_undoStack && QLineF(newPivotScene, m_pivotAtDragStart).length() > 0.5 )
+        m_undoStack->push(new SetPivotCommand(this, m_pivotAtDragStart, newPivotScene, m_pivotWasSet));
+    setSelected(true);
+}
+
 // per default moveable layer item
-// NOTE: QGraphicsItem::ItemIsSelectable expands the size of the QGraphicsPixmapItem by +1+1 !   
+// NOTE: QGraphicsItem::ItemIsSelectable expands the size of the QGraphicsPixmapItem by +1+1 !
 void LayerItem::init() 
 {
   setFlags(QGraphicsItem::ItemIsSelectable |
@@ -543,6 +617,26 @@ void LayerItem::reapplyImageTransform()
   updatePixmap();
 }
 
+void LayerItem::restoreTransformState( const QTransform& totalTransform, const QPointF& restoredPos )
+{
+  prepareGeometryChange();
+  m_totalTransform = totalTransform;
+  if ( m_totalTransform.isIdentity() ) {
+    m_image = m_originalImage;
+  } else if ( !m_nogui && EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::System ) {
+    m_image = Interpolation::transformWithHighQuality(m_originalImage, m_totalTransform);
+  } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Bicubic ) {
+    m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
+  } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Nearest ) {
+    m_image = m_originalImage.transformed(m_totalTransform, Qt::FastTransformation);
+  } else {
+    m_image = m_originalImage.transformed(m_totalTransform, Qt::SmoothTransformation);
+  }
+  setPos(restoredPos);
+  setTransform(QTransform());
+  updatePixmap();
+}
+
 // ------------------------ Paint ------------------------
 void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget )
 {
@@ -565,13 +659,15 @@ void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option
     }
     // rotation centre marker
     if ( m_operationMode == OperationMode::Rotate && ( isSelected() || m_isMultiSelected ) ) {
-      const QPointF c   = boundingRect().center();
+      const QPointF c   = pivot();
       const qreal   arm = 8.0;
-      QPen crossPen(Qt::red, 1.5);
+      QPen crossPen(m_pivotSelected ? Qt::yellow : Qt::red, 1.5);
       crossPen.setCosmetic(true);
       painter->setPen(crossPen);
+      painter->setBrush(Qt::NoBrush);
       painter->drawLine(c + QPointF(-arm, 0), c + QPointF(arm, 0));
       painter->drawLine(c + QPointF(0, -arm), c + QPointF(0, arm));
+      painter->drawEllipse(c, 4.0, 4.0);
     }
     // render cage
     if ( m_cageEnabled ) {
@@ -1263,15 +1359,32 @@ void LayerItem::setRotationAngle( double angleDelta )
     QString name = "Rotate Layer";
     TransformLayerCommand::LayerTransformType trafoType = TransformLayerCommand::LayerTransformType::Rotate;
     name += QString(" %1").arg(m_index);
-    QPointF c = boundingRect().center();
+
+    // setImageTransform() always rotates around imageCenter regardless of what transform
+    // is passed (translate/rotate mix due to Qt's pre/post-multiply asymmetry cancels out).
+    // A pure rotation R is therefore correct here.
     QTransform t;
-    t.translate(c.x(), c.y());
     t.rotate(angleDelta);
-    t.translate(-c.x(), -c.y());
+
+    // When a custom pivot is set, compute a scene-space position adjustment so the
+    // rotation visually happens around the pivot point instead of the image center.
+    QPointF posAdj;
+    if ( m_hasPivot ) {
+      const QPointF pivotScene  = m_pivot;   // already scene coords
+      const QPointF centerScene = mapToScene(boundingRect().center());
+      const double  rad  = qDegreesToRadians(angleDelta);
+      const double  cosA = qCos(rad), sinA = qSin(rad);
+      const QPointF off  = centerScene - pivotScene;
+      const QPointF rotOff(cosA * off.x() - sinA * off.y(),
+                            sinA * off.x() + cosA * off.y());
+      posAdj = (pivotScene + rotOff) - centerScene;
+    }
+
     m_currentRotation += angleDelta;
-    m_undoStack->push(
-       new TransformLayerCommand(this, m_startPos, pos(), m_currentRotation, m_startTransform, t, name, trafoType)
-    );
+    auto* cmd = new TransformLayerCommand(this, m_startPos, pos(), m_currentRotation, m_startTransform, t, name, trafoType);
+    if ( !posAdj.isNull() )
+      cmd->setPositionAdjust(posAdj);
+    m_undoStack->push(cmd);
   }
 }
 
@@ -1292,6 +1405,12 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
   qCDebug(logEditor) << "LayerItem::mouseDoubleClickEvent(): index =" << m_index << ", mode =" << m_operationMode;
   {
     if ( isSelected() && isValidMouseEventOperation() ) {
+      if ( m_operationMode == OperationMode::Rotate ) {
+        // Accept without action: prevents QGraphicsScene from calling clearSelection()
+        // when the double-click lands in the extended bounding rect (pivot area outside pixmap).
+        event->accept();
+        return;
+      }
       if ( m_operationMode == OperationMode::CageWarp ) {
         if ( m_cageEnabled == false ) {
           MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
@@ -1314,8 +1433,8 @@ void LayerItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* event )
 
 void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
 {
-  qCDebug(logEditor) << "LayerItem::mousePressEvent(): layer =" << name() << ", selected =" 
-               << isSelected() << ", zValue =" << zValue() << ", operationMode =" << m_operationMode 
+  qCDebug(logEditor) << "LayerItem::mousePressEvent(): layer =" << name() << ", selected ="
+               << isSelected() << ", zValue =" << zValue() << ", operationMode =" << m_operationMode
                << ", active =" << m_mouseOperationActive << ", event_modifiers =" << event->modifiers();
   {
     if ( event->button() != Qt::LeftButton ) {
@@ -1351,10 +1470,36 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
           if ( view )
             view->clearLayerSelection();
         } else if ( m_operationMode == OperationMode::Rotate ) {
-          m_startLayerRotation = m_currentRotation;
-          m_mouseOperationActive = true;
-          m_startPos = pos();
-          QGraphicsPixmapItem::mousePressEvent(event);
+          // Check whether the click lands on the pivot marker (12 px hit tolerance in item coords)
+          const QPointF clickItemPos = event->pos();
+          if ( QLineF(clickItemPos, pivot()).length() <= 12.0 ) {
+            m_pivotAtDragStart  = pivotScene();   // scene coords
+            m_pivot             = m_pivotAtDragStart;  // ensure release without drag doesn't corrupt m_pivot
+            m_pivotDragging     = true;
+            m_pivotSelected     = true;
+            m_pivotWasSet       = m_hasPivot;
+            m_mouseOperationActive = true;
+            m_startPos          = pos();
+            event->accept();
+            update();
+          } else {
+            m_pivotDragging    = false;
+            m_pivotSelected    = false;
+            // If the click is in the extended bounding rect (around the pivot)
+            // but outside the actual pixmap, consume it silently.  Without this,
+            // the base-class call below would ignore() the event (BoundingRectShape
+            // only covers the pixmap rect), causing propagation to MainImage which
+            // would deselect this layer.
+            const QSizeF sz = pixmap().isNull() ? QSizeF(m_image.size()) : QSizeF(pixmap().size());
+            if ( !QRectF(offset(), sz).contains(event->pos()) ) {
+                event->accept();
+                return;
+            }
+            m_startLayerRotation = m_currentRotation;
+            m_mouseOperationActive = true;
+            m_startPos         = pos();
+            QGraphicsPixmapItem::mousePressEvent(event);
+          }
         } else {
          m_mouseOperationActive = false;
         }
@@ -1400,13 +1545,21 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
          }
        }
       } else if ( m_operationMode == OperationMode::Rotate ) {
-       MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
-       if ( parent != nullptr ) {
-        QPointF delta = event->scenePos() - event->buttonDownScenePos(Qt::LeftButton);
-        double angleDelta = m_startLayerRotation + delta.x()/20.0 - m_currentRotation;
-        setRotationAngle(angleDelta);
-        parent->updateLayerOperationParameter("LayerItem::mouseMoveEvent",m_name,LayerItem::OperationMode::Rotate,m_currentRotation); 
-        event->accept();
+       if ( m_pivotDragging ) {
+         prepareGeometryChange();
+         m_pivot    = mapToScene(event->pos());   // store in scene coords
+         m_hasPivot = true;
+         update();
+         event->accept();
+       } else {
+         MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
+         if ( parent != nullptr ) {
+           QPointF delta = event->scenePos() - event->buttonDownScenePos(Qt::LeftButton);
+           double angleDelta = m_startLayerRotation + delta.x()/20.0 - m_currentRotation;
+           setRotationAngle(angleDelta);
+           parent->updateLayerOperationParameter("LayerItem::mouseMoveEvent",m_name,LayerItem::OperationMode::Rotate,m_currentRotation);
+           event->accept();
+         }
        }
       }
     }
@@ -1457,7 +1610,17 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
             if ( moves.size() > 1 ) m_undoStack->endMacro();
         }
     } else if ( m_operationMode == OperationMode::Rotate ) {
-        if ( EditorStyle::instance().allowIntegerMoveOnly() && m_undoStack->index() > 0 ) {
+        const bool pivotWasDragging = m_pivotDragging;
+        if ( m_pivotDragging ) {
+            const QPointF newPivotScene = m_pivot;   // scene coords
+            m_pivotDragging  = false;
+            m_pivotSelected  = false;
+            update();
+            // Only push command when the pivot actually moved
+            if ( QLineF(newPivotScene, m_pivotAtDragStart).length() > 0.5 ) {
+                m_undoStack->push(new SetPivotCommand(this, m_pivotAtDragStart, newPivotScene, m_pivotWasSet));
+            }
+        } else if ( EditorStyle::instance().allowIntegerMoveOnly() && m_undoStack->index() > 0 ) {
             const QPointF snapped(qRound(pos().x()), qRound(pos().y()));
             const QPointF adj = snapped - pos();
             if ( !adj.isNull() ) {
@@ -1466,6 +1629,14 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
                     rotCmd->setPositionAdjust(adj);
                 setPos(snapped);
             }
+        }
+        if ( pivotWasDragging ) {
+            // For pivot press/drag: skip the base-class release to prevent
+            // clearSelection() firing on click-without-drag, which would emit
+            // selectionChanged() and trigger app-level layer deactivation before
+            // our setSelected(true) can restore it.
+            setSelected(true);
+            return;
         }
     }
     // m_operationMode = None;

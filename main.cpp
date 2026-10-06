@@ -496,8 +496,19 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   obj["saveJSONPath"] = parser.value(saveJSONOption);
   obj["configPath"] = parser.value(configFileOption);
   obj["save-intermediate"] = parser.value(intermediateOption);
-  if ( parser.isSet(intermediateOption) && !isPathWritable(obj["save-intermediate"].toString()) ) {
-   exit(1);
+  if ( parser.isSet(intermediateOption) ) {
+    QString intermediateFile = obj["save-intermediate"].toString();
+    QFileInfo fi(intermediateFile);
+    QString suffix = fi.suffix().toLower();
+    if ( !suffix.isEmpty() && suffix != "png" ) {
+      printError(QString("--save-intermediate '%1': nur '.png' oder kein Suffix erlaubt.").arg(intermediateFile));
+      exit(1);
+    }
+    QFileInfo dirInfo(fi.absoluteDir().absolutePath());
+    if ( !dirInfo.exists() || !dirInfo.isWritable() ) {
+      printError(QString("--save-intermediate: Verzeichnis '%1' existiert nicht oder ist nicht schreibbar.").arg(dirInfo.filePath()));
+      exit(1);
+    }
   }
   obj["concatenate"] = parser.isSet(concatOption);
   obj["vulkan"] = false;
@@ -762,7 +773,7 @@ int main( int argc, char *argv[] )
      if ( QString(argv[i]) == "--debug" ) {
        qputenv("QT_LOGGING_RULES", "editor.graphics.debug=true");
      }
-     if ( QString(argv[i]) == "--batch" || QString(argv[i]) == "--output" || QString(argv[i]) == "--save-json" ) batchProcessing = true;
+     if ( QString(argv[i]) == "--batch" || QString(argv[i]) == "--output" || QString(argv[i]) == "--save-json" || QString(argv[i]) == "--save-intermediate" ) batchProcessing = true;
      if ( QString(argv[i]) == "--gui" ) guiProcessing = true;
     }
     
@@ -822,7 +833,7 @@ int main( int argc, char *argv[] )
         return 0;
       }
       QString outputPath = parsedOptions.value("outputPath").toString("");
-      if ( outputPath.isEmpty() ) {
+      if ( outputPath.isEmpty() && parsedOptions.value("save-intermediate").toString("").isEmpty() ) {
        printError("Invalid input. Missing required option '--output <filename>' in batch mode.");
        return 1;
       }
@@ -834,6 +845,7 @@ int main( int argc, char *argv[] )
       // BigTIFF input: use specialised pipelines instead of QImage::load()
       // which would try to load the full-resolution image into RAM.
 #ifdef HASTIFF
+      if ( !outputPath.isEmpty() )
       {
         const QString outExt = QFileInfo(outputPath).suffix().toLower();
         const bool isTiffOut = (outExt == "tif" || outExt == "tiff");
@@ -883,7 +895,7 @@ int main( int argc, char *argv[] )
             if (!projectNone && !historyPath.isEmpty()) {
               ImageProcessor proc(img);
               proc.setIntermediatePath(
-                  parsedOptions.value("save-intermediate").toString(""), outputPath);
+                  parsedOptions.value("save-intermediate").toString(""));
               if (!proc.process(historyPath, forcedAlphaMasking, true)) {
                 printError(QString("Processing failed for BigTIFF level."));
                 return 1;
@@ -921,7 +933,7 @@ int main( int argc, char *argv[] )
       } else if ( imagePath.isEmpty() ) {
        saveCurrentCall(argc, argv);
        ImageProcessor proc;
-       proc.setIntermediatePath(saveIntermediatePath,outputPath);
+       proc.setIntermediatePath(saveIntermediatePath);
        if ( !proc.process(historyPath,forcedAlphaMasking,true) ) {
         printError(QString("Malfunction in ImageProcessor::process(%1).").arg(historyPath));
         return 1;
@@ -932,7 +944,7 @@ int main( int argc, char *argv[] )
         saveCurrentCall(argc, argv);
         Config::isWhiteBackgroundImage = loader.hasWhiteBackground();
         ImageProcessor proc(loader.getImage());
-        proc.setIntermediatePath(saveIntermediatePath,outputPath);
+        proc.setIntermediatePath(saveIntermediatePath);
         if ( !proc.process(historyPath,forcedAlphaMasking,true) ) {
          printError(QString("Malfunction in ImageProcessor::process(%1).").arg(historyPath));
          return 1;
@@ -943,10 +955,11 @@ int main( int argc, char *argv[] )
         return 1;
        }
       }
-      image.setColorSpace(QColorSpace(QColorSpace::SRgb));
-      if ( loader.saveAs(image,outputPath) ) {
-       qInfo() << "Saved image file " << outputPath << ".";
-       return 0;
+      if ( !outputPath.isEmpty() ) {
+        image.setColorSpace(QColorSpace(QColorSpace::SRgb));
+        if ( loader.saveAs(image,outputPath) ) {
+          qInfo() << "Saved image file " << outputPath << ".";
+        }
       }
       return 0;
     }

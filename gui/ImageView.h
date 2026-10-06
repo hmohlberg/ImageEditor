@@ -222,6 +222,8 @@ class ImageView : public QGraphicsView
     LayerItem* m_selectedLayer = nullptr;
     LayerItem* m_selectedCageLayer = nullptr;
     LayerItem* m_paintLayer = nullptr;
+    LayerItem* m_pivotDragLayer = nullptr;
+    bool       m_pivotDragActive = false;
     QList<LayerItem*> m_selectedLayers;
     
     LayerItem::OperationMode m_layerOperationMode = LayerItem::OperationMode::Translate;

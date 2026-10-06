@@ -48,6 +48,7 @@
 #include "../undo/MoveLayerCommand.h"
 #include "../undo/CageWarpCommand.h"
 #include "../undo/DuplicateLayerCommand.h"
+#include "../undo/SetPivotCommand.h"
 
 #include "../util/MaskUtils.h"
 #include "../util/ItemDelegate.h"
@@ -1547,6 +1548,8 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
            }
         } else if ( type == "DuplicateLayer" || type == "DuplicateLayerCommand" ) {
             cmd = DuplicateLayerCommand::fromJson(cmdObj, layers);
+        } else if ( type == "SetPivot" ) {
+            cmd = SetPivotCommand::fromJson(cmdObj, layers);
         } else if ( type == "DeleteUndoEntry" || type == "DeleteUndoEntryCommand" ) {
             cmd = DeleteUndoEntryCommand::fromJson(undoStack, cmdObj, layers);
         } else {
@@ -4027,7 +4030,7 @@ void MainWindow::editLayer(Layer* layer)
   const QImage mainImg = m_layerItem ? m_layerItem->image() : QImage();
   const QPoint origin  = layer->m_item ? layer->m_item->pos().toPoint() : QPoint();
   const bool preserveMode = (m_centralStack->currentIndex() == 1);
-  m_layerEditorView->setImages(layerImg, mainImg, origin, preserveMode);
+  m_layerEditorView->setImages(layerImg, mainImg, origin, preserveMode, layer->m_name);
   m_centralStack->setCurrentIndex(1);
 }
 

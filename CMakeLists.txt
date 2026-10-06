@@ -176,6 +176,7 @@ set(SOURCES
     undo/PolygonSmoothCommand.cpp
     undo/PolygonReduceCommand.cpp
     undo/MoveLayerCommand.cpp
+    undo/SetPivotCommand.cpp
     undo/MaskStrokeCommand.cpp
     undo/MaskPaintCommand.cpp
     util/QUndoSortDialog.cpp
@@ -226,6 +227,7 @@ set(HEADERS
     undo/PolygonTranslateCommand.h
     undo/PolygonSmoothCommand.h
     undo/PolygonReduceCommand.h
+    undo/SetPivotCommand.h
     util/QUndoSortDialog.h
     util/GeometryUtils.h
     util/GpuInfo.h

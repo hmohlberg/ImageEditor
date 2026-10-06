@@ -16,6 +16,7 @@
 */
 
 #include "LayerEditorView.h"
+#include "../core/Config.h"
 
 #include <QGraphicsView>
 #include <QGraphicsScene>
@@ -23,6 +24,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QCheckBox>
 #include <QSpinBox>
 #include <QLabel>
 #include <QUndoCommand>
@@ -327,7 +329,12 @@ LayerEditorView::LayerEditorView(QWidget* parent)
     m_thresholdSpin->setValue(m_threshold);
     m_thresholdSpin->setFixedHeight(26);
     m_thresholdSpin->setFixedWidth(60);
-    m_thresholdSpin->setToolTip(tr("Erase only pixels with alpha < threshold"));
+    m_thresholdSpin->setToolTip(tr("Erase pixels with gray ≤ threshold (normal) or gray ≥ 255−threshold (negate)"));
+
+    m_negateBox = new QCheckBox(tr("Negate"), toolbar);
+    m_negateBox->setToolTip(tr("Invert threshold direction — enable for white-background images "
+                               "so that bright pixels are erased instead of dark ones.\n"
+                               "Auto-set when an image is loaded."));
 
     m_updateBtn = new QPushButton(tr("Update"), toolbar);
     m_updateBtn->setFixedHeight(26);
@@ -350,6 +357,7 @@ LayerEditorView::LayerEditorView(QWidget* parent)
     tbLayout->addWidget(m_eraserSpin);
     tbLayout->addWidget(thrLabel);
     tbLayout->addWidget(m_thresholdSpin);
+    tbLayout->addWidget(m_negateBox);
     tbLayout->addSpacing(8);
     tbLayout->addWidget(m_undoBtn);
     tbLayout->addWidget(m_redoBtn);
@@ -363,11 +371,17 @@ LayerEditorView::LayerEditorView(QWidget* parent)
     tbLayout->addSpacing(4);
     tbLayout->addWidget(btnQuit);
 
+    m_statusLabel = new QLabel(this);
+    m_statusLabel->setFixedHeight(20);
+    m_statusLabel->setContentsMargins(4, 0, 4, 0);
+    m_statusLabel->setStyleSheet("QLabel { color: palette(mid); font-size: 11px; }");
+
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     layout->addWidget(toolbar);
     layout->addWidget(m_view);
+    layout->addWidget(m_statusLabel);
 
     // --- connections ---
     connect(btnPlus,    &QPushButton::clicked, this, &LayerEditorView::zoomIn);
@@ -381,6 +395,9 @@ LayerEditorView::LayerEditorView(QWidget* parent)
     });
     connect(m_thresholdSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int v) {
         m_threshold = v;
+    });
+    connect(m_negateBox, &QCheckBox::toggled, this, [this](bool on) {
+        m_negate = on;
     });
     connect(m_undoBtn,  &QPushButton::clicked,  m_undoStack, &QUndoStack::undo);
     connect(m_redoBtn,  &QPushButton::clicked,  m_undoStack, &QUndoStack::redo);
@@ -522,7 +539,8 @@ LayerEditorView::LayerEditorView(QWidget* parent)
 // ---------------------------------------------------------------------------
 
 void LayerEditorView::setImages(const QImage& layerImage, const QImage& mainImage,
-                                QPoint layerOrigin, bool preserveViewMode)
+                                QPoint layerOrigin, bool preserveViewMode,
+                                const QString& layerName)
 {
     m_layerImage  = layerImage;
     m_mainImage   = mainImage;
@@ -530,11 +548,17 @@ void LayerEditorView::setImages(const QImage& layerImage, const QImage& mainImag
     m_modified = false;
     m_updateBtn->setEnabled(false);
     m_undoStack->clear();
+    m_negate = Config::isWhiteBackgroundImage;
+    m_negateBox->setChecked(m_negate);
     if (!preserveViewMode) {
         m_showComposite = false;
         m_toggleBtn->setChecked(false);
         m_toggleBtn->setText(tr("Mask"));
+        m_threshold = m_negate ? 255 : 50;
+        m_thresholdSpin->setValue(m_threshold);
     }
+    if (!layerName.isEmpty())
+        m_statusLabel->setText(tr("Editor active: %1").arg(layerName));
     showCurrentMode();
     QTimer::singleShot(0, this, [this]{ centerImage(); });
 }
@@ -583,7 +607,9 @@ void LayerEditorView::applyEraser(const QPointF& scenePos)
             if (dx*dx + dy*dy > r*r) continue;
             const int px = cx + dx;
             if (px < 0 || px >= w) continue;
-            if (qGray(qRed(row[px]), qGreen(row[px]), qBlue(row[px])) <= m_threshold)
+            const int gray = qGray(qRed(row[px]), qGreen(row[px]), qBlue(row[px]));
+            const int val  = m_negate ? (255 - gray) : gray;
+            if (val <= m_threshold)
                 row[px] = row[px] & 0x00FFFFFFu;   // clear alpha → transparent
         }
     }

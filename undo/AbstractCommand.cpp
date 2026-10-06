@@ -28,6 +28,7 @@
 #include "InvertLayerCommand.h"
 #include "LassoCutCommand.h"
 #include "TransformLayerCommand.h"
+#include "SetPivotCommand.h"
 #include "EditablePolygonCommand.h"
 #include "DeleteUndoEntryCommand.h"
 
@@ -85,6 +86,8 @@ AbstractCommand* AbstractCommand::fromJson( const QJsonObject& obj, const QList<
         return LassoCutCommand::fromJson(obj,layers);
     if ( type == "TransformLayer" || type == "TransformLayerCommand" )
     	return TransformLayerCommand::fromJson(obj,layers);
+    if ( type == "SetPivot" )
+        return SetPivotCommand::fromJson(obj,layers);
     if ( type == "EditablePolygonCommand" )
         return EditablePolygonCommand::fromJson(obj,layers);
     if ( type == "DeleteUndoEntry" )

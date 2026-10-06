@@ -26,6 +26,7 @@ class QGraphicsView;
 class QGraphicsScene;
 class QGraphicsPixmapItem;
 class QPushButton;
+class QCheckBox;
 class QSpinBox;
 class QLabel;
 
@@ -36,7 +37,8 @@ class LayerEditorView : public QWidget
 public:
     explicit LayerEditorView(QWidget* parent = nullptr);
     void setImages(const QImage& layerImage, const QImage& mainImage,
-                   QPoint layerOrigin = {}, bool preserveViewMode = false);
+                   QPoint layerOrigin = {}, bool preserveViewMode = false,
+                   const QString& layerName = {});
 
     bool isModified() const { return m_modified; }
     QImage layerImage() const { return m_layerImage; }
@@ -78,6 +80,8 @@ private:
     QLabel*              m_colorSwatch = nullptr;
     QSpinBox*            m_eraserSpin     = nullptr;
     QSpinBox*            m_thresholdSpin  = nullptr;
+    QCheckBox*           m_negateBox      = nullptr;
+    QLabel*              m_statusLabel    = nullptr;
 
     QUndoStack* m_undoStack  = nullptr;
 
@@ -89,6 +93,7 @@ private:
     bool   m_modified         = false;
     bool   m_erasing          = false;
     bool   m_pickerActive     = false;
+    bool   m_negate           = false;
     int    m_eraserSize       = 2;
     int    m_threshold        = 255;
     QPoint m_layerOrigin;
