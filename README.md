@@ -16,9 +16,8 @@ A versatile Qt6-based image processing tool with JSON-history support, designed 
 
 - [Features](#features)
 - [Pre-built Binaries](#pre-built-binaries)
-  - [Debian / Ubuntu](#debian--ubuntu)
-  - [macOS](#macos)
-  - [Windows (via WSL)](#windows-via-wsl)
+  - [Executables (this repository)](#executables-this-repository)
+  - [Installation Packages (download)](#installation-packages-download)
 - [Building from Source](#building-from-source)
   - [Toolchain Requirements](#toolchain-requirements)
   - [Installation on Linux](#installation-on-linux)
@@ -43,7 +42,11 @@ A versatile Qt6-based image processing tool with JSON-history support, designed 
 ## Features
 
 - **Interactive image manipulation tools**: Paint, lasso cut, polygon selection, layer transform (move, rotate, scale, mirror, perspective warp, cage warp). All operations are fully documented and saved in a JSON project file for later replay.
-- **AI Inpainting** *(optional)*: Fill selected regions automatically using the **LaMa** deep-learning model or the classical **PatchMatch** algorithm. Results appear on a new, fully undoable layer. Requires `onnxruntime` for LaMa.
+- **AI Inpainting** *(optional)*: Fill selected regions automatically using the **LaMa** deep-learning model or the classical **PatchMatch** algorithm. Results appear on a new, fully undoable layer.
+  PatchMatch works out of the box. To use the LaMa model:
+  1. Download the `onnxruntime` shared library for your platform from the [onnxruntime releases page](https://github.com/microsoft/onnxruntime/releases) (or `brew install onnxruntime` on macOS).
+  2. Download the LaMa ONNX model file.
+  3. Enter the path to the model file either in the **Config file** (`[Inpainting] model_path = /path/to/lama.onnx`) or via **Edit → Config → Inpainting** in the application.
 - **Batch Processing**: Apply JSON transformation histories via CLI without a GUI.
 - **JSON Project Support**: Load and apply transformation histories from JSON files.
 - **Offscreen Optimized**: Suitable for headless servers using the Qt `offscreen` platform plugin.
@@ -60,29 +63,42 @@ A versatile Qt6-based image processing tool with JSON-history support, designed 
 
 ## Pre-built Binaries
 
-Ready-to-run binaries for version **1.0.2** are available in the `bin/` subdirectories of this repository:
+### Executables (this repository)
+
+Ready-to-run executables for version **1.0.2** are included directly in the `bin/` subdirectories of this repository:
 
 | Platform | Directory | Notes |
 | :--- | :--- | :--- |
 | **Debian / Ubuntu** | `bin/debian/` | Built on Debian 13 (Trixie) with Qt 6.8. |
-| **macOS** | `bin/macos/` | Signed `.dmg` bundle; requires macOS 13 (Ventura) or later. |
+| **macOS** | `bin/macos/` | Requires macOS 13 (Ventura) or later. |
 | **Windows (WSL)** | `bin/windows/` | Run `wsl.bat` to launch ImageEditor inside WSL from Windows Explorer. |
 
-### Debian / Ubuntu
-
+**Debian / Ubuntu:**
 ```bash
 cd bin/debian
 ./ImageEditor
 ```
 
-### macOS
+**macOS:**
+```bash
+open bin/macos/ImageEditor.app
+```
 
-Open `bin/macos/ImageEditor-1.0.2.dmg`, drag **ImageEditor.app** to your Applications folder, and launch it from there.
+**Windows (via WSL):** double-click `bin/windows/wsl.bat`. WSL must be installed first — see [Windows with WSL and Debian](#windows-with-wsl-and-debian).
 
-### Windows (via WSL)
+---
 
-1. Make sure WSL is installed (see [Building from Source — Windows with WSL](#windows-with-wsl-and-debian) below for setup).
-2. Double-click `bin/windows/wsl.bat`.
+### Installation Packages (download)
+
+Installer packages for **macOS** (`.dmg`) and **Debian/Ubuntu** (`.deb`) can be downloaded from:
+
+> **[https://example.com/imageeditor/releases](https://example.com/imageeditor/releases)**
+> *(URL will be updated once the release page is live)*
+
+| Package | Platform | Notes |
+| :--- | :--- | :--- |
+| `ImageEditor-1.0.2.dmg` | macOS 13+ | Drag **ImageEditor.app** to Applications, then launch from there. |
+| `imageeditor_1.0.2_amd64.deb` | Debian 13 / Ubuntu 24.10+ | `sudo dpkg -i imageeditor_*.deb && sudo apt-get install -f` |
 
 > If you prefer to build from source instead, follow the instructions in the [Building from Source](#building-from-source) section below.
 
