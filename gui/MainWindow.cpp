@@ -526,9 +526,10 @@ bool MainWindow::eventFilter( QObject *obj, QEvent *event )
     if ( m_imageView != nullptr ) {
       int polygon_index = m_imageView->getNextFreePolygonIndex();
       if ( polygon_index > 0 ) {
+        ensurePolygonComboBoxCoversIndex(polygon_index);
         activePolygon(QString("Polygon %1").arg(polygon_index));
       }
-    } 
+    }
   }
   return QMainWindow::eventFilter(obj, event);
 }
@@ -540,10 +541,13 @@ bool MainWindow::checkUnsavedData( bool isCloseProgram  )
     if ( m_imageView->undoStack()->isClean() )
       return true;
     QString msg = isCloseProgram ? "quit the program" : "continue";
-    auto reply = QMessageBox::question( this, "ImageEditor",
-                            tr("There are unsaved changes.\nDo you really want to %1?").arg(msg),
-                            QMessageBox::Cancel | QMessageBox::No | QMessageBox::Yes,QMessageBox::Yes);
-    return (reply == QMessageBox::Yes);
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Warning);
+    msgBox.setWindowTitle("ImageEditor");
+    msgBox.setText(tr("There are unsaved changes.\nDo you really want to %1?").arg(msg));
+    msgBox.setStandardButtons(QMessageBox::Cancel | QMessageBox::No | QMessageBox::Yes);
+    msgBox.setDefaultButton(QMessageBox::Yes);
+    return (msgBox.exec() == QMessageBox::Yes);
   }
 }
 
@@ -971,6 +975,26 @@ void MainWindow::openImage()
   }
 }
 
+void MainWindow::updateImageDependentActions()
+{
+    const bool hasImage = (m_layerItem != nullptr);
+    const std::initializer_list<QAction*> imageActions = {
+        m_saveAsAction,           m_saveHistoryAction,       m_sortHistoryAction,
+        m_createMaskImageAction,  m_openMaskImageAction,     m_saveMaskImageAction,
+        m_paintMaskImageAction,   m_eraseMaskImageAction,
+        m_paintControlAction,     m_lassoControlAction,      m_maskControlAction,
+        m_inpaintingControlAction,m_layerControlAction,      m_polygonControlAction,
+        m_cutAction,              m_pipetteAction,           m_rubberAction,
+        m_lassoAction,            m_polygonAction,           m_crosshairAction,
+        m_inpaintPaintAction,     m_inpaintEraseAction,
+    };
+    for ( QAction* action : imageActions )
+        if ( action ) action->setEnabled(hasImage);
+    // Disable the entire paint toolbar so Color, Size and Hardness widgets
+    // (which are not QActions and cannot be reached individually) are grayed out.
+    if ( m_editToolbar ) m_editToolbar->setEnabled(hasImage);
+}
+
 void MainWindow::setEditorToolbarsEnabled( bool enabled )
 {
     const std::initializer_list<QToolBar*> bars = {
@@ -1159,17 +1183,51 @@ void MainWindow::saveAsImage()
 
 void MainWindow::saveHistory()
 {
-    QFileDialog::Options options;
-    options |= QFileDialog::DontUseNativeDialog;
-    if ( Config::force ) {
-     options |= QFileDialog::DontConfirmOverwrite;
+    QFileDialog dlg(this, tr("Save JSON History File As..."));
+    dlg.setAcceptMode(QFileDialog::AcceptSave);
+    dlg.setNameFilter(tr("JSON Files (*.json);;All Files (*)"));
+    dlg.setDefaultSuffix("json");
+    dlg.setOption(QFileDialog::DontUseNativeDialog, true);
+    // Suppress Qt's internal overwrite check: with selectFile() active it checks the
+    // list-selected file, not what the user typed. We confirm overwrite ourselves.
+    dlg.setOption(QFileDialog::DontConfirmOverwrite, true);
+    if ( !m_projectFileName.isEmpty() )
+        dlg.setDirectory(QFileInfo(m_projectFileName).absoluteDir());
+
+    // Pre-fill the filename edit directly instead of selectFile(), which also marks the
+    // file in the list view and causes selectedFiles() to return that stale selection
+    // even after the user has typed a different name in the edit field.
+    auto* fnEdit = dlg.findChild<QLineEdit*>("fileNameEdit");
+    if ( fnEdit && !m_projectFileName.isEmpty() )
+        fnEdit->setText(QFileInfo(m_projectFileName).fileName());
+    else if ( !m_projectFileName.isEmpty() )
+        dlg.selectFile(QFileInfo(m_projectFileName).fileName()); // fallback
+
+    if ( dlg.exec() != QDialog::Accepted ) return;
+
+    // Read from the edit field directly: selectedFiles() may still return the list
+    // selection (= original file) rather than what the user actually typed.
+    QString fileName;
+    if ( fnEdit ) {
+        QString typed = fnEdit->text().trimmed();
+        if ( !typed.isEmpty() ) {
+            if ( QFileInfo(typed).suffix().isEmpty() )
+                typed += ".json";
+            fileName = dlg.directory().absoluteFilePath(typed);
+        }
     }
-    QString fileName = QFileDialog::getSaveFileName(this,tr("Save JSON History File As..."),
-                          m_projectFileName,tr("JSON Files (*.json);;All Files (*)"),
-                          nullptr,options);
-    if ( !fileName.isEmpty() ) {
-     saveProject(fileName);
+    if ( fileName.isEmpty() )
+        fileName = dlg.selectedFiles().value(0);
+    if ( fileName.isEmpty() ) return;
+
+    if ( !Config::force && QFile::exists(fileName) ) {
+        const auto reply = QMessageBox::question(this, tr("Overwrite?"),
+            tr("\"%1\" already exists.\nDo you want to replace it?")
+                .arg(QFileInfo(fileName).fileName()),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if ( reply != QMessageBox::Yes ) return;
     }
+    saveProject(fileName);
 }
 
 bool MainWindow::saveProject( const QString& filePath )
@@ -2077,6 +2135,7 @@ void MainWindow::rebuildLayerList()
        }
      }
     }
+    updateImageDependentActions();
   }
 }
 
@@ -3806,7 +3865,8 @@ void MainWindow::createToolbars()
         m_polygonCreateLayerAction->setEnabled(needsUpdate);
     });
     m_polygonToolbar->addAction(m_polygonCreateLayerAction);
-    
+
+    updateImageDependentActions();
   }
 }
 
@@ -4158,35 +4218,44 @@ void MainWindow::newLassoLayerCreated()
   rebuildLayerList();
 }
 
+void MainWindow::ensurePolygonComboBoxCoversIndex( int targetIdx )
+{
+    if ( !m_polygonIndexBox ) return;
+    const QVector<QColor> colors = defaultMaskColors();
+    while ( m_polygonIndexBox->count() < targetIdx ) {
+        const int nextIdx = m_polygonIndexBox->count() + 1;
+        if ( nextIdx >= colors.size() ) break;
+        const QColor& color = colors[nextIdx];
+        QPixmap pix(24, 24);
+        pix.fill(Qt::transparent);
+        QPainter painter(&pix);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setBrush(color);
+        painter.setPen(QPen(Qt::black, 1));
+        painter.drawRoundedRect(2, 2, 20, 20, 4, 4);
+        painter.end();
+        m_polygonIndexBox->addItem(QIcon(pix), QString("Polygon %1").arg(nextIdx));
+    }
+    if ( targetIdx > 999 ) {
+        QFontMetrics fm(m_polygonIndexBox->font());
+        const int w = m_polygonIndexBox->iconSize().width() + 6
+                    + fm.horizontalAdvance(QString("Polygon %1").arg(targetIdx)) + 4
+                    + m_polygonIndexBox->style()->pixelMetric(
+                          QStyle::PM_MenuButtonIndicator, nullptr, m_polygonIndexBox)
+                    + 8;
+        m_polygonIndexBox->setMinimumWidth(w);
+    }
+}
+
 void MainWindow::extendPolygonComboBox()
 {
     if ( !m_polygonIndexBox ) return;
     // Only extend when the just-completed polygon is the last entry in the box.
     const int completedIdx = activePolygon("");
     if ( completedIdx != m_polygonIndexBox->count() ) return;
-    // Don't exceed the total number of available colors.
     const QVector<QColor> colors = defaultMaskColors();
-    const int nextIdx = completedIdx + 1;
-    if ( nextIdx >= colors.size() ) return;
-    const QColor& color = colors[nextIdx];
-    QPixmap pixmap(24, 24);
-    pixmap.fill(Qt::transparent);
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setBrush(color);
-    painter.setPen(QPen(Qt::black, 1));
-    painter.drawRoundedRect(2, 2, 20, 20, 4, 4);
-    painter.end();
-    m_polygonIndexBox->addItem(QIcon(pixmap), QString("Polygon %1").arg(nextIdx));
-    if ( nextIdx > 999 ) {
-        QFontMetrics fm(m_polygonIndexBox->font());
-        const int w = m_polygonIndexBox->iconSize().width() + 6
-                    + fm.horizontalAdvance(QString("Polygon %1").arg(nextIdx)) + 4
-                    + m_polygonIndexBox->style()->pixelMetric(
-                          QStyle::PM_MenuButtonIndicator, nullptr, m_polygonIndexBox)
-                    + 8;
-        m_polygonIndexBox->setMinimumWidth(w);
-    }
+    if ( completedIdx + 1 >= colors.size() ) return;
+    ensurePolygonComboBoxCoversIndex(completedIdx + 1);
 }
 
 void MainWindow::extendMaskComboBox()

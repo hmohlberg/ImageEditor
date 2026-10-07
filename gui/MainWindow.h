@@ -144,7 +144,9 @@ class MainWindow : public QMainWindow, public IMainSystem
     
     QComboBox* buildDefaultColorComboBox( const QString& name = "Label", int maxItems = -1 );
     void extendPolygonComboBox();
+    void ensurePolygonComboBoxCoversIndex( int targetIdx );
     void extendMaskComboBox();
+    void updateImageDependentActions();
     void populateMaskComboBox(int numClasses);
     
     ImageView*       m_imageView       = nullptr;

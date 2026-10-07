@@ -197,20 +197,37 @@ void TransformLayerCommand::undo()
   }
 }
 
-void TransformLayerCommand::redo() 
+void TransformLayerCommand::redo()
 {
   qCDebug(logEditor) << "TransformLayerCommand::redo(): trafoType =" << m_trafoType << "|" << LayerTransformType::Scale;
   {
     if ( m_silent || !m_layer || m_deleted ) return;
     const QRectF oldSceneRect = m_layer->sceneBoundingRect();
     m_totalTransform *= m_newTransform;
-    m_layer->setImageTransform(m_newTransform);
-    if ( m_trafoType == LayerTransformType::Scale ) {
-      m_layer->shiftTo(m_oldPos+QPointF(m_newTransform.dx(),m_newTransform.dy()));
-      if ( EditorStyle::instance().allowIntegerMoveOnly() )
-          m_layer->setPos(QPointF(qRound(m_layer->pos().x()), qRound(m_layer->pos().y())));
-    } else if ( m_trafoType == LayerTransformType::Rotate && !m_positionAdjust.isNull() ) {
-      m_layer->setPos(m_layer->pos() + m_positionAdjust);
+    if ( m_trafoType == LayerTransformType::Rotate && m_layer->hasPivot() ) {
+      // Capture the image center in scene coords BEFORE the transform changes the pixmap.
+      // setImageTransform() preserves pixmap().rect().center() in scene space after the
+      // transform, so using it as our reference is consistent regardless of starting state.
+      const QPointF center = m_layer->mapToScene(QRectF(m_layer->pixmap().rect()).center());
+      m_layer->setImageTransform(m_newTransform);
+      // Rotate `center` around the pivot by m_newTransform's angle to get the correct posAdj.
+      // This is always computed from the actual current state, so accumulated posAdj values
+      // from different drag sessions cannot cause a shift.
+      const QPointF pivot = m_layer->pivotScene();
+      const double cosA = m_newTransform.m11(); // cos(θ)
+      const double sinA = m_newTransform.m12(); // sin(θ)  — m21 == -sin, m12 == +sin
+      const QPointF off = center - pivot;
+      const QPointF posAdj(cosA * off.x() - sinA * off.y() + pivot.x() - center.x(),
+                           sinA * off.x() + cosA * off.y() + pivot.y() - center.y());
+      if ( !posAdj.isNull() )
+          m_layer->setPos(m_layer->pos() + posAdj);
+    } else {
+      m_layer->setImageTransform(m_newTransform);
+      if ( m_trafoType == LayerTransformType::Scale ) {
+        m_layer->shiftTo(m_oldPos+QPointF(m_newTransform.dx(),m_newTransform.dy()));
+        if ( EditorStyle::instance().allowIntegerMoveOnly() )
+            m_layer->setPos(QPointF(qRound(m_layer->pos().x()), qRound(m_layer->pos().y())));
+      }
     }
     if ( m_trafoType == LayerTransformType::Scale ) {
       m_layer->setCageVisible(LayerItem::OperationMode::Scale,true);

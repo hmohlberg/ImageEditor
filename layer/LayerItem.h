@@ -132,6 +132,9 @@ class LayerItem : public QGraphicsPixmapItem
     const QVector<QRgb>& activeLut() const { return m_activeLut; }
     /// @brief Re-derives m_image from m_originalImage using the active LUT for the given region.
     void applyActiveLutToRegion( const QRect& rect );
+    /// @brief Applies @p lut to m_originalImage and, if a non-identity transform is stored,
+    ///        re-applies that transform so the display stays geometrically correct.
+    void applyLutWithTransform( const QVector<QRgb>& lut );
     /// @brief Resets the cumulative transform to the identity matrix.
     void resetTotalTransform();
     /// @brief Stores the file path and computes an MD5 checksum for the loaded file.
@@ -172,6 +175,7 @@ class LayerItem : public QGraphicsPixmapItem
     QPointF pivotScene() const { return m_hasPivot ? m_pivot : mapToScene(boundingRect().center()); }
     void setPivot(const QPointF& scenePos) { prepareGeometryChange(); m_pivot = scenePos; m_hasPivot = true; update(); }
     void resetPivot() { prepareGeometryChange(); m_hasPivot = false; m_pivot = {}; m_pivotSelected = false; m_pivotDragging = false; update(); }
+    bool hasPivot() const { return m_hasPivot; }
     bool beginPivotDragIfHit(const QPointF& scenePos);
     void updatePivotTo(const QPointF& scenePos);
     void finishPivotDrag();

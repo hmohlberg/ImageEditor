@@ -422,6 +422,47 @@ void LayerItem::updateOriginalImage() {
   m_originalImage = m_image;
 }
 
+void LayerItem::applyLutWithTransform( const QVector<QRgb>& lut )
+{
+    const QImage& original = originalImage();
+    if ( original.isNull() || original.format() != QImage::Format_ARGB32 ) return;
+
+    // Build LUT-applied version of m_originalImage (without modifying it).
+    QImage lutApplied = original.copy();
+    for ( int y = 0; y < lutApplied.height(); ++y ) {
+        const QRgb* src = reinterpret_cast<const QRgb*>(original.constScanLine(y));
+        QRgb*       dst = reinterpret_cast<QRgb*>(lutApplied.scanLine(y));
+        for ( int x = 0; x < lutApplied.width(); ++x ) {
+            int gray = qGray(src[x]);
+            QRgb mapped = (gray < lut.size()) ? lut[gray] : src[x];
+            dst[x] = qRgba(qRed(mapped), qGreen(mapped), qBlue(mapped), qAlpha(src[x]));
+        }
+    }
+
+    if ( m_totalTransform.isIdentity() ) {
+        m_image = lutApplied;
+        setActiveLut(lut);
+        updatePixmap();
+    } else {
+        // Re-apply the stored geometric transform to the LUT-applied source image.
+        // Do NOT touch pos() here: commands like TransformLayerCommand may apply a
+        // pivot-based position correction AFTER setImageTransform() that we must not
+        // overwrite.  The output dimensions are identical to the current m_image
+        // (same transform, same source size), so the existing pos() remains correct.
+        if ( !m_nogui && EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::System ) {
+            m_image = Interpolation::transformWithHighQuality(lutApplied, m_totalTransform);
+        } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Bicubic ) {
+            m_image = Interpolation::transformBicubic(lutApplied, m_totalTransform);
+        } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Nearest ) {
+            m_image = lutApplied.transformed(m_totalTransform, Qt::FastTransformation);
+        } else {
+            m_image = lutApplied.transformed(m_totalTransform, Qt::SmoothTransformation);
+        }
+        setActiveLut(lut);
+        updatePixmap();
+    }
+}
+
 // ------------------------ Selected ------------------------
 void LayerItem::setIsSelected( int caller, bool isSelected ) 
 {
@@ -1345,10 +1386,15 @@ void LayerItem::setOperationMode( OperationMode mode )
       setCageVisible(2,false);
       // setOriginalImage(m_image);
      }
+     // boundingRect() changes when m_hasPivot toggles the pivot-cross expansion
+     if ( m_hasPivot ) {
+         prepareGeometryChange();
+     }
      m_operationMode = mode;
      if ( m_operationMode == OperationMode::CageWarp ) {
        setCageVisible(3,true);
      }
+     update();
    }
 }
 

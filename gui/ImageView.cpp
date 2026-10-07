@@ -49,6 +49,7 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QProgressDialog>
 #include <QStandardItemModel>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -65,6 +66,9 @@
 #include <QNativeGestureEvent>
 #include <QGestureEvent>
 #include <QPinchGesture>
+#include <QtConcurrent/QtConcurrentRun>
+#include <QEventLoop>
+#include <QFutureWatcher>
 
 #include <iostream>
 #include <limits>
@@ -264,6 +268,9 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
           } else if ( justFinishedCommand->text().startsWith("Rotate Layer") ) {
             mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::Rotate);
+          } else if ( justFinishedCommand->text().startsWith("Set Rotation Pivot") ) {
+            mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
+            mainWindow->setLayerOperationMode(LayerItem::OperationMode::Rotate);
           } else if ( justFinishedCommand->text().startsWith("Mirror Vertical") ) {
             mainWindow->setMainOperationMode(MainWindow::MainOperationMode::ImageLayer);
             mainWindow->setLayerOperationMode(LayerItem::OperationMode::Flip);
@@ -293,9 +300,15 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
           }
         }
       }
+      // Re-apply the current colormap after every undo/redo so that commands
+      // which restore m_image from a plain backup always show the correct LUT.
+      // Guard against being called during QUndoStack destruction (clear() fires
+      // indexChanged with index 0 while the scene is already being torn down).
+      if ( m_scene && !m_scene->items().isEmpty() )
+          applyDisplayAdjustments();
       m_lastIndex = currentIndex;
     });
-   /** 
+   /**
     setDragMode(QGraphicsView::NoDrag);
     setMouseTracking(true);
     setScene(new QGraphicsScene(this));
@@ -911,25 +924,14 @@ void ImageView::applyDisplayAdjustments()
         effectiveLut[i] = m_lut.isEmpty() ? qRgb(adjusted, adjusted, adjusted) : m_lut[adjusted];
     }
 
-    // Apply directly to all layers — not through the undo stack (display-only).
+    // Apply to all layers. applyLutWithTransform() handles the geometric transform
+    // correctly so rotated/scaled layers keep their visual position.
     for ( QGraphicsItem* item : m_scene->items() ) {
         auto* li = dynamic_cast<LayerItem*>(item);
         if ( !li ) continue;
         const QImage& original = li->originalImage();
         if ( original.isNull() || original.format() != QImage::Format_ARGB32 ) continue;
-        QImage& img = li->image();
-        img = original.copy();
-        for ( int y = 0; y < img.height(); ++y ) {
-            const QRgb* src = reinterpret_cast<const QRgb*>(original.constScanLine(y));
-            QRgb*       dst = reinterpret_cast<QRgb*>(img.scanLine(y));
-            for ( int x = 0; x < img.width(); ++x ) {
-                int gray  = qGray(src[x]);
-                QRgb mapped = effectiveLut[gray];
-                dst[x] = qRgba(qRed(mapped), qGreen(mapped), qBlue(mapped), qAlpha(src[x]));
-            }
-        }
-        li->setActiveLut(effectiveLut);
-        li->updatePixmap();
+        li->applyLutWithTransform(effectiveLut);
     }
 
     // Resample background colour from the updated MainImage so the paint tool stays in sync.
@@ -2155,7 +2157,10 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     LayerItem* base = baseLayer();
     if ( !base || polygon.size() < 3 )
         return nullptr;
-    QImage& src = base->image();
+    // Use originalImage() so the cut pixels are in raw (pre-LUT) space.
+    // applyDisplayAdjustments() then correctly applies the current colormap for the
+    // first time; using image() (LUT-applied) would cause double-mapping.
+    const QImage& src = base->originalImage();
     // --- prepare ---
     // Sample corners to detect the actual background colour (works after colormap changes
     // like Invert, where white background becomes black and vice-versa).
@@ -2236,7 +2241,17 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
      }
      IMainSystem::instance()->showMessage(tr("Running PatchMatch. Please wait…"));
      QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-     QImage inpainted = Inpainting::run(src, holeMask);
+     QImage inpainted;
+     {
+         QFutureWatcher<QImage> watcher;
+         QEventLoop loop;
+         connect(&watcher, &QFutureWatcher<QImage>::finished, &loop, &QEventLoop::quit);
+         watcher.setFuture(QtConcurrent::run([&src, &holeMask]() {
+             return Inpainting::run(src, holeMask);
+         }));
+         loop.exec();
+         inpainted = watcher.result();
+     }
      IMainSystem::instance()->showMessage(tr("Inpainting done"));
      // Cut layer: inpainted fill for the hole, transparent elsewhere
      for ( int y = 0; y < bounds.height(); ++y ) {
@@ -2315,6 +2330,8 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     m_layers.push_back(layer);
     // --- Set new active layer ---
     setActiveLayer(layer->m_name);
+    // Apply current colormap/brightness/contrast to the newly created layer.
+    applyDisplayAdjustments();
     // --- Ready ---
     return cmd;
   }
@@ -2353,12 +2370,42 @@ QImage ImageView::compositeVisible()
     return result;
 }
 
+// ----------------------------------------------------------------------------
+QImage ImageView::compositeVisibleRaw()
+{
+    LayerItem* base = baseLayer();
+    if ( !base ) return {};
+
+    QImage result = base->originalImage().convertToFormat(QImage::Format_RGB32);
+
+    bool invertible = false;
+    QTransform sceneToBase = base->sceneTransform().inverted(&invertible);
+    if ( !invertible ) return result;
+
+    QPainter p(&result);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    const auto items = m_scene->items(Qt::AscendingOrder);
+    for ( auto* item : items ) {
+        auto* layer = dynamic_cast<LayerItem*>(item);
+        if ( !layer || !layer->isVisible() ) continue;
+        if ( layer->getType() == LayerItem::MainImage ) continue;
+        p.save();
+        p.setTransform(layer->sceneTransform() * sceneToBase);
+        p.drawImage(QPointF(0, 0), layer->originalImage());
+        p.restore();
+    }
+    p.end();
+    return result;
+}
+
 void ImageView::applyInpainting()
 {
     LayerItem* base = baseLayer();
     if ( !base || !m_maskLayer ) return;
 
-    QImage src = compositeVisible();
+    QImage src = compositeVisibleRaw();
     if ( src.isNull() ) return;
 
     // Collect which labels are present in the mask (excluding 0)
@@ -2504,8 +2551,19 @@ void ImageView::applyInpainting()
     p.useFilter = gbFilter->isChecked();
     p.bgValue   = sbBg->value();
     p.bgTol     = sbTol->value();
+
+    const QString modelName = p.useLama ? tr("LaMa (AI)") : tr("Classic (PatchMatch)");
+    QProgressDialog progress(tr("Running inpainting — %1. Please wait…").arg(modelName),
+                             QString(), 0, 0,
+                             dynamic_cast<QWidget*>(m_parent));
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumDuration(0);
+    progress.setMinimumWidth(480);
+    progress.setValue(0);
+    QApplication::setOverrideCursor(Qt::WaitCursor);
     if ( executeInpainting(p, src, holeMask) )
         emit inpaintingCompleted();
+    QApplication::restoreOverrideCursor();
 }
 
 // ----------------------------------------------------------------------------
@@ -2544,8 +2602,20 @@ bool ImageView::executeInpainting(const InpaintParams& p, const QImage& src, QIm
         const QString mpath = EditorStyle::instance().lamaModelPath().isEmpty()
                               ? LaMaInpainting::defaultModelPath()
                               : EditorStyle::instance().lamaModelPath();
+        // Run the blocking ONNX inference in a background thread so the main
+        // event loop stays alive — cursor animation and repaints keep working.
         QString errMsg;
-        QImage inpainted = LaMaInpainting::run( src, holeMask, mpath, &errMsg );
+        QImage inpainted;
+        {
+            QFutureWatcher<QImage> watcher;
+            QEventLoop loop;
+            connect(&watcher, &QFutureWatcher<QImage>::finished, &loop, &QEventLoop::quit);
+            watcher.setFuture(QtConcurrent::run([&src, &holeMask, &mpath, &errMsg]() {
+                return LaMaInpainting::run(src, holeMask, mpath, &errMsg);
+            }));
+            loop.exec();
+            inpainted = watcher.result();
+        }
         if ( inpainted.isNull() ) {
             IMainSystem::instance()->showMessage( tr("LaMa failed: ") + errMsg );
             QMessageBox::warning( dynamic_cast<QWidget*>(m_parent),
@@ -2597,7 +2667,9 @@ bool ImageView::executeInpainting(const InpaintParams& p, const QImage& src, QIm
             newLayer->setFlag(QGraphicsItem::ItemIsMovable, false);
             newLayer->resetDragStartPos();
             layer->m_item = newLayer; m_layers.push_back(layer);
-            setActiveLayer(layer->m_name); emit lassoLayerAdded();
+            setActiveLayer(layer->m_name);
+            applyDisplayAdjustments();
+            emit lassoLayerAdded();
             for (int y=holeBounds.top(); y<=holeBounds.bottom(); ++y) {
                 const uchar* hrow = holeMask.constScanLine(y);
                 for (int x=holeBounds.left(); x<=holeBounds.right(); ++x)
@@ -2626,7 +2698,18 @@ bool ImageView::executeInpainting(const InpaintParams& p, const QImage& src, QIm
     IMainSystem::instance()->showMessage( tr("Running PatchMatch. Please wait…") );
     QApplication::processEvents( QEventLoop::ExcludeUserInputEvents );
 
-    QImage inpainted = Inpainting::run( src, holeMask, sourceMask );
+    // Run the blocking PatchMatch in a background thread — same pattern as LaMa.
+    QImage inpainted;
+    {
+        QFutureWatcher<QImage> watcher;
+        QEventLoop loop;
+        connect(&watcher, &QFutureWatcher<QImage>::finished, &loop, &QEventLoop::quit);
+        watcher.setFuture(QtConcurrent::run([&src, &holeMask, &sourceMask]() {
+            return Inpainting::run(src, holeMask, sourceMask);
+        }));
+        loop.exec();
+        inpainted = watcher.result();
+    }
 
     int hx0 = src.width(), hy0 = src.height(), hx1 = 0, hy1 = 0;
     for ( int y = 0; y < src.height(); ++y ) {
@@ -2689,6 +2772,7 @@ bool ImageView::executeInpainting(const InpaintParams& p, const QImage& src, QIm
     m_layers.push_back( layer );
 
     setActiveLayer( layer->m_name );
+    applyDisplayAdjustments();
     emit lassoLayerAdded();
 
     for ( int y = holeBounds.top(); y <= holeBounds.bottom(); ++y ) {
@@ -2715,8 +2799,26 @@ void ImageView::applyInpaintingDirect()
 {
     LayerItem* base = baseLayer();
     if ( !base || !m_maskLayer ) return;
-    QImage src = compositeVisible();
-    if ( src.isNull() ) return;
+
+    // Qt-controlled progress dialog (indeterminate range) shows and animates
+    // immediately — unlike Qt::WaitCursor whose animation depends on the
+    // compositor pipeline and may start with a delay.
+    // setMinimumDuration(0) suppresses the built-in show-delay.
+    const QString modelName = m_inpaintParams.useLama ? tr("LaMa (AI)") : tr("Classic (PatchMatch)");
+    QProgressDialog progress(tr("Running inpainting — %1. Please wait…").arg(modelName),
+                             QString(), 0, 0,
+                             dynamic_cast<QWidget*>(m_parent));
+    progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumDuration(0);
+    progress.setMinimumWidth(480);
+    progress.setValue(0);
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+
+    QImage src = compositeVisibleRaw();
+    if ( src.isNull() ) {
+        QApplication::restoreOverrideCursor();
+        return;
+    }
 
     QImage holeMask( src.size(), QImage::Format_Grayscale8 );
     holeMask.fill(0);
@@ -2730,12 +2832,14 @@ void ImageView::applyInpaintingDirect()
             }
     }
     if ( !hasHole ) {
+        QApplication::restoreOverrideCursor();
         IMainSystem::instance()->showMessage(
             tr("Current label has no painted pixels — nothing to inpaint") );
         return;
     }
     if ( executeInpainting(m_inpaintParams, src, holeMask) )
         emit inpaintingCompleted();
+    QApplication::restoreOverrideCursor();
 }
 
 // ----------------------------------------------------------------------------

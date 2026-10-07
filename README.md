@@ -18,6 +18,7 @@ A versatile Qt6-based image processing tool with JSON-history support, designed 
 - [Pre-built Binaries](#pre-built-binaries)
   - [Executables (this repository)](#executables-this-repository)
   - [Installation Packages (download)](#installation-packages-download)
+- [Updating ImageEditor](#updating-imageeditor)
 - [Building from Source](#building-from-source)
   - [Toolchain Requirements](#toolchain-requirements)
   - [Installation on Linux](#installation-on-linux)
@@ -63,9 +64,19 @@ A versatile Qt6-based image processing tool with JSON-history support, designed 
 
 ## Pre-built Binaries
 
+> **The pre-built binaries are distributed as part of this Git repository.**
+> They are **not** separate downloads — clone or pull the repository to obtain them.
+> The `bin/` subdirectory is always kept in sync with the latest release.
+
 ### Executables (this repository)
 
-Ready-to-run executables for version **1.0.2** are included directly in the `bin/` subdirectories of this repository:
+Ready-to-run executables for version **1.0.2** are located in the `bin/` subdirectory.
+**Clone the repository once** to get everything you need:
+
+```bash
+git clone https://github.com/hmohlberg/ImageEditor.git
+cd ImageEditor
+```
 
 | Platform | Directory | Notes |
 | :--- | :--- | :--- |
@@ -73,7 +84,7 @@ Ready-to-run executables for version **1.0.2** are included directly in the `bin
 | **macOS** | `bin/macos/` | Requires macOS 13 (Ventura) or later. |
 | **Windows (WSL)** | `bin/windows/` | Run `wsl.bat` to launch ImageEditor inside WSL from Windows Explorer. |
 
-> **Note:** When launched from the command line without arguments, ImageEditor runs in batch mode and prints help information to the console. Pass `--gui` to open the graphical window:
+> **Note:** When launched from the command line without arguments, ImageEditor runs in batch mode and prints help information to the console. Pass `--gui` to open the graphical window.
 
 **Debian / Ubuntu:**
 ```bash
@@ -103,6 +114,35 @@ Installer packages for **macOS** (`.dmg`) and **Debian/Ubuntu** (`.deb`) can be 
 | `imageeditor_1.0.2_amd64.deb` | Debian 13 / Ubuntu 24.10+ | `sudo dpkg -i imageeditor_*.deb && sudo apt-get install -f` |
 
 > If you prefer to build from source instead, follow the instructions in the [Building from Source](#building-from-source) section below.
+
+---
+
+## Updating ImageEditor
+
+Because the binaries are part of this repository, updating ImageEditor is simply a matter of pulling the latest commits.
+
+### Linux and macOS
+
+Open a terminal in the ImageEditor directory and run:
+
+```bash
+git pull
+```
+
+The updated binary is immediately available in `bin/debian/` or `bin/macos/` — no reinstallation required.
+
+### Windows (via WSL)
+
+On Windows the update is handled automatically by the launcher.
+Double-clicking `bin/windows/wsl.bat` will:
+
+1. Open the WSL environment.
+2. Run `git pull` inside the repository to fetch the latest binary and project files.
+3. Launch ImageEditor with `--gui` automatically.
+
+No manual steps are needed — every time you start the application via `wsl.bat` it checks for and applies updates before launching.
+
+> **Prerequisite:** The initial clone must have been performed inside the WSL environment as described in [Windows with WSL and Debian](#windows-with-wsl-and-debian). If the clone was done outside WSL, the `git pull` step in the launcher will have no effect.
 
 ---
 

@@ -71,6 +71,7 @@ class ImageView : public QGraphicsView
     };
     
     explicit ImageView( QWidget* parent = nullptr );
+    ~ImageView() override { m_scene = nullptr; }
 
     void clearSelection();
     void clearLayers(); 
@@ -209,6 +210,7 @@ class ImageView : public QGraphicsView
     void initCageWarpForLayer( LayerItem* layerItem );
     LassoCutCommand* createNewLayer( const QPolygonF& polygon, const QString& name );
     QImage compositeVisible();
+    QImage compositeVisibleRaw();
     bool executeInpainting( const InpaintParams& p, const QImage& src, QImage& holeMask );
     void setEnableTransformMode( LayerItem* layer );
     void disableTransformMode();

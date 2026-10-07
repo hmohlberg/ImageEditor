@@ -1,0 +1,160 @@
+name: Bug Report
+description: Report a defect in ImageEditor
+labels: ["bug", "needs-triage"]
+body:
+
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a bug.
+        Please fill in as many fields as possible — incomplete reports are harder to reproduce and may be closed.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what the bug is.
+      placeholder: "When I do X, Y happens instead of Z."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal sequence of actions that reliably triggers the bug.
+      placeholder: |
+        1. Load image '...'
+        2. Load project file '...'
+        3. Switch to Polygon mode
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behaviour
+      description: What should happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behaviour
+      description: What actually happens? Include any error messages or log output.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the application is affected?
+      multiple: true
+      options:
+        - Layer management (create / delete / merge / duplicate)
+        - Mask painting
+        - Lasso / Polygon selection
+        - Inpainting (LaMa)
+        - Inpainting (PatchMatch)
+        - Colormap / display adjustments
+        - Undo / Redo history
+        - Layer transforms (rotate / scale / translate / mirror)
+        - Pivot point
+        - Overview dock
+        - BigTIFF viewer
+        - HDF5 viewer
+        - Save / Load project (JSON)
+        - Export image
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: regression
+    attributes:
+      label: Regression?
+      description: Did this work in a previous version?
+      options:
+        - "Yes — it worked before"
+        - "No — never worked as far as I know"
+        - "Unknown"
+    validations:
+      required: true
+
+  - type: input
+    id: last_good_version
+    attributes:
+      label: Last Known Good Version
+      description: If this is a regression, which version or commit last worked correctly?
+      placeholder: "e.g. commit abc1234 or build from 2026-09-15"
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS 14 (Sonoma)
+        - macOS 15 (Sequoia)
+        - Ubuntu 22.04
+        - Ubuntu 24.04
+        - Windows 11
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: qt_version
+    attributes:
+      label: Qt Version
+      placeholder: "e.g. 6.10.1 (run: qmake6 --version)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build_type
+    attributes:
+      label: Build Type
+      options:
+        - Debug
+        - Release
+        - Unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: image_info
+    attributes:
+      label: Image / Project File Details
+      description: |
+        Relevant details about the image or project file involved (if applicable).
+        Do NOT attach files containing sensitive data.
+      placeholder: |
+        - Image format: TIFF / PNG / JPEG / BigTIFF / HDF5
+        - Image size: e.g. 4096 × 4096 px
+        - Bit depth: 8-bit / 16-bit / grayscale / RGB
+        - Number of layers in project: e.g. 3 (1 base + 2 inpainting)
+        - Colormap active: yes / no
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / Screen Recordings
+      description: Drag and drop images or recordings here to illustrate the problem.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log Output
+      description: |
+        Paste relevant output from the application log or terminal.
+        Run with `QT_LOGGING_RULES="editor.*=true" ./ImageEditor` to enable debug logging.
+      render: text
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other information that might help (workarounds found, related issues, etc.).
