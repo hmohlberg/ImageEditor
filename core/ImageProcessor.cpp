@@ -39,6 +39,236 @@
 #include <iostream>
 #include <algorithm>
 
+#include <QMap>
+#include <QSet>
+
+// ──────────────────────────────────────────────────────────────────────────────
+// concatenateTransforms helpers (file-scope)
+// ──────────────────────────────────────────────────────────────────────────────
+
+static QTransform readTransform(const QJsonObject& o)
+{
+    return QTransform(
+        o["m11"].toDouble(1), o["m12"].toDouble(0), o["m13"].toDouble(0),
+        o["m21"].toDouble(0), o["m22"].toDouble(1), o["m23"].toDouble(0),
+        o["m31"].toDouble(0), o["m32"].toDouble(0), o["m33"].toDouble(1));
+}
+
+static QJsonObject writeTransform(const QTransform& t)
+{
+    QJsonObject o;
+    o["m11"]=t.m11(); o["m12"]=t.m12(); o["m13"]=t.m13();
+    o["m21"]=t.m21(); o["m22"]=t.m22(); o["m23"]=t.m23();
+    o["m31"]=t.m31(); o["m32"]=t.m32(); o["m33"]=t.m33();
+    return o;
+}
+
+static QJsonArray transformPoints(const QJsonArray& pts, const QTransform& T)
+{
+    QJsonArray result;
+    for (const QJsonValue& v : pts) {
+        const QJsonObject p = v.toObject();
+        const QPointF q = T.map(QPointF(p["x"].toDouble(), p["y"].toDouble()));
+        QJsonObject r;
+        r["x"] = q.x();
+        r["y"] = q.y();
+        result.append(r);
+    }
+    return result;
+}
+
+// Returns the layerId for geometric transform commands, or -1 for non-geometric.
+static int cmdLayerId(const QJsonObject& cmd)
+{
+    const QString t = cmd["type"].toString();
+    if (t == "TransformLayer" || t == "MoveLayer" || t == "MirrorLayer" ||
+        t == "PerspectiveWarp" || t == "CageWarp")
+        return cmd["layerId"].toInt(-1);
+    return -1;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// QJsonArray ImageProcessor::concatenateTransforms()
+//
+// Replaces consecutive TransformLayer sequences (same layer) with a single
+// composed TransformLayer, and absorbs surrounding TransformLayer runs into
+// each CageWarp's control points to reduce the number of interpolation steps.
+//
+// Rules:
+//  - Only TransformLayer (rotate / scale) runs are composed via QTransform
+//    multiplication; MoveLayer, MirrorLayer, PerspectiveWarp act as separators.
+//  - A CageWarp absorbs its preceding TransformLayer run as a PRE-affine
+//    (before-points transformed by T_pre^{-1}) and its following TransformLayer
+//    run as a POST-affine (after-points transformed by T_post).
+//  - Non-geometric commands (PaintStroke, LassoCut, …) act as separators but
+//    are emitted unchanged.
+// ──────────────────────────────────────────────────────────────────────────────
+QJsonArray ImageProcessor::concatenateTransforms(const QJsonArray& undoStack) const
+{
+    // ── Step 1: collect per-layer chains ─────────────────────────────────────
+    // layerId → ordered list of {globalIndex, cmd}
+    QMap<int, QList<QPair<int,QJsonObject>>> chains;
+    for (int i = 0; i < undoStack.size(); ++i) {
+        const QJsonObject cmd = undoStack[i].toObject();
+        const int lid = cmdLayerId(cmd);
+        if (lid >= 0) chains[lid].append({i, cmd});
+    }
+
+    // Maps for output construction
+    QMap<int, QJsonObject> replacements; // globalIndex → replacement command
+    QSet<int>              skipSet;      // globalIndex → absorbed, omit from output
+
+    // ── Step 2: process each layer's chain ───────────────────────────────────
+    for (auto it = chains.cbegin(); it != chains.cend(); ++it) {
+        const int          layerId = it.key();
+        const auto&        ops     = it.value();
+
+        // Log the chain
+        qInfo() << "[concatenate] Layer" << layerId << "— chain:";
+        for (const auto& [idx, cmd] : ops)
+            qInfo() << "  [" << idx << "]" << cmd["type"].toString();
+
+        // ── per-layer processing state ────────────────────────────────────────
+        // Accumulate a run of consecutive TransformLayer commands
+        struct Run {
+            QList<int>  opIdx;      // indices into ops[]
+            QTransform  composed;   // T_n * … * T_1
+            QJsonObject firstCmd;
+            QJsonObject lastCmd;
+            bool empty() const { return opIdx.isEmpty(); }
+            void clear()       { opIdx.clear(); composed = QTransform(); firstCmd = {}; lastCmd = {}; }
+        };
+
+        Run   currentRun;
+        int   lastCageOpIdx = -1;   // index into ops[] of the last seen CageWarp
+
+        // Emit the accumulated run as a single merged TransformLayer.
+        // If the run has only one command, nothing changes; otherwise the first
+        // entry is replaced and the rest are skipped.
+        auto flushRun = [&]() {
+            if (currentRun.empty()) return;
+            if (currentRun.opIdx.size() > 1) {
+                const int first = ops[currentRun.opIdx.first()].first;
+                QJsonObject merged = currentRun.firstCmd;
+                merged["newTransform"] = writeTransform(currentRun.composed);
+                merged["newPosition"]  = currentRun.lastCmd["newPosition"];
+                merged["text"]         = QString("Concatenated transforms (layer %1)").arg(layerId);
+                replacements[first]    = merged;
+                for (int k = 1; k < currentRun.opIdx.size(); ++k)
+                    skipSet.insert(ops[currentRun.opIdx[k]].first);
+                qInfo() << "[concatenate] Layer" << layerId << ": merged"
+                        << currentRun.opIdx.size() << "TransformLayer ops → 1";
+            }
+            currentRun.clear();
+        };
+
+        // Absorb the current run into CageWarp at ops[cageOpIdx].
+        // isPre=true  → transform before-points by T_run^{-1}
+        // isPre=false → transform after-points  by T_run
+        auto absorbRun = [&](int cageOpIdx, bool isPre) {
+            if (currentRun.empty()) return;
+            const int        cageGlobal = ops[cageOpIdx].first;
+            QJsonObject      cage = replacements.contains(cageGlobal)
+                                    ? replacements[cageGlobal]
+                                    : ops[cageOpIdx].second;
+
+            if (isPre) {
+                bool ok = false;
+                const QTransform Tinv = currentRun.composed.inverted(&ok);
+                if (ok) {
+                    cage["cagepoints_before"] = transformPoints(
+                        cage["cagepoints_before"].toArray(), Tinv);
+                    // pull the bounding rect back to pre-transform space
+                    const QJsonObject r = cage["rect"].toObject();
+                    const QRectF      newRect = Tinv.mapRect(QRectF(
+                        r["x"].toDouble(), r["y"].toDouble(),
+                        r["width"].toDouble(), r["height"].toDouble()));
+                    QJsonObject nr;
+                    nr["x"] = newRect.x(); nr["y"] = newRect.y();
+                    nr["width"] = newRect.width(); nr["height"] = newRect.height();
+                    cage["rect"] = nr;
+                    for (int k : currentRun.opIdx) skipSet.insert(ops[k].first);
+                    qInfo() << "[concatenate] Layer" << layerId << ": absorbed"
+                            << currentRun.opIdx.size() << "pre-affines into CageWarp";
+                } else {
+                    // non-invertible: fall back to plain merge
+                    flushRun();
+                    currentRun.clear();
+                    return;
+                }
+            } else {
+                cage["cagepoints_after"] = transformPoints(
+                    cage["cagepoints_after"].toArray(), currentRun.composed);
+                // update top-left position
+                const QJsonObject tla = cage["topLeft_after"].toObject();
+                const QPointF     newTL = currentRun.composed.map(
+                    QPointF(tla["x"].toDouble(), tla["y"].toDouble()));
+                QJsonObject ntla;
+                ntla["x"] = newTL.x(); ntla["y"] = newTL.y();
+                cage["topLeft_after"] = ntla;
+                for (int k : currentRun.opIdx) skipSet.insert(ops[k].first);
+                qInfo() << "[concatenate] Layer" << layerId << ": absorbed"
+                        << currentRun.opIdx.size() << "post-affines into CageWarp";
+            }
+            replacements[cageGlobal] = cage;
+            currentRun.clear();
+        };
+
+        // ── scan the layer's chain ────────────────────────────────────────────
+        for (int k = 0; k < ops.size(); ++k) {
+            const QString type = ops[k].second["type"].toString();
+
+            if (type == "TransformLayer") {
+                const QTransform T = readTransform(ops[k].second["newTransform"].toObject());
+                if (currentRun.empty()) {
+                    currentRun.opIdx    = {k};
+                    currentRun.composed = T;
+                    currentRun.firstCmd = ops[k].second;
+                    currentRun.lastCmd  = ops[k].second;
+                } else {
+                    currentRun.opIdx.append(k);
+                    currentRun.composed = T * currentRun.composed; // newest on left
+                    currentRun.lastCmd  = ops[k].second;
+                }
+            } else if (type == "CageWarp") {
+                if (lastCageOpIdx >= 0) {
+                    // post-affines of the previous cage
+                    absorbRun(lastCageOpIdx, /*isPre=*/false);
+                } else {
+                    // pre-affines of this cage
+                    absorbRun(k, /*isPre=*/true);
+                    lastCageOpIdx = k;
+                    continue;
+                }
+                lastCageOpIdx = k;
+            } else {
+                // separator: flush/absorb pending run
+                if (lastCageOpIdx >= 0) {
+                    absorbRun(lastCageOpIdx, /*isPre=*/false);
+                    lastCageOpIdx = -1;
+                } else {
+                    flushRun();
+                }
+            }
+        }
+
+        // End of chain: finalise
+        if (lastCageOpIdx >= 0)
+            absorbRun(lastCageOpIdx, /*isPre=*/false);
+        else
+            flushRun();
+    }
+
+    // ── Step 3: build output array ────────────────────────────────────────────
+    QJsonArray result;
+    for (int i = 0; i < undoStack.size(); ++i) {
+        if (skipSet.contains(i)) continue;
+        result.append(replacements.contains(i) ? replacements[i] : undoStack[i]);
+    }
+    qInfo() << "[concatenate] Stack reduced from" << undoStack.size() << "to" << result.size() << "commands.";
+    return result;
+}
+
 // ----------------------- Constructor -----------------------
 ImageProcessor::ImageProcessor( const QImage& image ) : m_image(image) 
 {
@@ -324,6 +554,8 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
     int nStep = 1;
     QString infoTextLines = "";
     QJsonArray undoArray = root["undoStack"].toArray();
+    if ( Config::concatenate )
+        undoArray = concatenateTransforms(undoArray);
     for ( const QJsonValue& v : undoArray ) {
       QJsonObject cmdObj = v.toObject();
       QString type = cmdObj["type"].toString();

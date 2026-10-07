@@ -49,6 +49,7 @@ class ImageProcessor {
 
     QString saveIntermediate( AbstractCommand *cmd, const QString &name, int step );
     QImage  compositeLayers() const;
+    QJsonArray concatenateTransforms( const QJsonArray& undoStack ) const;
 
     bool m_skipMainImage = false;
     bool m_saveIntermediate = false;

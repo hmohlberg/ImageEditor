@@ -455,6 +455,8 @@ void LayerItem::applyLutWithTransform( const QVector<QRgb>& lut )
             m_image = Interpolation::transformBicubic(lutApplied, m_totalTransform);
         } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Nearest ) {
             m_image = lutApplied.transformed(m_totalTransform, Qt::FastTransformation);
+        } else if ( m_nogui ) {
+            m_image = Interpolation::transformBicubic(lutApplied, m_totalTransform);
         } else {
             m_image = lutApplied.transformed(m_totalTransform, Qt::SmoothTransformation);
         }
@@ -615,10 +617,10 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
       // this use external bicubic interpolation
       m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
     } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Nearest ) {
-      // this use internal nearest transformation
       m_image = m_originalImage.transformed(m_totalTransform,Qt::FastTransformation);
-    } else { 
-      // this use internal linear transformation
+    } else if ( m_nogui ) {
+      m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
+    } else {
       m_image = m_originalImage.transformed(m_totalTransform,Qt::SmoothTransformation);
     }
     // end
@@ -649,6 +651,8 @@ void LayerItem::reapplyImageTransform()
     m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
   } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Nearest ) {
     m_image = m_originalImage.transformed(m_totalTransform, Qt::FastTransformation);
+  } else if ( m_nogui ) {
+    m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
   } else {
     m_image = m_originalImage.transformed(m_totalTransform, Qt::SmoothTransformation);
   }
@@ -670,6 +674,8 @@ void LayerItem::restoreTransformState( const QTransform& totalTransform, const Q
     m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
   } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Nearest ) {
     m_image = m_originalImage.transformed(m_totalTransform, Qt::FastTransformation);
+  } else if ( m_nogui ) {
+    m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
   } else {
     m_image = m_originalImage.transformed(m_totalTransform, Qt::SmoothTransformation);
   }

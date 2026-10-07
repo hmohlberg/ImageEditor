@@ -373,7 +373,7 @@ To run the editor without a GUI (e.g., via SSH on a server), use the `--batch` f
 | `--force` | Overwrite an existing output file. |
 | `--save-json <file>` | In batch mode, save a loaded project file in the latest format version. |
 | `--save-intermediate <path>` | In batch mode, save an image after each processing step. |
-| `--concatenate` | Concatenate image transformations in batch mode. |
+| `--concatenate` | Merge sequential geometric transformations per layer before applying them. Consecutive rotation and scale operations are composed into a single matrix multiplication so the image is interpolated only once instead of once per step, reducing cumulative interpolation artefacts. Cage warp operations absorb the surrounding affine transforms into their control points. Only active in batch mode. |
 | `--alpha-masking` | Force alpha channel mask processing. |
 | `--skip-validation` | Skip all validation checks and force loading of the input image. |
 | `--history [n]` | Print the history of the last calls to stdout. Optional: limit to last `n` entries. |
@@ -382,6 +382,8 @@ To run the editor without a GUI (e.g., via SSH on a server), use the `--batch` f
 | `--version, -v` | Print version and build information. |
 | `--about` | Print version, authors, and license information. |
 | `-h, --help` | Display help. |
+
+> **Batch interpolation:** In batch mode the interpolation method defaults to **bicubic** for best output quality, regardless of the GUI default (`linear`). To use a different method set `ImageLayer/interpolationMode = nearest` or `= linear` in the config file passed via `--config`.
 
 ### Examples
 
@@ -408,6 +410,11 @@ To run the editor without a GUI (e.g., via SSH on a server), use the `--batch` f
 **Apply a JSON project in batch mode (no GUI):**
 ```bash
 ./ImageEditor --file image.png --project task.json --output result.png
+```
+
+**Apply a project with merged transformations to reduce interpolation artefacts:**
+```bash
+./ImageEditor --file image.png --project task.json --output result.png --concatenate
 ```
 
 **Export a BigTIFF pyramid at project resolution (scale factor 20) to PNG:**

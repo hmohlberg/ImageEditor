@@ -77,6 +77,7 @@ bool Config::forcedAlphaMasking = false;
 bool Config::skipValidation = false;
 bool Config::isWhiteBackgroundImage = true;
 bool Config::gpuCageWarpProcessing = false;
+bool Config::concatenate = false;
 
 Q_LOGGING_CATEGORY(logEditor, "editor.graphics")
 
@@ -915,6 +916,7 @@ int main( int argc, char *argv[] )
       }
 #endif
 
+      Config::concatenate = parsedOptions.value("concatenate").toBool();
       QString saveIntermediatePath = parsedOptions.value("save-intermediate").toString("");
       ImageLoader loader;
       QImage image;

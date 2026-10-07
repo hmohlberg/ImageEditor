@@ -48,6 +48,7 @@
     static bool skipValidation;
     static bool isWhiteBackgroundImage;
     static bool gpuCageWarpProcessing;
+    static bool concatenate;
     
  };
  
