@@ -25,6 +25,8 @@
 #include <QRectF>
 #include <QPoint>
 #include <QPointF>
+#include <QPolygonF>
+#include <QTransform>
 #include <QVector>
 #include <QHash>
 #include <QJsonArray>
@@ -76,33 +78,50 @@ static QVector<ProjLevel> scanProjLevels(TIFF* tif)
 
 // ── operation type ────────────────────────────────────────────────────────────
 
-enum class ProjOpType { Move, Transform };
+enum class ProjOpType { Move, Transform, Perspective, CageWarp };
 
 // Describes one LassoCut + subsequent layer operation.
 //
 // The forward mapping (20-µm canvas space) is:
-//   MoveLayer:     canvas = dstPos + (lx, ly)
-//   TransformLayer: canvas = itemPos + QTransform(m11..m32).map((lx, ly))
-//                         = (itemPos.x + m11*lx + m21*ly + m31,
-//                            itemPos.y + m12*lx + m22*ly + m32)
+//   MoveLayer:     canvas = dstPos + mirror(lx, ly)
+//   TransformLayer: canvas = itemPos + QTransform(m11..m32).map(mirror(lx, ly))
 //
-// where (lx, ly) is the pixel's position within the local source rect,
-// i.e. lx ∈ [0, srcRect.width()), ly ∈ [0, srcRect.height()).
+// mirror() is applied before the position/transform when mirrorPlane != 0:
+//   plane=1 (vertical):   ly  →  srcH - 1 - ly
+//   plane=2 (horizontal): lx  →  srcW - 1 - lx
+//
+// Inverse: flip is self-inverse, so the same formula undoes it.
 struct PasteOp {
     QImage      mask;        // binary mask at 20-µm, Format_Grayscale8
     QRect       srcRect20;   // source bounding box at 20-µm canvas coords
 
     ProjOpType  type = ProjOpType::Move;
+    int         mirrorPlane = 0;  // 0=none, 1=vertical flip, 2=horizontal flip
 
     // ── MoveLayer ────────────────────────────────────────────────────────────
     QPoint      dstPos20;    // canvas position of local origin after move
 
-    // ── TransformLayer (QTransform from JSON) ─────────────────────────────
-    // Row-major Qt convention: (x',y') = (m11*x + m21*y + m31, m12*x + m22*y + m32)
+    // ── TransformLayer (affine QTransform from JSON) ──────────────────────
+    // Qt convention: (x',y') = (m11*x + m21*y + m31, m12*x + m22*y + m32)
     double m11=1, m12=0, m21=0, m22=1, m31=0, m32=0;
     double det = 1;          // m11*m22 - m12*m21, precomputed
     QPoint itemPos20;        // layer pos() in canvas (newPosition from JSON)
     QRectF dstBBox20;        // bounding box of transformed region at 20 µm
+
+    // ── CageWarp (mesh deformation in 20-µm pixel space) ─────────────────
+    QPointF          cwTopLeft20;    // canvas position of warped layer top-left (20 µm)
+    QVector<QPointF> cwBefore20;     // cagepoints_before in layer-local 20-µm pixels
+    QVector<QPointF> cwAfter20;      // cagepoints_after  in layer-local 20-µm pixels
+    int cwRows = 0, cwCols = 0;
+
+    // ── PerspectiveWarp (projective homography in 20-µm pixel space) ──────
+    // Forward H maps source-local (lx,ly) → warped-local (wx,wy):
+    //   wx = (pw_m11*lx + pw_m21*ly + pw_m31) / (pw_m13*lx + pw_m23*ly + pw_m33)
+    //   wy = (pw_m12*lx + pw_m22*ly + pw_m32) / (pw_m13*lx + pw_m23*ly + pw_m33)
+    QPointF pwNewPos20;                          // canvas top-left of warped image (20 µm)
+    double pw_m11=1,pw_m12=0,pw_m13=0;
+    double pw_m21=0,pw_m22=1,pw_m23=0;
+    double pw_m31=0,pw_m32=0,pw_m33=1;
 };
 
 // ── inpainting patch types ────────────────────────────────────────────────────
@@ -126,6 +145,7 @@ static QVector<PasteOp> parseOps(const QJsonObject& project)
     struct LayerInfo { QImage mask; };
     QHash<int, LayerInfo> layerMasks;
     QHash<int, QRect>     cutRects;    // newLayerId → bounding rect from LassoCut
+    QHash<int, int>       layerMirrors; // newLayerId → net mirrorPlane (0=none)
     QVector<PasteOp>      ops;
 
     // Collect binary-masked layers
@@ -157,15 +177,29 @@ static QVector<PasteOp> parseOps(const QJsonObject& project)
             cutRects[newId] = QRect(r["x"].toInt(), r["y"].toInt(),
                                     r["width"].toInt(), r["height"].toInt());
         }
+        else if (type == "MirrorLayer") {
+            int layerId = cmd["layerId"].toInt(-1);
+            if (!cutRects.contains(layerId)) continue;
+            int plane = cmd["mirrorPlane"].toInt(0);
+            if (plane > 0) {
+                // Toggle: two flips on the same plane cancel each other
+                layerMirrors[layerId] = (layerMirrors.value(layerId, 0) == plane) ? 0 : plane;
+            }
+            // plane <= 0 means the undo of the mirror → clear it
+            else {
+                layerMirrors.remove(layerId);
+            }
+        }
         else if (type == "MoveLayer") {
             int layerId = cmd["layerId"].toInt(-1);
             if (!cutRects.contains(layerId) || !layerMasks.contains(layerId)) continue;
 
             PasteOp op;
-            op.mask      = layerMasks[layerId].mask;
-            op.srcRect20 = cutRects[layerId];
-            op.type      = ProjOpType::Move;
-            op.dstPos20  = QPoint(cmd["toX"].toInt(), cmd["toY"].toInt());
+            op.mask        = layerMasks[layerId].mask;
+            op.srcRect20   = cutRects[layerId];
+            op.type        = ProjOpType::Move;
+            op.mirrorPlane = layerMirrors.value(layerId, 0);
+            op.dstPos20    = QPoint(cmd["toX"].toInt(), cmd["toY"].toInt());
 
             // Bounding box = destination rect
             op.dstBBox20 = QRectF(op.dstPos20.x(), op.dstPos20.y(),
@@ -178,9 +212,10 @@ static QVector<PasteOp> parseOps(const QJsonObject& project)
 
             QJsonObject T = cmd["newTransform"].toObject();
             PasteOp op;
-            op.mask      = layerMasks[layerId].mask;
-            op.srcRect20 = cutRects[layerId];
-            op.type      = ProjOpType::Transform;
+            op.mask        = layerMasks[layerId].mask;
+            op.srcRect20   = cutRects[layerId];
+            op.type        = ProjOpType::Transform;
+            op.mirrorPlane = layerMirrors.value(layerId, 0);
             op.m11 = T["m11"].toDouble(1); op.m12 = T["m12"].toDouble(0);
             op.m21 = T["m21"].toDouble(0); op.m22 = T["m22"].toDouble(1);
             op.m31 = T["m31"].toDouble(0); op.m32 = T["m32"].toDouble(0);
@@ -207,8 +242,136 @@ static QVector<PasteOp> parseOps(const QJsonObject& project)
             op.dstBBox20 = QRectF(QPointF(bx0, by0), QPointF(bx1, by1));
             ops.append(op);
         }
+        else if (type == "CageWarp") {
+            int layerId = cmd["layerId"].toInt(-1);
+            if (!cutRects.contains(layerId) || !layerMasks.contains(layerId)) continue;
+
+            const int rows = cmd["rows"].toInt(0);
+            const int cols = cmd["columns"].toInt(0);
+            if (rows < 2 || cols < 2) continue;
+
+            QVector<QPointF> before, after;
+            for (const QJsonValue& v : cmd["cagepoints_before"].toArray()) {
+                QJsonObject po = v.toObject();
+                before << QPointF(po["x"].toDouble(), po["y"].toDouble());
+            }
+            for (const QJsonValue& v : cmd["cagepoints_after"].toArray()) {
+                QJsonObject po = v.toObject();
+                after << QPointF(po["x"].toDouble(), po["y"].toDouble());
+            }
+            if (before.size() != rows * cols || after.size() != rows * cols) continue;
+
+            QJsonObject tlObj = cmd["topLeft_after"].toObject();
+
+            // Destination bounding box: bounding rect of all after points + topLeft
+            QRectF afterBounds = QPolygonF(after).boundingRect();
+
+            PasteOp op;
+            op.mask        = layerMasks[layerId].mask;
+            op.srcRect20   = cutRects[layerId];
+            op.type        = ProjOpType::CageWarp;
+            op.mirrorPlane = layerMirrors.value(layerId, 0);
+            op.cwTopLeft20 = QPointF(tlObj["x"].toDouble(), tlObj["y"].toDouble());
+            op.cwBefore20  = before;
+            op.cwAfter20   = after;
+            op.cwRows      = rows;
+            op.cwCols      = cols;
+            op.dstBBox20   = QRectF(op.cwTopLeft20, QSizeF(afterBounds.right(), afterBounds.bottom()));
+            ops.append(op);
+        }
+        else if (type == "PerspectiveWarp") {
+            int layerId = cmd["layerId"].toInt(-1);
+            if (!cutRects.contains(layerId) || !layerMasks.contains(layerId)) continue;
+
+            QVector<QPointF> before, after;
+            for (const QJsonValue& v : cmd["before"].toArray()) {
+                QJsonArray a = v.toArray();
+                before << QPointF(a[0].toDouble(), a[1].toDouble());
+            }
+            for (const QJsonValue& v : cmd["after"].toArray()) {
+                QJsonArray a = v.toArray();
+                after << QPointF(a[0].toDouble(), a[1].toDouble());
+            }
+            if (before.size() != 4 || after.size() != 4) continue;
+
+            // Reconstruct the warpTransform as in PerspectiveWarpCommand::rebuildWarp()
+            QRectF targetBounds = QPolygonF(after).boundingRect();
+            QVector<QPointF> shiftedAfter;
+            for (const QPointF& p : after) shiftedAfter << (p - targetBounds.topLeft());
+
+            QTransform H;
+            if (!QTransform::quadToQuad(QPolygonF(before), QPolygonF(shiftedAfter), H)) continue;
+
+            QJsonObject np = cmd["newPosition"].toObject();
+
+            PasteOp op;
+            op.mask        = layerMasks[layerId].mask;
+            op.srcRect20   = cutRects[layerId];
+            op.type        = ProjOpType::Perspective;
+            op.mirrorPlane = layerMirrors.value(layerId, 0);
+            op.pwNewPos20  = QPointF(np["x"].toDouble(), np["y"].toDouble());
+            op.pw_m11 = H.m11(); op.pw_m12 = H.m12(); op.pw_m13 = H.m13();
+            op.pw_m21 = H.m21(); op.pw_m22 = H.m22(); op.pw_m23 = H.m23();
+            op.pw_m31 = H.dx();  op.pw_m32 = H.dy();  op.pw_m33 = H.m33();
+
+            // Destination bounding box: warped image rectangle placed at newPos
+            op.dstBBox20 = QRectF(op.pwNewPos20, QSizeF(targetBounds.width(), targetBounds.height()));
+            ops.append(op);
+        }
     }
     return ops;
+}
+
+// ── cage warp geometry helpers ────────────────────────────────────────────────
+
+// Cross product of (b-a) × (p-a). Positive = CCW, negative = CW.
+static inline double cwCross(const QPointF& a, const QPointF& b, const QPointF& p)
+{
+    return (b.x()-a.x())*(p.y()-a.y()) - (b.y()-a.y())*(p.x()-a.x());
+}
+
+static bool cwPointInTri(const QPointF& p,
+                          const QPointF& a, const QPointF& b, const QPointF& c)
+{
+    double d1 = cwCross(a, b, p);
+    double d2 = cwCross(b, c, p);
+    double d3 = cwCross(c, a, p);
+    bool neg = (d1<0)||(d2<0)||(d3<0);
+    bool pos = (d1>0)||(d2>0)||(d3>0);
+    return !(neg && pos);
+}
+
+// Check whether p is inside the quad (TL, TR, BR, BL order).
+static bool cwPointInQuad(const QPointF& p, const QPointF q[4])
+{
+    return cwPointInTri(p, q[0], q[1], q[2]) ||
+           cwPointInTri(p, q[0], q[2], q[3]);
+}
+
+// Newton–Raphson bilinear inversion: given p in dst quad, map to src quad.
+// Returns the mapped source point. Same algorithm as GeometryUtils::barycentric for quads.
+static QPointF cwBilinearInverse(const QPointF& p,
+                                  const QPointF dst[4], const QPointF src[4])
+{
+    QPointF Q(0, 0);  // initial guess (parametric coords in [-1,1]×[-1,1])
+    QPointF v0 = dst[0]+dst[1]+dst[2]+dst[3];
+    QPointF v1 = -dst[0]+dst[1]+dst[2]-dst[3];
+    QPointF v2 = -dst[0]-dst[1]+dst[2]+dst[3];
+    QPointF v3 = dst[0]-dst[1]+dst[2]-dst[3];
+    for (int iter = 0; iter < 10; ++iter) {
+        QPointF rhs = 4.0*p - v0 - Q.x()*v1 - Q.y()*v2 - Q.x()*Q.y()*v3;
+        if (rhs.x()*rhs.x() + rhs.y()*rhs.y() <= 1e-10) break;
+        QPointF A0 = v1 + v3*Q.y();
+        QPointF A1 = v2 + v3*Q.x();
+        double det = A0.x()*A1.y() - A1.x()*A0.y();
+        if (std::abs(det) < 1e-12) break;
+        Q += QPointF((A1.y()*rhs.x() - A1.x()*rhs.y()) / det,
+                     (A0.x()*rhs.y() - A0.y()*rhs.x()) / det);
+    }
+    // Bilinear interpolation using parametric coords Q ∈ [-1,1]²
+    double w[4] = { (1-Q.x())*(1-Q.y()), (1+Q.x())*(1-Q.y()),
+                    (1+Q.x())*(1+Q.y()), (1-Q.x())*(1+Q.y()) };
+    return 0.25 * (w[0]*src[0] + w[1]*src[1] + w[2]*src[2] + w[3]*src[3]);
 }
 
 // ── mask and inverse-map helpers ──────────────────────────────────────────────
@@ -230,13 +393,29 @@ struct LevelOp {
     QRect   srcL;        // erase zone in level-pixel space
     QRectF  dstBBoxL;    // destination bounding box in level-pixel space
     int     opIdx;
-    bool    isTransform;
+    bool    isTransform  = false;
+    bool    isPerspective = false;
+    int     mirrorPlane  = 0;  // 0=none, 1=vertical, 2=horizontal
 
-    // Precomputed inverse-transform parameters at this level
-    // (only used when isTransform == true):
+    // ── affine TransformLayer (isTransform==true) ─────────────────────────
     double  itemPxL, itemPyL;  // itemPos scaled to level pixels
     double  m31L, m32L;        // m31/m32 scaled to level pixels
     double  m11, m12, m21, m22, det;
+
+    // ── PerspectiveWarp (isPerspective==true) ─────────────────────────────
+    // Inverse homography in level-k pixel space: maps warped-local → source-local
+    double newPxL = 0, newPyL = 0;  // warped image origin in level-k pixels
+    double ip11=1,ip12=0,ip13=0;
+    double ip21=0,ip22=1,ip23=0;
+    double ip31=0,ip32=0,ip33=1;
+
+    // ── CageWarp (isCageWarp==true) ───────────────────────────────────────
+    bool    isCageWarp = false;
+    QPointF cwTopL;                  // topLeft_after in level-k pixels
+    QVector<QPointF> cwBeforeL;      // before grid points in level-k pixels (layer-local)
+    QVector<QPointF> cwAfterL;       // after  grid points in level-k pixels (warped-local)
+    QVector<QRectF>  cwCellBBoxL;    // precomputed bbox per cell (row-major, (rows-1)*(cols-1))
+    int cwRows = 0, cwCols = 0;
 };
 
 // Given a destination pixel (gx, gy) at this pyramid level, compute the
@@ -249,25 +428,56 @@ static bool sourcePixelFor(const LevelOp& lo, const PasteOp& op,
 {
     double lx, ly;
 
-    if (!lo.isTransform) {
+    if (!lo.isTransform && !lo.isPerspective && !lo.isCageWarp) {
         // MoveLayer: pure translation
         lx = gx - lo.dstBBoxL.x();
         ly = gy - lo.dstBBoxL.y();
-    } else {
-        // TransformLayer: inverse of the affine transform
-        //   (gx, gy) = itemPos + QTransform.map(lx, ly)
-        //            = (itemPxL + m11*lx + m21*ly + m31L,
-        //               itemPyL + m12*lx + m22*ly + m32L)
-        // Rearrange and solve via Cramer's rule (det = m11*m22 - m12*m21):
+    } else if (lo.isTransform) {
+        // Affine TransformLayer: inverse via Cramer's rule
         double dx = gx - lo.itemPxL - lo.m31L;
         double dy = gy - lo.itemPyL - lo.m32L;
         lx = (lo.m22 * dx - lo.m21 * dy) / lo.det;
         ly = (lo.m11 * dy - lo.m12 * dx) / lo.det;
+    } else if (lo.isPerspective) {
+        // PerspectiveWarp: apply inverse homography in level-k pixel space
+        double wx = gx - lo.newPxL;
+        double wy = gy - lo.newPyL;
+        double w  = lo.ip13 * wx + lo.ip23 * wy + lo.ip33;
+        if (std::abs(w) < 1e-10) return false;
+        lx = (lo.ip11 * wx + lo.ip21 * wy + lo.ip31) / w;
+        ly = (lo.ip12 * wx + lo.ip22 * wy + lo.ip32) / w;
+    } else {
+        // CageWarp: find containing cell via bbox pre-filter + pointInQuad,
+        // then bilinear inverse to map warped-local → source-local.
+        const QPointF wp(gx - lo.cwTopL.x(), gy - lo.cwTopL.y());
+        const int rows = lo.cwRows, cols = lo.cwCols;
+        bool found = false;
+        for (int row = 0; row + 1 < rows && !found; ++row) {
+            for (int col = 0; col + 1 < cols && !found; ++col) {
+                const QRectF& bb = lo.cwCellBBoxL[(cols-1)*row + col];
+                if (!bb.contains(wp)) continue;
+                int i0 = row * cols + col;
+                const QPointF* a = lo.cwAfterL.constData();
+                QPointF dq[4] = { a[i0], a[i0+1], a[i0+cols+1], a[i0+cols] };
+                if (!cwPointInQuad(wp, dq)) continue;
+                const QPointF* b = lo.cwBeforeL.constData();
+                QPointF sq[4] = { b[i0], b[i0+1], b[i0+cols+1], b[i0+cols] };
+                QPointF sp = cwBilinearInverse(wp, dq, sq);
+                lx = sp.x();
+                ly = sp.y();
+                found = true;
+            }
+        }
+        if (!found) return false;
     }
 
     // Bounds check in local space (must be within source rect dimensions)
     double lwL = lo.srcL.width(), lhL = lo.srcL.height();
     if (lx < 0 || ly < 0 || lx >= lwL || ly >= lhL) return false;
+
+    // Apply inverse mirror (flip is self-inverse)
+    if (lo.mirrorPlane == 1)       ly = lhL - 1.0 - ly;  // vertical flip
+    else if (lo.mirrorPlane == 2)  lx = lwL - 1.0 - lx;  // horizontal flip
 
     // Mask check (nearest-neighbour interpolation into the small 20-µm mask)
     int mx = toMaskCoord(lx, lwL, op.mask.width());
@@ -780,27 +990,25 @@ bool bigTiffApplyProject(
                 qMax(1, (int)std::round(op.srcRect20.width()  * coordScale)),
                 qMax(1, (int)std::round(op.srcRect20.height() * coordScale)));
 
-            lo.isTransform = (op.type == ProjOpType::Transform);
+            lo.isTransform   = (op.type == ProjOpType::Transform);
+            lo.isPerspective = (op.type == ProjOpType::Perspective);
+            lo.isCageWarp    = (op.type == ProjOpType::CageWarp);
+            lo.mirrorPlane   = op.mirrorPlane;
 
-            if (!lo.isTransform) {
+            if (!lo.isTransform && !lo.isPerspective && !lo.isCageWarp) {
                 // MoveLayer: destination = dstPos, same size as source
                 lo.dstBBoxL = QRectF(op.dstPos20.x() * coordScale,
                                      op.dstPos20.y() * coordScale,
                                      lo.srcL.width(), lo.srcL.height());
-            } else {
-                // TransformLayer: scale the precomputed bounding box
+            } else if (lo.isTransform) {
+                // Affine TransformLayer: scale the precomputed bounding box
                 lo.dstBBoxL = QRectF(
                     op.dstBBox20.x()      * coordScale,
                     op.dstBBox20.y()      * coordScale,
                     op.dstBBox20.width()  * coordScale,
                     op.dstBBox20.height() * coordScale);
 
-                // Precompute inverse-transform parameters at this level.
-                // The forward transform at level k is:
-                //   px = itemPxL + m11*lx + m21*ly + m31L
-                //   py = itemPyL + m12*lx + m22*ly + m32L
-                // where itemPxL = itemPos.x * coordScale, m31L = m31 * coordScale
-                // (m11..m22 are dimensionless rotation coefficients — no scaling).
+                // (m11..m22 are dimensionless; m31/m32 and itemPos scale by coordScale)
                 lo.itemPxL = op.itemPos20.x() * coordScale;
                 lo.itemPyL = op.itemPos20.y() * coordScale;
                 lo.m31L    = op.m31 * coordScale;
@@ -808,6 +1016,64 @@ bool bigTiffApplyProject(
                 lo.m11 = op.m11; lo.m12 = op.m12;
                 lo.m21 = op.m21; lo.m22 = op.m22;
                 lo.det = op.det;
+            } else if (lo.isPerspective) {
+                // PerspectiveWarp: scale homography from 20-µm to level-k pixels.
+                // For a homography H, scaling inputs/outputs by s transforms:
+                //   m31,m32 *= s  (translation terms)
+                //   m13,m23 /= s  (homogeneous terms)
+                //   m11,m12,m21,m22 unchanged (dimensionless)
+                double s = coordScale;
+                QTransform H(op.pw_m11,      op.pw_m12,      op.pw_m13 / s,
+                             op.pw_m21,      op.pw_m22,      op.pw_m23 / s,
+                             op.pw_m31 * s,  op.pw_m32 * s,  op.pw_m33);
+                bool ok = false;
+                QTransform Hinv = H.inverted(&ok);
+                if (!ok) continue;
+
+                lo.dstBBoxL = QRectF(
+                    op.dstBBox20.x()      * coordScale,
+                    op.dstBBox20.y()      * coordScale,
+                    op.dstBBox20.width()  * coordScale,
+                    op.dstBBox20.height() * coordScale);
+                lo.newPxL = op.pwNewPos20.x() * coordScale;
+                lo.newPyL = op.pwNewPos20.y() * coordScale;
+                lo.ip11 = Hinv.m11(); lo.ip12 = Hinv.m12(); lo.ip13 = Hinv.m13();
+                lo.ip21 = Hinv.m21(); lo.ip22 = Hinv.m22(); lo.ip23 = Hinv.m23();
+                lo.ip31 = Hinv.dx();  lo.ip32 = Hinv.dy();  lo.ip33 = Hinv.m33();
+            } else if (lo.isCageWarp) {
+                lo.dstBBoxL = QRectF(
+                    op.dstBBox20.x()      * coordScale,
+                    op.dstBBox20.y()      * coordScale,
+                    op.dstBBox20.width()  * coordScale,
+                    op.dstBBox20.height() * coordScale);
+                lo.cwTopL = QPointF(op.cwTopLeft20.x() * coordScale,
+                                    op.cwTopLeft20.y() * coordScale);
+                lo.cwRows = op.cwRows;
+                lo.cwCols = op.cwCols;
+
+                lo.cwBeforeL.resize(op.cwBefore20.size());
+                for (int i = 0; i < op.cwBefore20.size(); ++i)
+                    lo.cwBeforeL[i] = op.cwBefore20[i] * coordScale;
+
+                lo.cwAfterL.resize(op.cwAfter20.size());
+                for (int i = 0; i < op.cwAfter20.size(); ++i)
+                    lo.cwAfterL[i] = op.cwAfter20[i] * coordScale;
+
+                // Precompute per-cell bounding boxes for fast rejection
+                const int nCells = (lo.cwRows - 1) * (lo.cwCols - 1);
+                lo.cwCellBBoxL.resize(nCells);
+                for (int row = 0; row + 1 < lo.cwRows; ++row) {
+                    for (int col = 0; col + 1 < lo.cwCols; ++col) {
+                        const QPointF* q = lo.cwAfterL.constData();
+                        int i0 = row * lo.cwCols + col;
+                        int i1 = i0+1, i2 = i0+lo.cwCols, i3 = i0+lo.cwCols+1;
+                        double xMin = std::min({q[i0].x(), q[i1].x(), q[i2].x(), q[i3].x()});
+                        double xMax = std::max({q[i0].x(), q[i1].x(), q[i2].x(), q[i3].x()});
+                        double yMin = std::min({q[i0].y(), q[i1].y(), q[i2].y(), q[i3].y()});
+                        double yMax = std::max({q[i0].y(), q[i1].y(), q[i2].y(), q[i3].y()});
+                        lo.cwCellBBoxL[(lo.cwCols - 1) * row + col] = QRectF(xMin, yMin, xMax - xMin, yMax - yMin);
+                    }
+                }
             }
 
             levelOps.append(lo);

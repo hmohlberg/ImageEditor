@@ -451,6 +451,21 @@ In batch mode, BigTIFF input is handled without loading the full image into RAM:
 
 The `--scale` factor (default 20) controls which pyramid level is selected for raster export and how project-space coordinates map to BigTIFF pixel space.
 
+#### Supported project operations on BigTIFF
+
+The tile-based pipeline applies per-tile inverse mapping at every pyramid level. The following project operations are supported:
+
+| Operation | Description |
+| :--- | :--- |
+| **LassoCut + MoveLayer** | Cut region repositioned by pure translation. |
+| **LassoCut + TransformLayer** | Cut region repositioned with full affine transform (rotation, scale, shear). |
+| **LassoCut + MirrorLayer + Move/Transform** | Mirror (horizontal or vertical flip) applied before the final positioning. Two identical flips cancel automatically. |
+| **LassoCut + PerspectiveWarp** | Projective (homography) warp applied to the cut region. The inverse homography is computed per pyramid level with correct scale handling of the perspective terms. |
+| **LassoCut + CageWarp** | Mesh-based deformation. The inverse mapping searches the cage grid cells with a bounding-box pre-filter and solves the bilinear inverse per cell via Newton–Raphson. |
+| **Inpainting layer** | LaMa AI inpainting is re-run at BigTIFF full resolution (20× scale factor). Falls back to upscaling the saved 20 µm result when LaMa is unavailable. |
+
+Operations not yet supported on BigTIFF (ignored silently): PaintStroke, mask layers, colour/LUT adjustments.
+
 ### HDF5 Image Viewer
 
 HDF5 files containing image datasets are opened in a dedicated viewer using the same tile-based approach. The viewer expects the file to contain a `/pyramid/00` dataset (the full-resolution image) and optional downscaled levels at `/pyramid/01`, `/pyramid/02`, … with a factor-of-4 downscale per level. If no pyramid group is present, a single `/Image` dataset is used. Datasets must be 2D (grayscale) or 3D (rows × cols × channels) with `uint8` data type.
