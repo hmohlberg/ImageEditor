@@ -462,7 +462,10 @@ The tile-based pipeline applies per-tile inverse mapping at every pyramid level.
 | **LassoCut + MirrorLayer + Move/Transform** | Mirror (horizontal or vertical flip) applied before the final positioning. Two identical flips cancel automatically. |
 | **LassoCut + PerspectiveWarp** | Projective (homography) warp applied to the cut region. The inverse homography is computed per pyramid level with correct scale handling of the perspective terms. |
 | **LassoCut + CageWarp** | Mesh-based deformation. The inverse mapping searches the cage grid cells with a bounding-box pre-filter and solves the bilinear inverse per cell via Newton–Raphson. |
+| **LassoCut + TransformLayer + CageWarp** | Affine transform followed by cage warp in a single composed operation. The affine inverse is applied after the cage inverse so that the full chain `source → affine → cage → canvas` is correctly inverted at every pyramid level. |
 | **Inpainting layer** | LaMa AI inpainting is re-run at BigTIFF full resolution (20× scale factor). Falls back to upscaling the saved 20 µm result when LaMa is unavailable. |
+
+> **Operation chaining:** When a `TransformLayer` is immediately followed by a `CageWarp` for the same layer, the two operations are automatically composed into a single inverse mapping pass. Mirror state accumulated before the affine is also carried through correctly. Other combinations (e.g. `TransformLayer → PerspectiveWarp`, or more than one preceding affine) are not yet composed and each operation is applied independently.
 
 Operations not yet supported on BigTIFF (ignored silently): PaintStroke, mask layers, colour/LUT adjustments.
 

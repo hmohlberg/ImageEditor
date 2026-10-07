@@ -122,6 +122,13 @@ struct PasteOp {
     double pw_m11=1,pw_m12=0,pw_m13=0;
     double pw_m21=0,pw_m22=1,pw_m23=0;
     double pw_m31=0,pw_m32=0,pw_m33=1;
+
+    // ── pre-affine (absorbed TransformLayer preceding CageWarp) ──────────
+    // Forward chain when hasPreAffine: source → mirror → affine → cage → canvas
+    // The affine is the totalTransform from the TransformLayer command.
+    // Qt convention: display_x = m11*ox + m21*oy + m31, display_y = m12*ox + m22*oy + m32
+    bool   hasPreAffine = false;
+    double pa_m11=1, pa_m12=0, pa_m21=0, pa_m22=1, pa_m31=0, pa_m32=0, pa_det=1;
 };
 
 // ── inpainting patch types ────────────────────────────────────────────────────
@@ -144,8 +151,9 @@ static QVector<PasteOp> parseOps(const QJsonObject& project)
 {
     struct LayerInfo { QImage mask; };
     QHash<int, LayerInfo> layerMasks;
-    QHash<int, QRect>     cutRects;    // newLayerId → bounding rect from LassoCut
-    QHash<int, int>       layerMirrors; // newLayerId → net mirrorPlane (0=none)
+    QHash<int, QRect>     cutRects;       // newLayerId → bounding rect from LassoCut
+    QHash<int, int>       layerMirrors;   // newLayerId → net mirrorPlane (0=none)
+    QHash<int, QJsonObject> pendingTransforms; // newLayerId → last TransformLayer cmd
     QVector<PasteOp>      ops;
 
     // Collect binary-masked layers
@@ -193,6 +201,7 @@ static QVector<PasteOp> parseOps(const QJsonObject& project)
         else if (type == "MoveLayer") {
             int layerId = cmd["layerId"].toInt(-1);
             if (!cutRects.contains(layerId) || !layerMasks.contains(layerId)) continue;
+            pendingTransforms.remove(layerId);  // move finalises position; pre-affine no longer composable
 
             PasteOp op;
             op.mask        = layerMasks[layerId].mask;
@@ -209,38 +218,9 @@ static QVector<PasteOp> parseOps(const QJsonObject& project)
         else if (type == "TransformLayer") {
             int layerId = cmd["layerId"].toInt(-1);
             if (!cutRects.contains(layerId) || !layerMasks.contains(layerId)) continue;
-
-            QJsonObject T = cmd["newTransform"].toObject();
-            PasteOp op;
-            op.mask        = layerMasks[layerId].mask;
-            op.srcRect20   = cutRects[layerId];
-            op.type        = ProjOpType::Transform;
-            op.mirrorPlane = layerMirrors.value(layerId, 0);
-            op.m11 = T["m11"].toDouble(1); op.m12 = T["m12"].toDouble(0);
-            op.m21 = T["m21"].toDouble(0); op.m22 = T["m22"].toDouble(1);
-            op.m31 = T["m31"].toDouble(0); op.m32 = T["m32"].toDouble(0);
-            op.det = op.m11 * op.m22 - op.m12 * op.m21;
-
-            QJsonObject np = cmd["newPosition"].toObject();
-            op.itemPos20 = QPoint(np["x"].toInt(), np["y"].toInt());
-
-            // Compute destination bounding box by mapping all 4 corners
-            double iw = op.itemPos20.x(), ih = op.itemPos20.y();
-            double w  = op.srcRect20.width(), h = op.srcRect20.height();
-            auto mapCorner = [&](double lx, double ly) -> QPointF {
-                return { iw + op.m11*lx + op.m21*ly + op.m31,
-                         ih + op.m12*lx + op.m22*ly + op.m32 };
-            };
-            QPointF c[4] = { mapCorner(0,0), mapCorner(w,0),
-                             mapCorner(0,h), mapCorner(w,h) };
-            double bx0 = c[0].x(), bx1 = c[0].x(),
-                   by0 = c[0].y(), by1 = c[0].y();
-            for (int k = 1; k < 4; ++k) {
-                bx0 = std::min(bx0, c[k].x()); bx1 = std::max(bx1, c[k].x());
-                by0 = std::min(by0, c[k].y()); by1 = std::max(by1, c[k].y());
-            }
-            op.dstBBox20 = QRectF(QPointF(bx0, by0), QPointF(bx1, by1));
-            ops.append(op);
+            // Store as pending; create the PasteOp only if no CageWarp/Perspective follows,
+            // or absorb it as pre-affine into the subsequent cage/perspective.
+            pendingTransforms[layerId] = cmd;
         }
         else if (type == "CageWarp") {
             int layerId = cmd["layerId"].toInt(-1);
@@ -277,11 +257,24 @@ static QVector<PasteOp> parseOps(const QJsonObject& project)
             op.cwRows      = rows;
             op.cwCols      = cols;
             op.dstBBox20   = QRectF(op.cwTopLeft20, QSizeF(afterBounds.right(), afterBounds.bottom()));
+
+            // Absorb a preceding TransformLayer as pre-affine (source→mirror→affine→cage chain)
+            if (pendingTransforms.contains(layerId)) {
+                const QJsonObject& tc = pendingTransforms[layerId];
+                QJsonObject T = tc["newTransform"].toObject();
+                op.hasPreAffine = true;
+                op.pa_m11 = T["m11"].toDouble(1); op.pa_m12 = T["m12"].toDouble(0);
+                op.pa_m21 = T["m21"].toDouble(0); op.pa_m22 = T["m22"].toDouble(1);
+                op.pa_m31 = T["m31"].toDouble(0); op.pa_m32 = T["m32"].toDouble(0);
+                op.pa_det = op.pa_m11 * op.pa_m22 - op.pa_m12 * op.pa_m21;
+                pendingTransforms.remove(layerId);
+            }
             ops.append(op);
         }
         else if (type == "PerspectiveWarp") {
             int layerId = cmd["layerId"].toInt(-1);
             if (!cutRects.contains(layerId) || !layerMasks.contains(layerId)) continue;
+            pendingTransforms.remove(layerId);  // perspective replaces image; pre-affine not composable yet
 
             QVector<QPointF> before, after;
             for (const QJsonValue& v : cmd["before"].toArray()) {
@@ -318,6 +311,44 @@ static QVector<PasteOp> parseOps(const QJsonObject& project)
             op.dstBBox20 = QRectF(op.pwNewPos20, QSizeF(targetBounds.width(), targetBounds.height()));
             ops.append(op);
         }
+    }
+
+    // Flush TransformLayer ops that were not consumed by a subsequent CageWarp/PerspectiveWarp
+    for (auto it = pendingTransforms.begin(); it != pendingTransforms.end(); ++it) {
+        int layerId = it.key();
+        const QJsonObject& tc = it.value();
+        if (!cutRects.contains(layerId) || !layerMasks.contains(layerId)) continue;
+
+        QJsonObject T = tc["newTransform"].toObject();
+        PasteOp op;
+        op.mask        = layerMasks[layerId].mask;
+        op.srcRect20   = cutRects[layerId];
+        op.type        = ProjOpType::Transform;
+        op.mirrorPlane = layerMirrors.value(layerId, 0);
+        op.m11 = T["m11"].toDouble(1); op.m12 = T["m12"].toDouble(0);
+        op.m21 = T["m21"].toDouble(0); op.m22 = T["m22"].toDouble(1);
+        op.m31 = T["m31"].toDouble(0); op.m32 = T["m32"].toDouble(0);
+        op.det = op.m11 * op.m22 - op.m12 * op.m21;
+
+        QJsonObject np = tc["newPosition"].toObject();
+        op.itemPos20 = QPoint(np["x"].toInt(), np["y"].toInt());
+
+        double iw = op.itemPos20.x(), ih = op.itemPos20.y();
+        double w  = op.srcRect20.width(), h = op.srcRect20.height();
+        auto mapCorner = [&](double lx, double ly) -> QPointF {
+            return { iw + op.m11*lx + op.m21*ly + op.m31,
+                     ih + op.m12*lx + op.m22*ly + op.m32 };
+        };
+        QPointF c[4] = { mapCorner(0,0), mapCorner(w,0),
+                         mapCorner(0,h), mapCorner(w,h) };
+        double bx0 = c[0].x(), bx1 = c[0].x(),
+               by0 = c[0].y(), by1 = c[0].y();
+        for (int k = 1; k < 4; ++k) {
+            bx0 = std::min(bx0, c[k].x()); bx1 = std::max(bx1, c[k].x());
+            by0 = std::min(by0, c[k].y()); by1 = std::max(by1, c[k].y());
+        }
+        op.dstBBox20 = QRectF(QPointF(bx0, by0), QPointF(bx1, by1));
+        ops.append(op);
     }
     return ops;
 }
@@ -416,6 +447,15 @@ struct LevelOp {
     QVector<QPointF> cwAfterL;       // after  grid points in level-k pixels (warped-local)
     QVector<QRectF>  cwCellBBoxL;    // precomputed bbox per cell (row-major, (rows-1)*(cols-1))
     int cwRows = 0, cwCols = 0;
+
+    // ── pre-affine for CageWarp (cwHasPreAffine==true) ────────────────────
+    // After cage inverse gives (lx,ly) in affine-display local space, apply:
+    //   dx = lx - cwPA_m31L; dy = ly - cwPA_m32L
+    //   ox = (cwPA_m22*dx - cwPA_m21*dy) / cwPA_det
+    //   oy = (cwPA_m11*dy - cwPA_m12*dx) / cwPA_det
+    bool   cwHasPreAffine = false;
+    double cwPA_m11=1, cwPA_m12=0, cwPA_m21=0, cwPA_m22=1;
+    double cwPA_m31L=0, cwPA_m32L=0, cwPA_det=1;
 };
 
 // Given a destination pixel (gx, gy) at this pyramid level, compute the
@@ -469,6 +509,15 @@ static bool sourcePixelFor(const LevelOp& lo, const PasteOp& op,
             }
         }
         if (!found) return false;
+
+        // Apply pre-affine inverse: maps affine-display-local → original-image-local
+        // (source → mirror → affine → cage: here we undo the affine step)
+        if (lo.cwHasPreAffine) {
+            double dx = lx - lo.cwPA_m31L;
+            double dy = ly - lo.cwPA_m32L;
+            lx = (lo.cwPA_m22 * dx - lo.cwPA_m21 * dy) / lo.cwPA_det;
+            ly = (lo.cwPA_m11 * dy - lo.cwPA_m12 * dx) / lo.cwPA_det;
+        }
     }
 
     // Bounds check in local space (must be within source rect dimensions)
@@ -1073,6 +1122,16 @@ bool bigTiffApplyProject(
                         double yMax = std::max({q[i0].y(), q[i1].y(), q[i2].y(), q[i3].y()});
                         lo.cwCellBBoxL[(lo.cwCols - 1) * row + col] = QRectF(xMin, yMin, xMax - xMin, yMax - yMin);
                     }
+                }
+
+                // Pre-affine inverse parameters (m11/m22 dimensionless; m31/m32 scale by coordScale)
+                if (op.hasPreAffine) {
+                    lo.cwHasPreAffine = true;
+                    lo.cwPA_m11 = op.pa_m11; lo.cwPA_m12 = op.pa_m12;
+                    lo.cwPA_m21 = op.pa_m21; lo.cwPA_m22 = op.pa_m22;
+                    lo.cwPA_m31L = op.pa_m31 * coordScale;
+                    lo.cwPA_m32L = op.pa_m32 * coordScale;
+                    lo.cwPA_det  = op.pa_det;
                 }
             }
 
