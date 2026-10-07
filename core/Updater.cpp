@@ -48,6 +48,7 @@ void Updater::checkForUpdates()
     QNetworkRequest req(url);
     req.setRawHeader("Accept",     "application/vnd.github.v3+json");
     req.setRawHeader("User-Agent", "ImageEditor-UpdateChecker/1.0");
+    req.setTransferTimeout(5000);  // give up after 5 s; avoids blocking startup on slow networks
     m_nam->get(req);
 }
 

@@ -585,6 +585,7 @@ static void checkForUpdates()
     QNetworkRequest req(url);
     req.setRawHeader("Accept",     "application/vnd.github.v3+json");
     req.setRawHeader("User-Agent", "ImageEditor-UpdateChecker/1.0");
+    req.setTransferTimeout(5000);  // give up after 5 s; avoids blocking on slow/unreachable networks
     QNetworkReply* reply = nam.get(req);
 
     QEventLoop loop;
