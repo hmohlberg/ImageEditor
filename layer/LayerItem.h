@@ -274,6 +274,11 @@ class LayerItem : public QGraphicsPixmapItem
     QImage applyCageWarp( const QString& caller = "unknown" );
     void enableCage( int cols = -1, int nrows = -1 );
 
+    /// @brief Sets a pre-computed warped image to be returned by the next applyCageWarp() call.
+    void setPendingCacheImage( const QImage& img ) { m_pendingCacheImage = img; }
+    /// @brief When true, updatePixmap()/resetPixmap() skip setPixmap() — call updatePixmap() once after loading.
+    void setSuppressPixmapUpdate( bool v ) { m_suppressPixmapUpdate = v; }
+
     void applyPerspective();
 
     void updateHandles();
@@ -359,6 +364,8 @@ class LayerItem : public QGraphicsPixmapItem
     bool m_cageEnabled = false;
     bool m_cageEditing = false;
     bool m_cageApplied = false;
+    QImage m_pendingCacheImage;
+    bool   m_suppressPixmapUpdate = false;
     bool m_mouseOperationActive = false;
     bool m_isDeleted = false;
     bool m_isMultiSelected = false;

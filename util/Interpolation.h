@@ -93,53 +93,63 @@ namespace Interpolation
   QImage transformBicubic( const QImage &src, const QTransform &matrix ) {
     bool invertible;
     QTransform invMatrix = matrix.inverted(&invertible);
-    if ( !invertible ) {
-        return QImage(); 
-    }
-    QRectF destRect = matrix.mapRect(QRectF(src.rect()));
-    int destWidth = std::ceil(destRect.width());
-    int destHeight = std::ceil(destRect.height());
+    if ( !invertible ) return QImage();
+
+    // Ensure ARGB32 so scanLine gives QRgb* directly (no per-pixel format conversion)
+    const QImage srcImg = (src.format() == QImage::Format_ARGB32)
+                          ? src : src.convertToFormat(QImage::Format_ARGB32);
+    const int srcW = srcImg.width(), srcH = srcImg.height();
+
+    QRectF destRect = matrix.mapRect(QRectF(srcImg.rect()));
+    const int destWidth  = (int)std::ceil(destRect.width());
+    const int destHeight = (int)std::ceil(destRect.height());
     QImage dest(destWidth, destHeight, QImage::Format_ARGB32);
     dest.fill(Qt::transparent);
-    float offsetX = destRect.left();
-    float offsetY = destRect.top();
+
+    const float offsetX = (float)destRect.left();
+    const float offsetY = (float)destRect.top();
+
     for ( int dy = 0; dy < destHeight; ++dy ) {
+        QRgb* destLine = reinterpret_cast<QRgb*>(dest.scanLine(dy));
         for ( int dx = 0; dx < destWidth; ++dx ) {
-            float destXReal = dx + offsetX;
-            float destYReal = dy + offsetY;
             qreal srcXReal, srcYReal;
-            invMatrix.map(destXReal, destYReal, &srcXReal, &srcYReal);
-            if ( srcXReal < -1.0 || srcXReal > src.width() || srcYReal < -1.0 || srcYReal > src.height() ) {
-                continue;
+            invMatrix.map((double)(dx + offsetX), (double)(dy + offsetY), &srcXReal, &srcYReal);
+            if ( srcXReal < -1.0 || srcXReal >= srcW + 1 ||
+                 srcYReal < -1.0 || srcYReal >= srcH + 1 ) continue;
+
+            const int ix = (int)std::floor(srcXReal);
+            const int iy = (int)std::floor(srcYReal);
+
+            // Precompute the 4 kernel weights for x and y separately
+            float wx[4], wy[4];
+            for ( int k = 0; k < 4; ++k ) {
+                wx[k] = bicubicKernel((float)srcXReal - (float)(ix + k - 1));
+                wy[k] = bicubicKernel((float)srcYReal - (float)(iy + k - 1));
             }
-            int ix = std::floor(srcXReal);
-            int iy = std::floor(srcYReal);
-            float r = 0, g = 0, b = 0, a = 0;
-            float totalWeight = 0;
-            for ( int m = -1; m <= 2; ++m ) {
-                for ( int n = -1; n <= 2; ++n ) {
-                    int kx = ix + n;
-                    int ky = iy + m;
-                    if ( kx >= 0 && kx < src.width() && ky >= 0 && ky < src.height() ) {
-                        float weightX = bicubicKernel(srcXReal - (ix + n));
-                        float weightY = bicubicKernel(srcYReal - (iy + m));
-                        float weight  = weightX * weightY;
-                        QRgb pixel = src.pixel(kx, ky);
-                        r += qRed(pixel) * weight;
-                        g += qGreen(pixel) * weight;
-                        b += qBlue(pixel) * weight;
-                        a += qAlpha(pixel) * weight;
-                        totalWeight += weight;
-                    }
+
+            float r = 0, g = 0, b = 0, a = 0, totalWeight = 0;
+            for ( int m = 0; m < 4; ++m ) {
+                const int ky = iy + m - 1;
+                if ( ky < 0 || ky >= srcH ) continue;
+                const QRgb* srcLine = reinterpret_cast<const QRgb*>(srcImg.constScanLine(ky));
+                for ( int n = 0; n < 4; ++n ) {
+                    const int kx = ix + n - 1;
+                    if ( kx < 0 || kx >= srcW ) continue;
+                    const float w = wx[n] * wy[m];
+                    const QRgb px = srcLine[kx];
+                    r += qRed(px)   * w;
+                    g += qGreen(px) * w;
+                    b += qBlue(px)  * w;
+                    a += qAlpha(px) * w;
+                    totalWeight += w;
                 }
             }
             if ( totalWeight > 0.0f ) {
-                dest.setPixel(dx, dy, qRgba(
-                    std::clamp(static_cast<int>(r / totalWeight), 0, 255),
-                    std::clamp(static_cast<int>(g / totalWeight), 0, 255),
-                    std::clamp(static_cast<int>(b / totalWeight), 0, 255),
-                    std::clamp(static_cast<int>(a / totalWeight), 0, 255)
-                ));
+                destLine[dx] = qRgba(
+                    std::clamp((int)(r / totalWeight), 0, 255),
+                    std::clamp((int)(g / totalWeight), 0, 255),
+                    std::clamp((int)(b / totalWeight), 0, 255),
+                    std::clamp((int)(a / totalWeight), 0, 255));
             }
         }
     }

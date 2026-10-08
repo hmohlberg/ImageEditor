@@ -366,6 +366,7 @@ QString LayerItem::name() const {
 
 // ------------------------ Update ------------------------
 void LayerItem::updatePixmap() {
+  if ( m_suppressPixmapUpdate ) return;
   if ( qobject_cast<QApplication*>(qApp) ) {
     setPixmap(QPixmap::fromImage(m_image));
     if ( m_redOverlay ) {
@@ -382,6 +383,7 @@ void LayerItem::updatePixmap() {
 }
 
 void LayerItem::resetPixmap() {
+  if ( m_suppressPixmapUpdate ) return;
   if ( qobject_cast<QApplication*>(qApp) ) {
     setPixmap(QPixmap::fromImage(m_originalImage));
   }
@@ -767,6 +769,18 @@ QImage LayerItem::applyCageWarp( const QString &caller )
         << ", activeCagePointId =" << m_cageMesh.activeCagePointId()
         << ", cageEnabled =" << m_cageEnabled << ", cageEditing =" << m_cageEditing << ", intialized =" << m_cageMesh.isInitialized();
   {
+    // Fast path: use a pre-computed warped image cached from JSON (avoids recomputing on project load)
+    if (!m_pendingCacheImage.isNull()) {
+      QImage cached = m_pendingCacheImage;
+      m_pendingCacheImage = QImage();
+      m_cageMesh.setActiveCagePointId(-1);
+      m_cageMesh.setOffset(0, 0);
+      setOffset(QPointF(0, 0));
+      if (!m_suppressPixmapUpdate) setPixmap(QPixmap::fromImage(cached));
+      m_image = cached;
+      m_cageApplied = true;
+      return cached.copy();
+    }
     #if 0
      // removed by CLAUDE
      if ( !m_cageEditing ) {
@@ -856,7 +870,7 @@ QImage LayerItem::applyCageWarp( const QString &caller )
       }
 
       setOffset(QPointF(0, 0));   // reset pixmap offset accumulated during drag normalization
-      setPixmap(QPixmap::fromImage(warped));
+      if (!m_suppressPixmapUpdate) setPixmap(QPixmap::fromImage(warped));
       m_image = warped;
       QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
       m_cageApplied = true;
@@ -868,7 +882,7 @@ QImage LayerItem::applyCageWarp( const QString &caller )
       m_cageMesh.setOffset(0,0);   // CLAUDE reset after each drawing
       if ( !warped.image.isNull() ) {
        setOffset(QPointF(0, 0));   // reset pixmap offset accumulated during drag normalization
-       setPixmap(QPixmap::fromImage(warped.image));
+       if (!m_suppressPixmapUpdate) setPixmap(QPixmap::fromImage(warped.image));
        m_image = warped.image;
        QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos());
        // QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());

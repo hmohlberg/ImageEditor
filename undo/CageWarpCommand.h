@@ -95,5 +95,6 @@ class CageWarpCommand : public AbstractCommand
     
     QImage m_originalImage;     // copy of the original image
     QImage m_warpedImage;       // warped image
-    
+    QImage m_cachedWarpedImage; // pre-computed result loaded from JSON; cleared after first redo()
+
 };

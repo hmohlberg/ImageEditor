@@ -22,7 +22,6 @@
 #include <QNetworkReply>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QLoggingCategory>
 #include <QUrl>
 
 static const char* kApiUrl =
@@ -33,11 +32,6 @@ Updater::Updater(const QString& currentVersion, QObject* parent)
       m_currentVersion(currentVersion),
       m_nam(new QNetworkAccessManager(this))
 {
-    // The "stream 1 finished with error: Connection closed" message from Qt's
-    // HTTP/2 stack is benign: the server responds correctly and closes the
-    // connection normally. Suppress it to avoid misleading log noise.
-    QLoggingCategory::setFilterRules("qt.network.http2=false");
-
     connect(m_nam, &QNetworkAccessManager::finished,
             this,  &Updater::onReplyFinished);
 }

@@ -71,9 +71,9 @@
       m_windowSize = settings.value("Main/windowSize","default").toString();
       m_loggingIsEnabled = settings.value("Main/enableLogging", false).toBool();
       if ( m_loggingIsEnabled ) {
-        QLoggingCategory::setFilterRules("editor.graphics.debug=true");
+        QLoggingCategory::setFilterRules("editor.graphics.debug=true\nqt.network.http2=false");
       } else {
-        QLoggingCategory::setFilterRules("editor.graphics.debug=false");
+        QLoggingCategory::setFilterRules("editor.graphics.debug=false\nqt.network.http2=false");
       }
       m_hasPerspective = settings.value("Main/perspective", true).toBool();
       m_binaryMasking = settings.value("Main/binaryMasking", true).toBool();
@@ -234,7 +234,7 @@
     // Setters (used by ConfigDialog to apply changes at runtime)
     void setBrightness(int v) { m_brightness = qBound(-100, v, 100); }
     void setContrast(int v)   { m_contrast   = qBound(-100, v, 100); }
-    void setLoggingEnabled(bool v) { m_loggingIsEnabled = v; QLoggingCategory::setFilterRules(v ? "editor.graphics.debug=true" : "editor.graphics.debug=false"); }
+    void setLoggingEnabled(bool v) { m_loggingIsEnabled = v; QLoggingCategory::setFilterRules(v ? "editor.graphics.debug=true\nqt.network.http2=false" : "editor.graphics.debug=false\nqt.network.http2=false"); }
     void setWindowSize(const QString& v) { m_windowSize = v; }
     void setHasPerspective(bool v) { m_hasPerspective = v; }
     void setBinaryMasking(bool v) { m_binaryMasking = v; }
@@ -315,7 +315,7 @@
       m_contrast          = 0;
       m_transformationMode= Qt::FastTransformation;
       m_interpolationMode = InterpolationMode::Linear;
-      QLoggingCategory::setFilterRules("editor.graphics.debug=false");
+      QLoggingCategory::setFilterRules("editor.graphics.debug=false\nqt.network.http2=false");
     }
 
     void save() {
@@ -415,9 +415,9 @@
           m_githubBaseUrl("https://raw.githubusercontent.com/hmohlberg/ImageEditor/main/samples")
     { 
       if ( m_loggingIsEnabled ) {
-        QLoggingCategory::setFilterRules("editor.graphics.debug=true");
+        QLoggingCategory::setFilterRules("editor.graphics.debug=true\nqt.network.http2=false");
       } else {
-        QLoggingCategory::setFilterRules("editor.graphics.debug=false");
+        QLoggingCategory::setFilterRules("editor.graphics.debug=false\nqt.network.http2=false");
       }
     }
    

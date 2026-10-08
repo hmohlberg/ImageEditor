@@ -1564,6 +1564,14 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
     }
 
     // --- 3. Restore Undo/Redo Stack ---
+    // Suppress both screen repaints and intermediate QPixmap::fromImage() conversions
+    // during loading. Each push() would otherwise trigger updatePixmap() and
+    // prepareGeometryChange() for every command. We apply the final pixmap once at the end.
+    m_imageView->setUpdatesEnabled(false);
+    for (auto* item : m_imageView->getScene()->items()) {
+        if (auto* li = dynamic_cast<LayerItem*>(item))
+            li->setSuppressPixmapUpdate(true);
+    }
     QHash<int, QRectF> boundingBoxLayerMap;
     QList<EditablePolygonCommand*> editablePolygonCommands;
     EditablePolygonCommand* editablePolyCommand = nullptr;
@@ -1682,7 +1690,18 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
 
     // --- 6. set clean flag in undo stack ---
     m_imageView->undoStack()->setClean();
-    
+
+    // Re-enable updates: apply the final pixmap to every layer once, then repaint.
+    for (auto* item : m_imageView->getScene()->items()) {
+        if (auto* li = dynamic_cast<LayerItem*>(item)) {
+            li->setSuppressPixmapUpdate(false);
+            li->updatePixmap();
+        }
+    }
+    m_imageView->setUpdatesEnabled(true);
+    m_imageView->applyDisplayAdjustments();
+    m_imageView->viewport()->update();
+
     return true;
   }
 }

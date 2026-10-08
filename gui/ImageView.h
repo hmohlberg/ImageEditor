@@ -170,8 +170,9 @@ class ImageView : public QGraphicsView
     
     void printself();
 
- private:
     void applyDisplayAdjustments();
+
+ private:
 
  signals:
 

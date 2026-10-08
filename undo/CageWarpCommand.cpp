@@ -17,6 +17,7 @@
 
 #include <cstdio>
 #include <iostream>
+#include <QBuffer>
 #include "CageWarpCommand.h"
 
 #include "../gui/MainWindow.h"
@@ -123,6 +124,10 @@ void CageWarpCommand::redo()
     m_originalImage = m_layer->originalImage();
     m_layer->initCage(m_after,m_rect,m_rows,m_columns);
     m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,true);
+    if (!m_cachedWarpedImage.isNull()) {
+      m_layer->setPendingCacheImage(m_cachedWarpedImage);
+      m_cachedWarpedImage = QImage();
+    }
     m_warpedImage = m_layer->applyCageWarp("CageWarpCommand");
     m_layer->setOriginalImage(m_warpedImage,m_steps == 0 ? LayerItem::ImageType::Original : LayerItem::ImageType::Warped);
     m_layer->setTotalTransform(QTransform());
@@ -172,6 +177,15 @@ QJsonObject CageWarpCommand::toJson() const
     topLeftObj["x"] = m_newPos.x();
     topLeftObj["y"] = m_newPos.y();
     obj["topLeft_after"] = topLeftObj;
+
+    // Cache the warped result so reloading skips the expensive warp recomputation
+    if (!m_warpedImage.isNull()) {
+        QByteArray ba;
+        QBuffer buf(&ba);
+        buf.open(QIODevice::WriteOnly);
+        m_warpedImage.save(&buf, "PNG");
+        obj["warpedImageData"] = QString::fromLatin1(ba.toBase64());
+    }
 
     return obj;
 }
@@ -229,6 +243,7 @@ CageWarpCommand* CageWarpCommand::fromJson( const QJsonObject& obj, const QList<
      newPos = QPointF(topLeftAfter["x"].toDouble(),topLeftAfter["y"].toDouble());
     }
     
+    CageWarpCommand* cmd = nullptr;
     if ( before.size() != after.size() || before.isEmpty() ) {
         qWarning() << "CageWarpCommand::fromJson(): Invalid point arrays. Adjusting points to match After Cage.";
         QVector<QPointF> newBefore;
@@ -240,9 +255,20 @@ CageWarpCommand* CageWarpCommand::fromJson( const QJsonObject& obj, const QList<
             newBefore.emplace_back( rect.left() + x * dx, rect.top()  + y * dy );
           }
         }
-        return new CageWarpCommand(layer, newBefore, after, rect, newPos, rows, columns, parent);
+        cmd = new CageWarpCommand(layer, newBefore, after, rect, newPos, rows, columns, parent);
     } else {
-        return new CageWarpCommand(layer, before, after, rect, newPos, rows, columns, parent);
+        cmd = new CageWarpCommand(layer, before, after, rect, newPos, rows, columns, parent);
     }
+
+    // Load cached warped image to avoid recomputing the expensive warp on load
+    if (obj.contains("warpedImageData")) {
+        const QByteArray ba = QByteArray::fromBase64(
+            obj["warpedImageData"].toString().toLatin1());
+        QImage cached;
+        if (cached.loadFromData(ba, "PNG") && !cached.isNull())
+            cmd->m_cachedWarpedImage = cached;
+    }
+
+    return cmd;
   }
 }

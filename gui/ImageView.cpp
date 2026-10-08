@@ -304,7 +304,9 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
       // which restore m_image from a plain backup always show the correct LUT.
       // Guard against being called during QUndoStack destruction (clear() fires
       // indexChanged with index 0 while the scene is already being torn down).
-      if ( m_scene && !m_scene->items().isEmpty() )
+      // Also skip during bulk project loading (setUpdatesEnabled(false) is set then)
+      // to avoid O(N × layers × pixels) LUT passes — loadProject() calls it once at the end.
+      if ( m_scene && !m_scene->items().isEmpty() && updatesEnabled() )
           applyDisplayAdjustments();
       m_lastIndex = currentIndex;
     });
