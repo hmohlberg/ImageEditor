@@ -31,8 +31,13 @@ sample image, e.g. ``/ImageEditor/samples/images/pm2382o.png``.
    :alt: Zoom and pan controls
 
 
-Create Your First Layer
------------------------
+3. Create Your First Layers
+------------------------
+
+Your first select image regions you want to edit, e.g. that you want to move, rotate, transform, etc in order to restore the image as best as possible.
+Each selected region defines a layer that you can edit then.
+
+So, first lets define two layers, i.e., regions we want to edit in the follow up steps.
 
 Lasso
 ~~~~~
@@ -65,12 +70,69 @@ Polygon
 * Set a series of points around the image area you would like to edit.
   It will always be a closed polygon; add as many points as you need.
 * Confirm your selection with **Esc**.
+
+.. image:: images/getting_started/getting_started-08.png
+   :alt: Polygon layer
+
+* This does not yet create a new layer. You can still edit the polygon if you are not happy.
+   * E.g., add a new point by selecting from the menu 'Operation mode: > Add new polygon point' or type cmd+A (on MacOS) | strg+A (on Windows) | ctrl+A (on Linux) 
+   * or Move (cmd+M) a point, or move (translate, cmd+T) the whole polygone by selecting the option from the 'OPeration mode' menu
+
+.. note::
+
+   add screenshot operation mode menu.
+
+* Select **Create new polygon layer** to confirm your polygon selection
 * You have created your second layer, which is added to the list of layers
   in the **Layers** dock on the right.
 
 .. note::
 
-   Polygon confirmation on macOS is still to be confirmed.
+   add screenshot layer doc.
 
-.. image:: images/getting_started/getting_started-08.png
-   :alt: Polygon layer
+4. Edit the Layers
+------------------
+* Move to the first Layer again, our Lasso selection (Shift + mouse drag)
+* Select Layer 1 from the Layers Dock or the **Layer** menu
+
+.. note::
+
+   add screenshot select layer.
+
+* Select **Translate** from the **Layer/Editor** menu
+.. note::
+
+   add screenshot select Translate.
+
+* Click into the layer and move the selected image region
+
+.. note::
+
+   add screenshot Translation.
+
+* Select **Rotate** from the **Layer/Editor** menu
+* Click into the layer and move your mouse left or right to rotate the selected image region
+
+.. note::
+
+   add screenshot Rotation.
+* Translate again
+.. note::
+
+   add screenshot Translation2.
+* For the final touch, select **Cage warp** the **Layer/Editor** menu
+* Increase the number of **Cage control points**
+.. note::
+
+   add screenshot Cage warp, control points.
+* Zoom in and move cage control points, such that the gap is closed
+
+.. note::
+
+   add screenshot Cage warp1 and warp2
+
+
+
+
+
+
