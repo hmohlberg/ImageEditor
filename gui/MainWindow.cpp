@@ -136,6 +136,8 @@ static void alphaBleedImage( QImage& img )
 #include <QTextEdit>
 #include <QTabWidget>
 #include <QTreeWidget>
+#include <QTableWidget>
+#include <QToolButton>
 #include <QHeaderView>
 #include <QUrlQuery>
 
@@ -1221,18 +1223,78 @@ void MainWindow::saveHistory()
     if ( fileName.isEmpty() ) return;
 
     if ( !Config::force && QFile::exists(fileName) ) {
-        const auto reply = QMessageBox::question(this, tr("Overwrite?"),
+        QDialog owDlg(this);
+        owDlg.setWindowTitle(tr("Overwrite?"));
+        owDlg.setMinimumWidth(480);
+        auto* owVl  = new QVBoxLayout(&owDlg);
+        auto* owHl  = new QHBoxLayout();
+        // Warning icon as SVG
+        static const char* warnSvg =
+            "<svg viewBox='0 0 32 32' xmlns='http://www.w3.org/2000/svg'>"
+            "<polygon points='16,3 30,29 2,29' fill='none' stroke='#e0a020' stroke-width='2.5' stroke-linejoin='round'/>"
+            "<rect x='14.8' y='12' width='2.4' height='9' rx='1' fill='#e0a020'/>"
+            "<circle cx='16' cy='24.5' r='1.4' fill='#e0a020'/>"
+            "</svg>";
+        QByteArray warnData(warnSvg);
+        QSvgRenderer warnRenderer(warnData);
+        QPixmap warnPm(36, 36);
+        warnPm.fill(Qt::transparent);
+        QPainter warnP(&warnPm);
+        warnRenderer.render(&warnP);
+        auto* iconLabel = new QLabel(&owDlg);
+        iconLabel->setPixmap(warnPm);
+        iconLabel->setFixedSize(40, 40);
+        iconLabel->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
+        auto* msgLabel  = new QLabel(
             tr("\"%1\" already exists.\nDo you want to replace it?")
-                .arg(QFileInfo(fileName).fileName()),
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-        if ( reply != QMessageBox::Yes ) return;
+                .arg(QFileInfo(fileName).fileName()), &owDlg);
+        msgLabel->setWordWrap(true);
+        owHl->addWidget(iconLabel);
+        owHl->addSpacing(8);
+        owHl->addWidget(msgLabel, 1);
+        owVl->addLayout(owHl);
+        owVl->addSpacing(8);
+        auto* owBb = new QDialogButtonBox(QDialogButtonBox::Yes | QDialogButtonBox::No, &owDlg);
+        owBb->button(QDialogButtonBox::No)->setDefault(true);
+        owVl->addWidget(owBb);
+        connect(owBb, &QDialogButtonBox::accepted, &owDlg, &QDialog::accept);
+        connect(owBb, &QDialogButtonBox::rejected, &owDlg, &QDialog::reject);
+        if ( owDlg.exec() != QDialog::Accepted ) return;
     }
-    saveProject(fileName);
+
+    // Ask for optional name and comment to embed in the JSON
+    QDialog metaDlg(this);
+    metaDlg.setWindowTitle(tr("Save History — Metadata"));
+    metaDlg.setMinimumWidth(500);
+    auto* metaLayout = new QFormLayout(&metaDlg);
+    metaLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    auto* nameEdit    = new QLineEdit(&metaDlg);
+    nameEdit->setPlaceholderText(tr("Please enter your name"));
+    auto* commentEdit = new QTextEdit(&metaDlg);
+    commentEdit->setFixedHeight(commentEdit->fontMetrics().lineSpacing() * 3 + 12);
+    commentEdit->setAcceptRichText(false);
+    commentEdit->setPlaceholderText(tr("Please add a comment explaining your changes."));
+    metaLayout->addRow(tr("Name:"),    nameEdit);
+    metaLayout->addRow(tr("Comment:"), commentEdit);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &metaDlg);
+    metaLayout->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &metaDlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &metaDlg, &QDialog::reject);
+    if ( metaDlg.exec() != QDialog::Accepted ) return;
+
+    saveProject(fileName, nameEdit->text().trimmed(), commentEdit->toPlainText().trimmed());
 }
 
-bool MainWindow::saveProject( const QString& filePath )
+bool MainWindow::saveProject( const QString& filePath, const QString& name, const QString& comment )
 {
-    QJsonObject root;
+    // Append this save as a new history entry
+    QJsonObject entry;
+    entry["savedAt"]  = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+    entry["version"]  = QCoreApplication::applicationVersion();
+    if ( !name.isEmpty() )    entry["name"]    = name;
+    if ( !comment.isEmpty() ) entry["comment"] = comment;
+    m_saveHistory.append(entry);
+
     QUndoStack* undoStack = m_imageView->undoStack();
     
     QJsonArray layerArray;
@@ -1330,8 +1392,6 @@ bool MainWindow::saveProject( const QString& filePath )
         layerObj["creator"] = layer->creator();
         layerArray.append(layerObj);
     }
-    root["layers"] = layerArray;
-
     // --- Undo/Redo Stack ---
     QJsonArray undoArray;
     for ( int i = 0; i < undoStack->count(); ++i ) {
@@ -1339,12 +1399,29 @@ bool MainWindow::saveProject( const QString& filePath )
       if ( !cmd ) continue;
       undoArray.append(cmd->toJson());
     }
-    root["undoStack"] = undoArray;
 
-    // --- Write JSON to file ---
+    // --- Write JSON to file with controlled key order (saveHistory first) ---
     QFile f(filePath);
     if (!f.open(QIODevice::WriteOnly)) return false;
-    f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    // Indent all lines after the first by 2 extra spaces so the value aligns inside the outer {}
+    auto reindent = [](const QByteArray& src) -> QByteArray {
+        QByteArray s = src;
+        while (s.endsWith('\n') || s.endsWith('\r')) s.chop(1);
+        QByteArray out;
+        bool first = true;
+        for (const QByteArray& line : s.split('\n')) {
+            if (first) { out += line; first = false; }
+            else        { out += "\n  " + line; }
+        }
+        return out;
+    };
+    QByteArray json;
+    json += "{\n";
+    json += "  \"saveHistory\": " + reindent(QJsonDocument(m_saveHistory).toJson(QJsonDocument::Indented)) + ",\n";
+    json += "  \"layers\": "      + reindent(QJsonDocument(layerArray).toJson(QJsonDocument::Indented))    + ",\n";
+    json += "  \"undoStack\": "   + reindent(QJsonDocument(undoArray).toJson(QJsonDocument::Indented))     + "\n";
+    json += "}\n";
+    f.write(json);
     f.close();
     
     // --- Set clean flag in undo stack ---
@@ -1368,7 +1445,10 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
     f.close();
     if ( !doc.isObject() ) return false;
     QJsonObject root = doc.object();
-    
+
+    // Carry over save history from the loaded file so re-saves accumulate it
+    m_saveHistory = root["saveHistory"].toArray();
+
     // --- Loading and verify main image ---
     QJsonArray layerArray = root["layers"].toArray();
     if ( !skipMainImage ) {
@@ -1958,6 +2038,109 @@ void MainWindow::createDockWidgets()
    m_historyDock->setWidget(m_undoView);
    m_historyDock->setAllowedAreas(Qt::RightDockWidgetArea);
    m_historyDock->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+
+   // Custom title bar: title label + save-history info button + close button
+   {
+       auto* titleWidget = new QWidget(m_historyDock);
+       auto* tl = new QHBoxLayout(titleWidget);
+       tl->setContentsMargins(6, 2, 2, 2);
+       tl->setSpacing(2);
+       auto* titleLabel = new QLabel(tr("Undo History"), titleWidget);
+       tl->addWidget(titleLabel);
+       tl->addStretch();
+       auto* infoBtn = new QToolButton(titleWidget);
+       {
+           static const char* svg =
+               "<svg viewBox='0 0 16 16' xmlns='http://www.w3.org/2000/svg'>"
+               "<circle cx='8' cy='8' r='7' fill='none' stroke='#b0b0b0' stroke-width='1.5'/>"
+               "<rect x='7.1' y='6.8' width='1.8' height='5.4' rx='0.6' fill='#b0b0b0'/>"
+               "<circle cx='8' cy='4.2' r='1.1' fill='#b0b0b0'/>"
+               "</svg>";
+           QByteArray svgData(svg);
+           QSvgRenderer renderer(svgData);
+           QPixmap pm(14, 14);
+           pm.fill(Qt::transparent);
+           QPainter p(&pm);
+           renderer.render(&p);
+           infoBtn->setIcon(QIcon(pm));
+       }
+       infoBtn->setToolTip(tr("Show save history"));
+       infoBtn->setAutoRaise(true);
+       infoBtn->setFixedSize(18, 18);
+       infoBtn->setStyleSheet("QToolButton { border: none; background: transparent; }"
+                              "QToolButton:hover { background: rgba(255,255,255,40); border-radius: 3px; }");
+       tl->addWidget(infoBtn);
+       auto* closeBtn = new QToolButton(titleWidget);
+       closeBtn->setIcon(style()->standardIcon(QStyle::SP_DockWidgetCloseButton));
+       closeBtn->setAutoRaise(true);
+       closeBtn->setFixedSize(18, 18);
+       tl->addWidget(closeBtn);
+       m_historyDock->setTitleBarWidget(titleWidget);
+       connect(closeBtn, &QToolButton::clicked, m_historyDock, &QDockWidget::hide);
+       connect(infoBtn,  &QToolButton::clicked, this, [this]() {
+           auto* dlg = new QDialog(this);
+           const QString displayFile = m_projectFileName.isEmpty()
+               ? tr("unsaved project")
+               : QFileInfo(m_projectFileName).fileName();
+           dlg->setWindowTitle(tr("Save History — %1").arg(displayFile));
+           dlg->setAttribute(Qt::WA_DeleteOnClose);
+           auto* vl = new QVBoxLayout(dlg);
+           auto* table = new QTableWidget(m_saveHistory.size(), 4, dlg);
+           table->setHorizontalHeaderLabels({tr("Saved at"), tr("Version"), tr("Name"), tr("Comment")});
+           table->horizontalHeader()->setStretchLastSection(true);
+           table->verticalHeader()->setVisible(false);
+           table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+           table->setSelectionMode(QAbstractItemView::NoSelection);
+           table->setFocusPolicy(Qt::NoFocus);
+           table->setAlternatingRowColors(true);
+           table->setShowGrid(true);
+           table->setStyleSheet(
+               "QTableWidget { background: #1e1e1e; alternate-background-color: #252525;"
+               "  color: #d4d4d4; gridline-color: #383838; border: none; }"
+               "QTableWidget::item { border: none; padding: 2px 6px; }"
+               "QHeaderView::section { background: #2d2d2d; color: #d4d4d4;"
+               "  padding: 4px 6px; border: none;"
+               "  border-right: 1px solid #404040; border-bottom: 1px solid #505050;"
+               "  font-weight: bold; }"
+           );
+           for (int i = 0; i < m_saveHistory.size(); ++i) {
+               const QJsonObject e = m_saveHistory[i].toObject();
+               auto na = [](const QString& s) { return s.isEmpty() ? tr("not available") : s; };
+               auto mkItem = [](const QString& text, const QString& tip = {}) {
+                   auto* it = new QTableWidgetItem(text);
+                   if (!tip.isEmpty()) it->setToolTip(tip);
+                   return it;
+               };
+               table->setItem(i, 0, mkItem(na(e["savedAt"].toString())));
+               table->setItem(i, 1, mkItem(na(e["version"].toString())));
+               table->setItem(i, 2, mkItem(na(e["name"].toString())));
+               const QString comment = e["comment"].toString();
+               // Wrap tooltip at ~80 chars on word boundaries
+               QString tip;
+               if (!comment.isEmpty()) {
+                   const int wrap = 80;
+                   int col = 0;
+                   for (const QString& word : comment.split(' ')) {
+                       if (!tip.isEmpty()) {
+                           if (col + 1 + word.length() > wrap) { tip += '\n'; col = 0; }
+                           else                                 { tip += ' ';  col += 1; }
+                       }
+                       tip += word;
+                       col += word.length();
+                   }
+               }
+               table->setItem(i, 3, mkItem(na(comment), tip));
+           }
+           table->resizeColumnsToContents();
+           table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+           vl->addWidget(table);
+           auto* bb = new QDialogButtonBox(QDialogButtonBox::Close, dlg);
+           vl->addWidget(bb);
+           connect(bb, &QDialogButtonBox::rejected, dlg, &QDialog::close);
+           dlg->resize(860, 300);
+           dlg->exec();
+       });
+   }
    splitDockWidget(m_layerDock, m_historyDock, Qt::Vertical);
    m_historyDock->setMinimumWidth(200);
    m_overviewDock->hide();

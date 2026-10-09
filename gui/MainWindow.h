@@ -21,6 +21,7 @@
 #include "../core/IMainSystem.h"
 
 #include <QCoreApplication>
+#include <QJsonArray>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QMainWindow>
@@ -131,7 +132,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     bool checkUnsavedData( bool isCloseProgram = true );
     bool loadImage( const QString&, bool askForNewLoad=false );
     void loadHistory( const QString& );
-    bool saveProject( const QString& );
+    bool saveProject( const QString&, const QString& name = {}, const QString& comment = {} );
     bool loadProject( const QString&, bool );
     
     void createDockWidgets();
@@ -248,7 +249,8 @@ class MainWindow : public QMainWindow, public IMainSystem
 
     QString m_selectedLayerItemName;
     QString m_mainImageName;
-    QString m_projectFileName;
+    QString    m_projectFileName;
+    QJsonArray m_saveHistory;
     QList<FileListEntry> m_fileList;
     QString m_currentDisplayName;
     
