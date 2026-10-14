@@ -78,58 +78,51 @@ Polygon
    * E.g., add a new point by selecting from the menu 'Operation mode: > Add new polygon point' or type cmd+A (on MacOS) | strg+A (on Windows) | ctrl+A (on Linux) 
    * or Move (cmd+M) a point, or move (translate, cmd+T) the whole polygone by selecting the option from the 'OPeration mode' menu
 
-.. note::
-
-   add screenshot operation mode menu.
+.. image:: images/getting_started/getting_started-09.png
+   :alt: operation mode menu
 
 * Select **Create new polygon layer** to confirm your polygon selection
 * You have created your second layer, which is added to the list of layers
   in the **Layers** dock on the right.
 
-.. note::
-
-   add screenshot layer doc.
+.. image:: images/getting_started/getting_started-10.png
+   :alt: layer doc
 
 4. Edit the Layers
 ------------------
 * Move to the first Layer again, our Lasso selection (Shift + mouse drag)
 * Select Layer 1 from the Layers Dock or the **Layer** menu
 
-.. note::
+.. image:: images/getting_started/getting_started-11.png
+   :alt: select layer
 
-   add screenshot select layer.
 
 * Select **Translate** from the **Layer/Editor** menu
-.. note::
-
-   add screenshot select Translate.
+.. image:: images/getting_started/getting_started-12.png
+   :alt: select Translate
 
 * Click into the layer and move the selected image region
 
-.. note::
-
-   add screenshot Translation.
+.. image:: images/getting_started/getting_started-13.png
+   :alt: Translation
 
 * Select **Rotate** from the **Layer/Editor** menu
 * Click into the layer and move your mouse left or right to rotate the selected image region
 
-.. note::
+.. image:: images/getting_started/getting_started-14.png
+   :alt: Rotation
 
-   add screenshot Rotation.
 * Translate again
-.. note::
-
-   add screenshot Translation2.
 * For the final touch, select **Cage warp** the **Layer/Editor** menu
 * Increase the number of **Cage control points**
-.. note::
 
-   add screenshot Cage warp, control points.
+.. image:: images/getting_started/getting_started-15.png
+   :alt: Cage warp, control points
+
 * Zoom in and move cage control points, such that the gap is closed
 
-.. note::
-
-   add screenshot Cage warp1 and warp2
+.. image:: images/getting_started/getting_started-16.png
+   :alt: Cage warp, detail
 
 
 
