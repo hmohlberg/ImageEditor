@@ -87,6 +87,7 @@ Polygon
 
 .. image:: images/getting_started/getting_started-10.png
    :alt: layer doc
+   :width: 200px
 
 4. Edit the Layers
 ------------------
@@ -123,6 +124,7 @@ Polygon
 
 .. image:: images/getting_started/getting_started-16.png
    :alt: Cage warp, detail
+   :width: 200px
 
 
 
