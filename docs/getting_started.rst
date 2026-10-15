@@ -5,7 +5,7 @@ This section introduces the ImageEditor graphical user interface (GUI) and guide
 
 The step-by-step instructions will help you become familiar with the essential features and get started with your own image editing tasks.
 
-Layout of the Gui
+Layout of the GUI
 -----------------
 
 .. image:: images/getting_started/getting_started-01.png
