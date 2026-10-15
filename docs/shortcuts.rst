@@ -2,9 +2,16 @@
 Shortcuts
 =========
 
+Keyboard shortcuts provide quick access to frequently used functions.
 
-Shortcuts
-=========
+Please note that the modifier key depends on your operating system:
+
+* **Linux:** Ctrl
+* **Windows:** Ctrl (Strg on German keyboards)
+* **macOS:** Command (⌘)
+
+The shortcuts in the table below use **Ctrl** as the default modifier key.
+On macOS, replace **Ctrl** with **Command (⌘)** where applicable.
 
 .. list-table::
    :widths: 30 50 20
@@ -27,10 +34,10 @@ Shortcuts
      - Tab
    * -
      - Zoom in
-     - \+ or Scroll wheel
+     - \+ *or* Scroll wheel
    * -
      - Zoom out
-     - \− or Scroll wheel
+     - \− *or* Scroll wheel
    * -
      - Pan the view
      - Shift+Drag
