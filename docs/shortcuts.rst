@@ -18,7 +18,7 @@ Global
 
 .. list-table::
    :widths: 50 20
-   :header-rows: 0
+
    * - Undo
      - Ctrl+Z
    * - Redo
@@ -36,9 +36,10 @@ Global
 
 Image Layer Mode
 ----------------
+
 .. list-table::
    :widths: 50 20
-   :header-rows: 0
+
    * - **T**\ ranslate
      - Ctrl+T
    * - **S**\ cale
@@ -58,9 +59,10 @@ Image Layer Mode
 
 Polygon Mode
 ------------
+
 .. list-table::
    :widths: 50 20
-   :header-rows: 0
+
    * - **A**\ dd Point
      - Ctrl+A
    * - **D**\ elete Point
