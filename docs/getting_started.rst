@@ -1,6 +1,13 @@
 Getting Started
 ===============
 
+This section introduces the ImageEditor graphical user interface (GUI) and guides you through the first steps of working with images. You will learn how to navigate the interface, use the main tools and perform basic image repairs.
+
+The step-by-step instructions will help you become familiar with the essential features and get started with your own image editing tasks.
+
+Layout of the Gui
+-----------------
+
 .. image:: images/getting_started/getting_started-01.png
    :alt: ImageEditor user interface
 
