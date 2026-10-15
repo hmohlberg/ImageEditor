@@ -4,7 +4,7 @@ Shortcuts
 
 
 +--------------------+--------------------------+------------+
-| Global                                                     |		
+| Global  |  |                                                     |		
 | | Undo | Ctrl+Z | 
 | | Redo | Ctrl+Y | 
 | | Cycle to next visible layer | Tab | 
@@ -13,7 +13,7 @@ Shortcuts
 | | Pan the view | Shift+Drag | 
 | | Exit the application | Ctrl+Q | 
 +--------------------+--------------------------+------------+
-| Image Layer Mode		 | 
+| Image Layer Mode  |  | 		 | 
 | | **T**ranslate | Ctrl+T | 
 | | **S**cale | Ctrl+S | 
 | | **R**otate | Ctrl+R | 
@@ -23,7 +23,7 @@ Shortcuts
 | | Make all layers **v**isible | Ctrl+V | 
 | | Toggle visibility of selected layer | Ctrl+I | 
 +--------------------+--------------------------+------------+
-| Polygon Mode		 | 
+| Polygon Mode	  |  | 	 | 
 | | **A**dd Point | Ctrl+A | 
 | | **D**elete Point | Ctrl+D | 
 | | **M**ove Point | Ctrl+M | 
