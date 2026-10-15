@@ -13,82 +13,63 @@ Please note that the modifier key depends on your operating system:
 The shortcuts in the table below use **Ctrl** as the default modifier key.
 On macOS, replace **Ctrl** with **Command (⌘)** where applicable.
 
-.. list-table::
-   :widths: 30 50 20
-   :header-rows: 1
+Global
+------
 
-   * - Mode
-     - Action
-     - Shortcut
-   * - **Global**
-     -
-     -
-   * -
-     - Undo
+.. list-table::
+   :widths: 50 20
+   :header-rows: 0
+   * - Undo
      - Ctrl+Z
-   * -
-     - Redo
+   * - Redo
      - Ctrl+Y
-   * -
-     - Cycle to next visible layer
+   * - Cycle to next visible layer
      - Tab
-   * -
-     - Zoom in
+   * - Zoom in
      - \+ *or* Scroll wheel
-   * -
-     - Zoom out
+   * - Zoom out
      - \− *or* Scroll wheel
-   * -
-     - Pan the view
+   * - Pan the view
      - Shift+Drag
-   * -
-     - Exit the application
+   * - Exit the application
      - Ctrl+Q
-   * - **Image Layer Mode**
-     -
-     -
-   * -
-     - **T**\ ranslate
+
+Image Layer Mode
+----------------
+.. list-table::
+   :widths: 50 20
+   :header-rows: 0
+   * - **T**\ ranslate
      - Ctrl+T
-   * -
-     - **S**\ cale
+   * - **S**\ cale
      - Ctrl+S
-   * -
-     - **R**\ otate
+   * - **R**\ otate
      - Ctrl+R
-   * -
-     - Flip (**M**\ irror)
+   * - Flip (**M**\ irror)
      - Ctrl+M
-   * -
-     - Cage **W**\ arp
+   * - Cage **W**\ arp
      - Ctrl+W
-   * -
-     - **P**\ erspective Warp
+   * - **P**\ erspective Warp
      - Ctrl+P
-   * -
-     - Make all layers **v**\ isible
+   * - Make all layers **v**\ isible
      - Ctrl+V
-   * -
-     - Toggle visibility of selected layer
+   * - Toggle visibility of selected layer
      - Ctrl+I
-   * - **Polygon Mode**
-     -
-     -
-   * -
-     - **A**\ dd Point
+
+Polygon Mode
+------------
+.. list-table::
+   :widths: 50 20
+   :header-rows: 0
+   * - **A**\ dd Point
      - Ctrl+A
-   * -
-     - **D**\ elete Point
+   * - **D**\ elete Point
      - Ctrl+D
-   * -
-     - **M**\ ove Point
+   * - **M**\ ove Point
      - Ctrl+M
-   * -
-     - **R**\ educe Polygon
+   * - **R**\ educe Polygon
      - Ctrl+R
-   * -
-     - **S**\ mooth Polygon
+   * - **S**\ mooth Polygon
      - Ctrl+S
-   * -
-     - **T**\ ranslate Polygon
+   * - **T**\ ranslate Polygon
      - Ctrl+T
