@@ -134,6 +134,16 @@ Polygon
    :width: 300px
 
 
+* Save your image as png-file and the history as json-file to ensure provenance tracking
+
+.. image:: images/getting_started/getting_started-17.png
+   :alt: save image and history
+   :width: 300px
+
+* For a complete provenance tracking add some meta data, i.e., your full name and comments if there is anything specific about your repair
+.. image:: images/getting_started/getting_started-18.png
+   :alt: enter meta data details
+   :width: 300px
 
 
 
