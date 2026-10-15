@@ -30,7 +30,7 @@ Quick links
      - How to build on Linux, macOS, or Windows/WSL
    * - :doc:`usage`
      - Command-line options and usage examples
-   * - :doc: 'getting_started'
+   * - :doc:`getting_started`
      - Introduction and first steps with the ImageEditor Gui
    * - :doc:`tools`
      - Paint, Mask Classes, Lasso, Polygon, and Layer tools explained
@@ -38,6 +38,8 @@ Quick links
      - Layers dock and Undo History dock
    * - :doc:`dialogs`
      - Open Image dialog and Configuration dialog
+   * - :doc:`shortcuts`
+     - Shortcuts to the main functionalites
    * - :doc:`technical`
      - BigTIFF, HDF5, batch processing details
    * - :doc:`api/index`
