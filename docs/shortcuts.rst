@@ -27,10 +27,10 @@ Shortcuts
      - Tab
    * -
      - Zoom in
-     - + or Scroll wheel
+     - \+ or Scroll wheel
    * -
      - Zoom out
-     - − or Scroll wheel
+     - \− or Scroll wheel
    * -
      - Pan the view
      - Shift+Drag
@@ -41,25 +41,25 @@ Shortcuts
      -
      -
    * -
-     - **T**ranslate
+     - **T**\ ranslate
      - Ctrl+T
    * -
-     - **S**cale
+     - **S**\ cale
      - Ctrl+S
    * -
-     - **R**otate
+     - **R**\ otate
      - Ctrl+R
    * -
-     - Flip (**M**irror)
+     - Flip (**M**\ irror)
      - Ctrl+M
    * -
-     - Cage **W**arp
+     - Cage **W**\ arp
      - Ctrl+W
    * -
-     - **P**erspective Warp
+     - **P**\ erspective Warp
      - Ctrl+P
    * -
-     - Make all layers **v**isible
+     - Make all layers **v**\ isible
      - Ctrl+V
    * -
      - Toggle visibility of selected layer
@@ -68,20 +68,20 @@ Shortcuts
      -
      -
    * -
-     - **A**dd Point
+     - **A**\ dd Point
      - Ctrl+A
    * -
-     - **D**elete Point
+     - **D**\ elete Point
      - Ctrl+D
    * -
-     - **M**ove Point
+     - **M**\ ove Point
      - Ctrl+M
    * -
-     - **R**educe Polygon
+     - **R**\ educe Polygon
      - Ctrl+R
    * -
-     - **S**mooth Polygon
+     - **S**\ mooth Polygon
      - Ctrl+S
    * -
-     - **T**ranslate Polygon
+     - **T**\ ranslate Polygon
      - Ctrl+T
