@@ -143,7 +143,7 @@ Polygon
 
 .. image:: images/getting_started/getting_started-18.png
    :alt: enter meta data details
-   :width: 300px
+   :width: 400px
 
 * To resume your previous work session, load your saved JSON file.
 
