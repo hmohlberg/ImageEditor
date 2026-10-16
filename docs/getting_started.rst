@@ -141,7 +141,14 @@ Polygon
    :width: 300px
 
 * For a complete provenance tracking add some meta data, i.e., your full name and comments if there is anything specific about your repair
+
 .. image:: images/getting_started/getting_started-18.png
+   :alt: enter meta data details
+   :width: 300px
+
+* To resume your previous work session, load your saved JSON file.
+
+.. image:: images/getting_started/getting_started-19.png
    :alt: enter meta data details
    :width: 300px
 
