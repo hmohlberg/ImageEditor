@@ -18,6 +18,7 @@
 #include "EditablePolygonItem.h"
 
 #include "../gui/MainWindow.h"
+#include "../gui/ImageView.h"
 #include "../undo/PolygonTranslateCommand.h"
 #include "../undo/PolygonDeletePointCommand.h"
 #include "../undo/PolygonInsertPointCommand.h"
@@ -246,7 +247,9 @@ void EditablePolygonItem::mouseDoubleClickEvent( QGraphicsSceneMouseEvent* e )
      e->accept();
      return;
     } else if ( mode == LayerItem::OperationMode::DeletePolygon ) {
-     m_poly->remove();
+     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_layer->parent());
+     if ( mainWindow )
+       mainWindow->getViewer()->deletePolygon(m_name);
      e->accept();
      return;
     } else if ( mode == LayerItem::OperationMode::Info ) {

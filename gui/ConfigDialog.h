@@ -126,4 +126,5 @@ private:
 
 signals:
     void displayAdjustmentChanged(int brightness, int contrast);
+    void cursorChanged(int size, const QColor& fill, const QColor& border);
 };

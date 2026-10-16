@@ -1562,6 +1562,7 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
                 return;
             }
             m_startLayerRotation = m_currentRotation;
+            m_rotationPressScreenPos = event->screenPos();
             m_mouseOperationActive = true;
             m_startPos         = pos();
             QGraphicsPixmapItem::mousePressEvent(event);
@@ -1620,8 +1621,8 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
        } else {
          MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
          if ( parent != nullptr ) {
-           QPointF delta = event->scenePos() - event->buttonDownScenePos(Qt::LeftButton);
-           double angleDelta = m_startLayerRotation + delta.x()/20.0 - m_currentRotation;
+           QPointF delta = QPointF(event->screenPos()) - QPointF(m_rotationPressScreenPos);
+           double angleDelta = m_startLayerRotation + delta.x() * EditorStyle::instance().rotationSingleStep() / 10.0 - m_currentRotation;
            setRotationAngle(angleDelta);
            parent->updateLayerOperationParameter("LayerItem::mouseMoveEvent",m_name,LayerItem::OperationMode::Rotate,m_currentRotation);
            event->accept();

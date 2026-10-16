@@ -18,6 +18,7 @@
 #include "MainWindow.h"
 #include "ImageView.h"
 #include "ConfigDialog.h"
+#include "../util/CursorUtil.h"
 #include "OverviewWidget.h"
 #include "AboutDialog.h"
 #include "LayerEditorView.h"
@@ -1185,102 +1186,87 @@ void MainWindow::saveAsImage()
 
 void MainWindow::saveHistory()
 {
-    QFileDialog dlg(this, tr("Save JSON History File As..."));
+    // Use a non-native QFileDialog so we can embed metadata fields directly into
+    // its layout — resulting in a single window with no secondary popups.
+    QFileDialog dlg(this, tr("Save history as…"));
     dlg.setAcceptMode(QFileDialog::AcceptSave);
     dlg.setNameFilter(tr("JSON Files (*.json);;All Files (*)"));
     dlg.setDefaultSuffix("json");
     dlg.setOption(QFileDialog::DontUseNativeDialog, true);
-    // Suppress Qt's internal overwrite check: with selectFile() active it checks the
-    // list-selected file, not what the user typed. We confirm overwrite ourselves.
     dlg.setOption(QFileDialog::DontConfirmOverwrite, true);
+    // Make window title and accept button say the same thing
+    dlg.setLabelText(QFileDialog::Accept, tr("Save history as…"));
+
     if ( !m_projectFileName.isEmpty() )
         dlg.setDirectory(QFileInfo(m_projectFileName).absoluteDir());
 
-    // Pre-fill the filename edit directly instead of selectFile(), which also marks the
-    // file in the list view and causes selectedFiles() to return that stale selection
-    // even after the user has typed a different name in the edit field.
     auto* fnEdit = dlg.findChild<QLineEdit*>("fileNameEdit");
     if ( fnEdit && !m_projectFileName.isEmpty() )
         fnEdit->setText(QFileInfo(m_projectFileName).fileName());
     else if ( !m_projectFileName.isEmpty() )
-        dlg.selectFile(QFileInfo(m_projectFileName).fileName()); // fallback
+        dlg.selectFile(QFileInfo(m_projectFileName).fileName());
+
+    // --- Extra panel: Name, Comment, inline overwrite warning ---
+    auto* extra = new QWidget(&dlg);
+    auto* form  = new QFormLayout(extra);
+    form->setContentsMargins(4, 6, 4, 2);
+    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    form->setVerticalSpacing(6);
+
+    auto* nameEdit = new QLineEdit(extra);
+    nameEdit->setPlaceholderText(tr("Your name"));
+    form->addRow(tr("Name:"), nameEdit);
+
+    auto* commentEdit = new QTextEdit(extra);
+    commentEdit->setAcceptRichText(false);
+    commentEdit->setFixedHeight(commentEdit->fontMetrics().lineSpacing() * 3 + 12);
+    commentEdit->setPlaceholderText(tr("Comment explaining your changes"));
+    form->addRow(tr("Comment:"), commentEdit);
+
+    // Inline overwrite warning — always in the layout (no height shift), text color toggled
+    auto* warnLabel = new QLabel(extra);
+    warnLabel->setText(tr("⚠  File already exists and will be replaced."));
+    warnLabel->setStyleSheet("color: transparent; font-style: italic;");  // invisible but sized
+    form->addRow(QString(), warnLabel);
+
+    // Append the extra panel into the file dialog's own layout
+    auto* dlgLayout = dlg.layout();
+    if ( auto* grid = qobject_cast<QGridLayout*>(dlgLayout) )
+        grid->addWidget(extra, grid->rowCount(), 0, 1, grid->columnCount());
+    else if ( auto* vbox = qobject_cast<QVBoxLayout*>(dlgLayout) )
+        vbox->insertWidget(vbox->count() - 1, extra);
+    else
+        dlgLayout->addWidget(extra);
+
+    // Keep the overwrite warning in sync with the filename field
+    auto updateWarn = [&]() {
+        bool show = false;
+        if ( fnEdit ) {
+            QString typed = fnEdit->text().trimmed();
+            if ( !typed.isEmpty() ) {
+                if ( QFileInfo(typed).suffix().isEmpty() ) typed += ".json";
+                show = !Config::force && QFile::exists(dlg.directory().absoluteFilePath(typed));
+            }
+        }
+        warnLabel->setStyleSheet(show ? "color: #e0a020; font-style: italic;"
+                                      : "color: transparent; font-style: italic;");
+    };
+    if ( fnEdit ) connect(fnEdit, &QLineEdit::textChanged, &dlg, updateWarn);
+    connect(&dlg, &QFileDialog::directoryEntered, &dlg, [&](const QString&){ updateWarn(); });
 
     if ( dlg.exec() != QDialog::Accepted ) return;
 
-    // Read from the edit field directly: selectedFiles() may still return the list
-    // selection (= original file) rather than what the user actually typed.
+    // Resolve the final file path (prefer what the user typed over the list selection)
     QString fileName;
     if ( fnEdit ) {
         QString typed = fnEdit->text().trimmed();
         if ( !typed.isEmpty() ) {
-            if ( QFileInfo(typed).suffix().isEmpty() )
-                typed += ".json";
+            if ( QFileInfo(typed).suffix().isEmpty() ) typed += ".json";
             fileName = dlg.directory().absoluteFilePath(typed);
         }
     }
-    if ( fileName.isEmpty() )
-        fileName = dlg.selectedFiles().value(0);
+    if ( fileName.isEmpty() ) fileName = dlg.selectedFiles().value(0);
     if ( fileName.isEmpty() ) return;
-
-    if ( !Config::force && QFile::exists(fileName) ) {
-        QDialog owDlg(this);
-        owDlg.setWindowTitle(tr("Overwrite?"));
-        owDlg.setMinimumWidth(480);
-        auto* owVl  = new QVBoxLayout(&owDlg);
-        auto* owHl  = new QHBoxLayout();
-        // Warning icon as SVG
-        static const char* warnSvg =
-            "<svg viewBox='0 0 32 32' xmlns='http://www.w3.org/2000/svg'>"
-            "<polygon points='16,3 30,29 2,29' fill='none' stroke='#e0a020' stroke-width='2.5' stroke-linejoin='round'/>"
-            "<rect x='14.8' y='12' width='2.4' height='9' rx='1' fill='#e0a020'/>"
-            "<circle cx='16' cy='24.5' r='1.4' fill='#e0a020'/>"
-            "</svg>";
-        QByteArray warnData(warnSvg);
-        QSvgRenderer warnRenderer(warnData);
-        QPixmap warnPm(36, 36);
-        warnPm.fill(Qt::transparent);
-        QPainter warnP(&warnPm);
-        warnRenderer.render(&warnP);
-        auto* iconLabel = new QLabel(&owDlg);
-        iconLabel->setPixmap(warnPm);
-        iconLabel->setFixedSize(40, 40);
-        iconLabel->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
-        auto* msgLabel  = new QLabel(
-            tr("\"%1\" already exists.\nDo you want to replace it?")
-                .arg(QFileInfo(fileName).fileName()), &owDlg);
-        msgLabel->setWordWrap(true);
-        owHl->addWidget(iconLabel);
-        owHl->addSpacing(8);
-        owHl->addWidget(msgLabel, 1);
-        owVl->addLayout(owHl);
-        owVl->addSpacing(8);
-        auto* owBb = new QDialogButtonBox(QDialogButtonBox::Yes | QDialogButtonBox::No, &owDlg);
-        owBb->button(QDialogButtonBox::No)->setDefault(true);
-        owVl->addWidget(owBb);
-        connect(owBb, &QDialogButtonBox::accepted, &owDlg, &QDialog::accept);
-        connect(owBb, &QDialogButtonBox::rejected, &owDlg, &QDialog::reject);
-        if ( owDlg.exec() != QDialog::Accepted ) return;
-    }
-
-    // Ask for optional name and comment to embed in the JSON
-    QDialog metaDlg(this);
-    metaDlg.setWindowTitle(tr("Save History — Metadata"));
-    metaDlg.setMinimumWidth(500);
-    auto* metaLayout = new QFormLayout(&metaDlg);
-    metaLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    auto* nameEdit    = new QLineEdit(&metaDlg);
-    nameEdit->setPlaceholderText(tr("Please enter your name"));
-    auto* commentEdit = new QTextEdit(&metaDlg);
-    commentEdit->setFixedHeight(commentEdit->fontMetrics().lineSpacing() * 3 + 12);
-    commentEdit->setAcceptRichText(false);
-    commentEdit->setPlaceholderText(tr("Please add a comment explaining your changes."));
-    metaLayout->addRow(tr("Name:"),    nameEdit);
-    metaLayout->addRow(tr("Comment:"), commentEdit);
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &metaDlg);
-    metaLayout->addRow(buttons);
-    connect(buttons, &QDialogButtonBox::accepted, &metaDlg, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &metaDlg, &QDialog::reject);
-    if ( metaDlg.exec() != QDialog::Accepted ) return;
 
     saveProject(fileName, nameEdit->text().trimmed(), commentEdit->toPlainText().trimmed());
 }
@@ -3680,8 +3666,8 @@ void MainWindow::createToolbars()
     QPushButton* btnMinus = new QPushButton("-", this);
     btnMinus->setFocusPolicy(Qt::ClickFocus);
     btnMinus->setToolTip("<b>Remove control point</b><br>Decrease the number of cage warp control points for a coarser, smoother deformation.");
-    btnPlus->setStyleSheet("font-size: 20px; font-weight: bold;");
-    btnMinus->setStyleSheet("font-size: 20px; font-weight: bold;");
+    btnPlus->setStyleSheet("QPushButton { font-size: 20px; font-weight: bold; } QToolTip { font-size: 13px; font-weight: normal; }");
+    btnMinus->setStyleSheet("QPushButton { font-size: 20px; font-weight: bold; } QToolTip { font-size: 13px; font-weight: normal; }");
     btnPlus->setFixedSize(18, 18);
     btnMinus->setFixedSize(18, 18);
     m_canvasWarpLayerToolbar->addWidget(btnPlus);
@@ -4065,6 +4051,30 @@ void MainWindow::createToolbars()
     });
     connect(m_imageView, &ImageView::polygonNeedsUpdate, this, [this](bool needsUpdate){
         m_polygonCreateLayerAction->setEnabled(needsUpdate);
+        if ( needsUpdate ) {
+            const int cutLayerId = m_imageView->getActiveCutLayerId();
+            // Collect rows (stack index + 1) of every command that represents the current
+            // cut-layer state: LassoCutCommand (first cut) and UpdatePolygonLayerCommand (updates).
+            // Row 0 in QUndoView is the initial-state sentinel, so row = stack_index + 1.
+            QSet<int> warningRows;
+            // Always highlight the EditablePolygonCommand row itself
+            const int polyRow = m_imageView->getActivePolygonCmdStackIndex();
+            if ( polyRow >= 0 ) warningRows.insert(polyRow + 1);
+            // Highlight LassoCutCommand and UpdatePolygonLayerCommand for the cut layer
+            if ( cutLayerId >= 0 ) {
+                const QUndoStack* stack = m_imageView->undoStack();
+                for ( int i = 0; i < stack->count(); ++i ) {
+                    const auto* cmd = dynamic_cast<const AbstractCommand*>(stack->command(i));
+                    if ( !cmd ) continue;
+                    if ( cmd->layer() && cmd->layer()->id() == cutLayerId )
+                        warningRows.insert(i + 1);
+                }
+            }
+            m_undoViewDelegate->setWarningRows(warningRows);
+        } else {
+            m_undoViewDelegate->clearWarningRows();
+        }
+        if ( m_undoView ) m_undoView->viewport()->update();
     });
     m_polygonToolbar->addAction(m_polygonCreateLayerAction);
 
@@ -4200,6 +4210,10 @@ void MainWindow::showConfig()
   qCDebug(logEditor) << "MainWindow::showConfig(): Processing...";
   ConfigDialog dlg(this);
   // Live preview of brightness/contrast changes while the dialog is open.
+  connect(&dlg, &ConfigDialog::cursorChanged, this, [](int size, const QColor& fill, const QColor& border) {
+      QApplication::restoreOverrideCursor();
+      setEnlargedStandardCursor(size, fill, border);
+  });
   connect(&dlg, &ConfigDialog::displayAdjustmentChanged, this, [this](int b, int c) {
       m_imageView->setBrightness(b);
       m_imageView->setContrast(c);
@@ -4214,6 +4228,12 @@ void MainWindow::showConfig()
       scheduleOverviewRefresh();
   });
   dlg.exec();
+  // Re-apply cursor — size or color may have changed in the dialog.
+  {
+      const EditorStyle& s = EditorStyle::instance();
+      QApplication::restoreOverrideCursor();
+      setEnlargedStandardCursor(s.cursorSize(), s.cursorFillColor(), s.cursorBorderColor());
+  }
   // Re-check LaMa availability — model path may have changed in the config dialog.
   if ( m_inpaintModelCombo ) {
       auto* sm = qobject_cast<QStandardItemModel*>(m_inpaintModelCombo->model());
@@ -4245,6 +4265,9 @@ void MainWindow::showConfig()
 #endif
       scheduleOverviewRefresh();
   }
+  // Update rotation spin box step size if it changed.
+  if ( m_rotationLayerAngleSpin )
+      m_rotationLayerAngleSpin->setSingleStep(EditorStyle::instance().rotationSingleStep());
   // Refresh all cage control points and overlay items so size/colour changes take effect immediately.
   if ( m_imageView && m_imageView->getScene() ) {
     for ( QGraphicsItem* item : m_imageView->getScene()->items() ) {

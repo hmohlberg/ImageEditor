@@ -23,23 +23,19 @@ Quick links
 
 .. list-table::
    :widths: 20 80
-   
+
    * - :doc:`features`
      - What ImageEditor can do
    * - :doc:`installation`
      - How to build on Linux, macOS, or Windows/WSL
    * - :doc:`usage`
      - Command-line options and usage examples
-   * - :doc:`getting_started`
-     - Introduction and first steps with the ImageEditor Gui
    * - :doc:`tools`
      - Paint, Mask Classes, Lasso, Polygon, and Layer tools explained
    * - :doc:`docks`
      - Layers dock and Undo History dock
    * - :doc:`dialogs`
      - Open Image dialog and Configuration dialog
-   * - :doc:`shortcuts`
-     - Shortcuts to the main functionalites
    * - :doc:`technical`
      - BigTIFF, HDF5, batch processing details
    * - :doc:`api/index`
@@ -53,15 +49,14 @@ Quick links
    :maxdepth: 2
    :hidden:
    :caption: User Guide
-   
+
+   getting_started
    features
    installation
    usage
-   getting_started
    tools
    docks
    dialogs
-   shortcuts
    technical
 
 .. toctree::

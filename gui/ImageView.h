@@ -77,6 +77,7 @@ class ImageView : public QGraphicsView
     void clearLayers(); 
     void createLassoLayer();
     void createPolygonLayer();
+    void deletePolygon(const QString& name);
     void centerOnLayer( Layer* layer );
     void deleteLayer( Layer* layer );
     void enablePipette( bool enabled );
@@ -102,6 +103,8 @@ class ImageView : public QGraphicsView
     void setLayerVisible( int layerVisibleOp );
     
     EditablePolygonCommand* getPolygonUndoCommand( const QString& name = "", bool isSelected = false );
+    int getActiveCutLayerId() const;
+    int getActivePolygonCmdStackIndex() const;
     QImage& getImage() { return m_image; };
     QGraphicsScene* getScene() const { return m_scene; }
     QUndoStack* undoStack() const { return m_undoStack; }

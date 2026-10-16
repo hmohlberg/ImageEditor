@@ -22,7 +22,10 @@
  #include <QString>
  #include <QSettings>
  #include <QLoggingCategory>
- 
+ #include <QFile>
+ #include <QMap>
+ #include <QTextStream>
+
  #include <iostream>
  
  // >>>
@@ -185,7 +188,8 @@
       } else {
         m_interpolationMode = InterpolationMode::Linear;
       }
-      
+
+      loadComments(path);
     }
     
     QColor getHandleColor() const { return m_handleColor; }
@@ -320,60 +324,183 @@
 
     void save() {
       if ( m_path.isEmpty() ) return;
-      QSettings s(m_path, QSettings::IniFormat);
-      s.setValue("Main/version",           m_version);
-      s.setValue("Main/windowSize",        m_windowSize);
-      s.setValue("Main/enableLogging",     m_loggingIsEnabled);
-      s.setValue("Main/perspective",       m_hasPerspective);
-      s.setValue("Main/binaryMasking",     m_binaryMasking);
-      s.setValue("Main/crosshair",         m_crosshair);
-      s.setValue("Main/showDocksAtStartup", m_showDocksAtStartup);
-      s.setValue("Main/showOverviewMap",    m_showOverviewMap);
-      s.setValue("Main/cursorSize",        m_cursorSize);
-      s.setValue("Main/cursorFillColor",   m_cursorFillColor.name());
-      s.setValue("Main/cursorBorderColor", m_cursorBorderColor.name());
-      s.setValue("Cage/claudeQuads",          m_useClaudeQuads);
-      s.setValue("Cage/quads",               m_useCageQuads);
-      s.setValue("Cage/gpu",                 m_usegpu);
-      s.setValue("Cage/gpuCatmullRom",       m_gpuCatmullRom);
-      s.setValue("Cage/liveWarp",            m_liveWarp);
-      s.setValue("Cage/noSelfIntersection",  m_noSelfIntersection);
-      s.setValue("Cage/gridCols",            m_cageGridCols);
-      s.setValue("Cage/squareQuads",         m_squareCageQuads);
-      s.setValue("Cage/controlPointRadius",  m_controlPointRadius);
-      s.setValue("Cage/controlPointColor",   m_controlPointColor.name());
-      s.setValue("Cage/gridColor",           m_gridColor.name());
-      s.setValue("Cage/color",               m_cageWarpColor.name());
-      s.setValue("Scale/handleColor", m_handleColor.name());
-      s.setValue("Scale/handleSize",  m_handleSize);
-      s.setValue("Lasso/color", m_lassoColor.name());
-      s.setValue("Lasso/width", m_lassoWidth);
-      s.setValue("Polygon/width", m_polygonWidth);
-      s.setValue("Polygon/handleSize", m_polygonHandleSize);
-      s.setValue("Polygon/handleColor", m_polygonHandleColor.name());
-      s.setValue("ImageLayer/integerMoveOnly",    m_allowIntegerMoveOnly);
-      s.setValue("ImageLayer/overlayOpacity",     m_layerOverlayOpacity);
-      s.setValue("ImageLayer/rotationSingleStep", m_rotationSingleStep);
-      s.setValue("ImageLayer/handleRadius",       m_handleRadius);
-      QString tm = (m_transformationMode == Qt::FastTransformation) ? "fast" : "smooth";
-      s.setValue("ImageLayer/transformationMode", tm);
-      QString im;
-      switch (m_interpolationMode) {
-        case InterpolationMode::Nearest: im = "nearest"; break;
-        case InterpolationMode::Bicubic: im = "bicubic"; break;
-        default:                         im = "linear";  break;
+      QFile f(m_path);
+      if ( !f.open(QIODevice::WriteOnly | QIODevice::Text) ) return;
+      QTextStream out(&f);
+      out.setEncoding(QStringConverter::Utf8);
+
+      auto b  = [](bool v)   { return v ? QStringLiteral("true") : QStringLiteral("false"); };
+      auto n  = [](int v)    { return QString::number(v); };
+      auto d  = [](double v) { return QString::number(v, 'g', 10); };
+
+      // write a section header; track current section for comment lookup
+      QString currentSec;
+      auto sec = [&](const char* name) {
+        currentSec = QString::fromLatin1(name);
+        out << "\n[" << name << "]\n";
+      };
+      // write key=value; if a file was loaded use stored comments, else use tooltip default
+      auto val = [&](const char* key, const QString& value, const char* defaultComment) {
+        QString comment;
+        if ( !m_commentsLoaded ) {
+          comment = QString::fromUtf8(defaultComment);
+        } else {
+          comment = m_savedComments.value(currentSec + QLatin1Char('/') + QLatin1String(key));
+        }
+        if ( !comment.isEmpty() ) {
+          for ( const QString& line : comment.split(QLatin1Char('\n')) )
+            out << "; " << line << "\n";
+        }
+        out << key << " = " << value << "\n";
+      };
+
+      out << "; ImageEditor configuration file — generated automatically, safe to edit manually.\n";
+      out << "; Comment lines start with ';'. Boolean values: true / false.\n";
+
+      sec("Main");
+      val("version",           m_version,
+          "Configuration profile name (e.g. 'public'). Informational only.");
+      val("windowSize",        m_windowSize,
+          "Initial window size at startup: default, maximum, fullscreen, or predefined mni layout.");
+      val("enableLogging",     b(m_loggingIsEnabled),
+          "Enables debug logging output to the console.");
+      val("perspective",       b(m_hasPerspective),
+          "Enables perspective transformation mode for image layers.");
+      val("binaryMasking",     b(m_binaryMasking),
+          "Restricts mask values to 0 or 1 (binary on/off) instead of continuous values.");
+      val("crosshair",         b(m_crosshair),
+          "Shows a crosshair overlay at the cursor position in the image view.");
+      val("showDocksAtStartup", b(m_showDocksAtStartup),
+          "Show all dock panels automatically when the application starts.");
+      val("showOverviewMap",   b(m_showOverviewMap),
+          "Show a minimap thumbnail above the layer list in the dock, with a red rectangle indicating the currently visible area.");
+      val("pixelScale",        d(m_pixelScale),
+          "Scale factor applied when exporting pixel-accurate overlays (e.g. mask images).");
+      val("cursorSize",        n(m_cursorSize),
+          "Radius of the brush preview circle displayed at the cursor position, in pixels.");
+      val("cursorFillColor",   m_cursorFillColor.name(),
+          "Fill color of the brush preview cursor circle.");
+      val("cursorBorderColor", m_cursorBorderColor.name(),
+          "Border color of the brush preview cursor circle.");
+
+      sec("Cage");
+      val("claudeQuads",        b(m_useClaudeQuads),
+          "Uses Claude's quad subdivision algorithm for cage warping.");
+      val("quads",              b(m_useCageQuads),
+          "Activates quad-based cage control instead of triangulation.");
+      val("gpu",                b(m_usegpu),
+          "Enables GPU-accelerated cage warp rendering via OpenGL.");
+      val("gpuCatmullRom",      b(m_gpuCatmullRom),
+          "Uses Catmull-Rom spline interpolation on the GPU for smoother warp results.");
+      val("liveWarp",           b(m_liveWarp),
+          "Updates the warp result interactively while dragging control points (requires GPU).");
+      val("noSelfIntersection", b(m_noSelfIntersection),
+          "Prevents cage control points from crossing each other during warping.");
+      val("gridCols",           n(m_cageGridCols),
+          "Number of columns in the cage control grid.");
+      val("squareQuads",        b(m_squareCageQuads),
+          "Automatically sets the number of rows so each cage quad is approximately square.");
+      val("controlPointRadius", n(m_controlPointRadius),
+          "Display radius of cage control point handles in pixels.");
+      val("controlPointColor",  m_controlPointColor.name(),
+          "Color used to draw cage control point handles.");
+      val("gridColor",          m_gridColor.name(),
+          "Color of the cage grid lines.");
+      val("color",              m_cageWarpColor.name(),
+          "Color of the cage warp boundary outline.");
+
+      sec("Scale");
+      val("handleColor", m_handleColor.name(),
+          "Color of the scale and rotate transform handles.");
+      val("handleSize",  n(m_handleSize),
+          "Size of the scale and rotate transform handles in pixels.");
+
+      sec("Lasso");
+      val("color", m_lassoColor.name(),
+          "Color of the freehand lasso selection outline.");
+      val("width", n(m_lassoWidth),
+          "Line width of the lasso selection outline in pixels.");
+
+      sec("Polygon");
+      val("width",       n(m_polygonWidth),
+          "Line width of the polygon outline in pixels.");
+      val("handleSize",  n(m_polygonHandleSize),
+          "Size of polygon vertex handles in pixels.");
+      val("handleColor", m_polygonHandleColor.name(),
+          "Color of the polygon vertex handles.");
+
+      sec("ImageLayer");
+      val("integerMoveOnly",    b(m_allowIntegerMoveOnly),
+          "Restricts layer movement to whole pixel positions only.");
+      val("overlayOpacity",     d(m_layerOverlayOpacity),
+          "Opacity of the semi-transparent red overlay shown when Ctrl+dragging a layer (0.0–1.0).");
+      val("rotationSingleStep", d(m_rotationSingleStep),
+          "Angle increment per step when rotating a layer with the rotation handle, in degrees.");
+      val("handleRadius",       d(m_handleRadius),
+          "Radius of the rotation and scale transform handles in pixels.");
+      val("transformationMode",
+          (m_transformationMode == Qt::FastTransformation) ? QStringLiteral("fast") : QStringLiteral("smooth"),
+          "Rendering quality when transforming a layer: fast (nearest-neighbour) or smooth (bilinear).");
+      {
+        QString im;
+        switch (m_interpolationMode) {
+          case InterpolationMode::Nearest: im = "nearest"; break;
+          case InterpolationMode::Bicubic: im = "bicubic"; break;
+          default:                         im = "linear";  break;
+        }
+        val("interpolationMode", im,
+            "Pixel interpolation used when scaling or rotating layers: nearest, linear, or bicubic.");
       }
-      s.setValue("ImageLayer/interpolationMode", im);
-      s.setValue("Main/pixelScale",       m_pixelScale);
-      s.setValue("Network/githubBaseUrl", m_githubBaseUrl);
-      s.setValue("Models/lamaModelPath",  m_lamaModelPath);
-      s.setValue("ImageHeader/brightness", m_brightness);
-      s.setValue("ImageHeader/contrast",   m_contrast);
-      s.sync();
+
+      sec("ImageHeader");
+      val("brightness", n(m_brightness),
+          "Global brightness adjustment applied to the displayed image (-100 to 100).");
+      val("contrast",   n(m_contrast),
+          "Global contrast adjustment applied to the displayed image (-100 to 100).");
+
+      sec("Network");
+      val("githubBaseUrl", m_githubBaseUrl,
+          "Base URL used to resolve github:// protocol paths when loading remote resources.");
+
+      sec("Models");
+      val("lamaModelPath", m_lamaModelPath,
+          "Path to the LaMa ONNX model file (lama.onnx). Leave empty to use the default location.");
+
+      f.close();
     }
 
    private:
-   
+
+    void loadComments( const QString& path ) {
+      m_savedComments.clear();
+      m_commentsLoaded = false;
+      QFile f(path);
+      if ( !f.open(QIODevice::ReadOnly | QIODevice::Text) ) return;
+      QTextStream in(&f);
+      QString section;
+      QStringList pending;
+      while ( !in.atEnd() ) {
+        QString line = in.readLine().trimmed();
+        if ( line.startsWith(QLatin1Char(';')) || line.startsWith(QLatin1Char('#')) ) {
+          QString text = line.mid(1);
+          if ( text.startsWith(QLatin1Char(' ')) ) text = text.mid(1);
+          pending << text;
+        } else if ( line.startsWith(QLatin1Char('[')) && line.endsWith(QLatin1Char(']')) ) {
+          section = line.mid(1, line.length() - 2).trimmed();
+          pending.clear();
+        } else if ( line.contains(QLatin1Char('=')) ) {
+          int eq = line.indexOf(QLatin1Char('='));
+          QString key = line.left(eq).trimmed();
+          if ( !pending.isEmpty() )
+            m_savedComments[section + QLatin1Char('/') + key] = pending.join(QLatin1Char('\n'));
+          pending.clear();
+        } else {
+          pending.clear();
+        }
+      }
+      m_commentsLoaded = true;
+    }
+
     EditorStyle()
         : m_lassoColor(Qt::red), 
           m_handleColor(Qt::cyan),
@@ -467,7 +594,10 @@
     double m_pixelScale = 20.0;
     int m_brightness = 0;
     int m_contrast   = 0;
-    
+
+    bool m_commentsLoaded = false;
+    QMap<QString, QString> m_savedComments;
+
  };
 
 #endif

@@ -49,7 +49,17 @@ public:
     );
 
     QString type() const override { return "UpdatePolygonLayer"; }
-    AbstractCommand* clone() const override { return nullptr; }
+    AbstractCommand* clone() const override {
+        // m_lassoCmd is intentionally omitted: the cloned command works on images only.
+        return new UpdatePolygonLayerCommand(
+            m_srcLayer, m_cutLayer, nullptr,
+            m_oldSrcImage, m_newSrcImage,
+            m_oldCutImage, m_newCutImage,
+            m_oldCutPos,   m_newCutPos,
+            m_oldLassoBackup, m_newLassoBackup,
+            m_oldLassoBounds, m_newLassoBounds,
+            text());
+    }
     int id() const override { return 1005; }
     LayerItem* layer() const override { return m_cutLayer; }
 

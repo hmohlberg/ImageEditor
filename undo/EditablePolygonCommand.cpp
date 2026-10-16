@@ -131,6 +131,7 @@ void EditablePolygonCommand::undo()
 {
   qCDebug(logEditor) << "EditablePolygonCommand::undo(): Processing...";
   {
+    if ( m_silent ) return;
     if ( !(m_item && m_item->scene()) ) return;
     m_scene->removeItem(m_item);
     printMessage(true);

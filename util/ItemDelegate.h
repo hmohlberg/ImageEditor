@@ -121,6 +121,13 @@ class DarkHistoryDelegate : public QStyledItemDelegate {
         return m_highlightedRows;
     }
 
+    void setWarningRows( const QSet<int>& rows ) {
+        m_warningRows = rows;
+    }
+    void clearWarningRows() {
+        m_warningRows.clear();
+    }
+
     void paint( QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index ) const override {
     
       QStyleOptionViewItem opt = option;
@@ -173,8 +180,8 @@ class DarkHistoryDelegate : public QStyledItemDelegate {
       }
       QRect textRect = opt.rect.adjusted(40, 0, -10, 0);
       // check whether text is empty "<empty>"
-      QString displayName = (index.row() == 0 && opt.text.contains("<empty>", Qt::CaseInsensitive)) 
-                          ? tr("Input image") 
+      QString displayName = (index.row() == 0 && opt.text.contains("<empty>", Qt::CaseInsensitive))
+                          ? tr("Input image")
                           : opt.text;
       painter->drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, displayName);
       
@@ -203,7 +210,16 @@ class DarkHistoryDelegate : public QStyledItemDelegate {
       painter->drawLine(opt.rect.bottomLeft(), opt.rect.bottomRight());
       painter->restore();
       
-      // 7. highlighted
+      // 7. warning highlight (polygon modified but UpdatePolygonLayer not yet applied)
+      if ( m_warningRows.contains(index.row())) {
+        painter->save();
+        painter->fillRect(opt.rect, QColor(180, 30, 30, 50));  // subtle red tint
+        painter->setPen(QPen(QColor(220, 60, 60), 3));
+        painter->drawLine(opt.rect.topLeft(), opt.rect.bottomLeft());
+        painter->restore();
+      }
+
+      // 8. general highlighted rows (yellow-orange left accent)
       if ( m_highlightedRows.contains(index.row()))  {
         painter->save();
         painter->setPen(QPen(QColor(220, 160, 0), 3));
@@ -219,7 +235,8 @@ class DarkHistoryDelegate : public QStyledItemDelegate {
     }
     
   private:
-   
-    QSet<int> m_highlightedRows;  
-    
+
+    QSet<int> m_highlightedRows;
+    QSet<int> m_warningRows;     // red: polygon changed but UpdatePolygonLayer not yet applied
+
 };

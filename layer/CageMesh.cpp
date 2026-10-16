@@ -251,13 +251,13 @@ void CageMesh::relax()
             QPointF corr = delta * 0.5 * m_stiffness * diff;
 
             // Punkte bewegen, sofern sie keine fixierten Randpunkte sind
+            // und nicht der aktiv gezogene Punkt (bleibt exakt unter dem Mauszeiger)
             if ( !m_fixedBoundaries ) {
-                p1 += corr;
-                p2 -= corr;
+                if ( s.a != m_activePointId ) p1 += corr;
+                if ( s.b != m_activePointId ) p2 -= corr;
             } else {
-                // Nur bewegen, wenn der Punkt kein Randpunkt ist
-                if ( !isBoundaryPoint(s.a) ) p1 += corr;
-                if ( !isBoundaryPoint(s.b) ) p2 -= corr;
+                if ( !isBoundaryPoint(s.a) && s.a != m_activePointId ) p1 += corr;
+                if ( !isBoundaryPoint(s.b) && s.b != m_activePointId ) p2 -= corr;
             }
         }
     }

@@ -317,6 +317,7 @@ class LayerItem : public QGraphicsPixmapItem
     double m_currentRotation = 0.0;
     double m_startMouseAngle = 0.0;
     double m_startLayerRotation = 0.0;
+    QPoint m_rotationPressScreenPos;
 
     QPointF m_pivot;               // scene coordinates
     bool    m_hasPivot        = false;

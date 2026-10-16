@@ -8,20 +8,38 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-# Apple Silicon optimization
+# Platform-specific optimization
 if(APPLE)
-  add_compile_options(-O3 -mcpu=apple-m4 -ffast-math)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
+    add_compile_options(-O3 -mcpu=apple-m4 -ffast-math)
+  else()
+    add_compile_options(-O3 -march=native -ffast-math)
+  endif()
+endif()
+
+# Detect Homebrew prefix (arm64: /opt/homebrew, x86_64: /usr/local)
+if(APPLE)
+  execute_process(
+    COMMAND brew --prefix
+    OUTPUT_VARIABLE HOMEBREW_PREFIX
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  if(NOT HOMEBREW_PREFIX)
+    set(HOMEBREW_PREFIX "/opt/homebrew")
+  endif()
+  message(STATUS "Homebrew prefix: ${HOMEBREW_PREFIX}")
 endif()
 
 # Qt6 finden
 if(APPLE)
-  list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew")
-  list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew/Cellar/qtbase/6.10.1")
-  set(Qt6Svg_DIR "/opt/homebrew/opt/qtsvg/lib/cmake/Qt6Svg")
+  list(APPEND CMAKE_PREFIX_PATH "${HOMEBREW_PREFIX}")
+  list(APPEND CMAKE_PREFIX_PATH "${HOMEBREW_PREFIX}/Cellar/qtbase/6.10.1")
+  set(Qt6Svg_DIR "${HOMEBREW_PREFIX}/opt/qtsvg/lib/cmake/Qt6Svg")
   # Prepend qtbase so Qt is found first, but keep all existing paths
-  list(INSERT CMAKE_PREFIX_PATH 0 "/opt/homebrew/opt/qtbase")
+  list(INSERT CMAKE_PREFIX_PATH 0 "${HOMEBREW_PREFIX}/opt/qtbase")
   # Explicit Homebrew libtiff path so find_package doesn't fall back to a system copy
-  list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew/opt/libtiff")
+  list(APPEND CMAKE_PREFIX_PATH "${HOMEBREW_PREFIX}/opt/libtiff")
 endif()
 # On Linux, XKB (xkbcommon) is a transitive dependency of Qt6 GUI/XCB.
 # Pre-populate the variables that Qt6's find_dependency(XKB) checks so the
@@ -81,9 +99,9 @@ endif()
 
 # itk find
 if(APPLE)
-  set(Qt6Quick_DIR "/opt/homebrew/opt/qtdeclarative/lib/cmake/Qt6Quick")
-  set(CMAKE_PREFIX_PATH "/opt/homebrew/opt/fftw;${CMAKE_PREFIX_PATH}")
-  link_directories(/opt/homebrew/lib)
+  set(Qt6Quick_DIR "${HOMEBREW_PREFIX}/opt/qtdeclarative/lib/cmake/Qt6Quick")
+  set(CMAKE_PREFIX_PATH "${HOMEBREW_PREFIX}/opt/fftw;${CMAKE_PREFIX_PATH}")
+  link_directories("${HOMEBREW_PREFIX}/lib")
 endif()
 # find_package(ITK QUIET)
 if(ITK_FOUND)
@@ -115,10 +133,10 @@ if(ONNXRUNTIME_FOUND)
 else()
     # Fallback: manual search (Windows / no pkg-config)
     find_library(ONNXRUNTIME_LIB onnxruntime
-        PATHS /opt/homebrew/lib /usr/local/lib /usr/lib)
+        PATHS "${HOMEBREW_PREFIX}/lib" /usr/local/lib /usr/lib)
     find_path(ONNXRUNTIME_INC onnxruntime_cxx_api.h
         PATH_SUFFIXES onnxruntime onnxruntime/core/session
-        PATHS /opt/homebrew/include /usr/local/include /usr/include)
+        PATHS "${HOMEBREW_PREFIX}/include" /usr/local/include /usr/include)
     if(ONNXRUNTIME_LIB AND ONNXRUNTIME_INC)
         set(ONNXRUNTIME_FOUND TRUE)
         set(ONNXRUNTIME_LIBRARIES ${ONNXRUNTIME_LIB})
@@ -283,7 +301,7 @@ if(TIFF_FOUND)
         if(_tiff_lib)
             get_filename_component(_tiff_dir "${_tiff_lib}" DIRECTORY)
         else()
-            set(_tiff_dir "/opt/homebrew/lib")
+            set(_tiff_dir "${HOMEBREW_PREFIX}/lib")
         endif()
         set_target_properties(${PROJECT_NAME} PROPERTIES
             BUILD_RPATH "${_tiff_dir}"
@@ -309,7 +327,7 @@ if(ONNXRUNTIME_FOUND)
             endif()
         endforeach()
         if(NOT _ort_dir)
-            set(_ort_dir "/opt/homebrew/lib")
+            set(_ort_dir "${HOMEBREW_PREFIX}/lib")
         endif()
         set_target_properties(${PROJECT_NAME} PROPERTIES
             BUILD_RPATH  "${_ort_dir}"
@@ -319,20 +337,21 @@ endif()
 
 # Automatische Suche nach Plugins ermöglichen
 if(APPLE)
-    set(QT_PLATFORMS_SRC "/opt/homebrew/opt/qtbase/share/qt/plugins/platforms")
+    set(QT_PLATFORMS_SRC "${HOMEBREW_PREFIX}/opt/qtbase/share/qt/plugins/platforms")
     set(QT_PLATFORMS_DEST "${CMAKE_BINARY_DIR}/platforms")
     add_custom_command(TARGET ImageEditor POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "${QT_PLATFORMS_DEST}"
         COMMAND ${CMAKE_COMMAND} -E copy "${QT_PLATFORMS_SRC}/libqcocoa.dylib" "${QT_PLATFORMS_DEST}/"
         COMMENT "Kopiere libqcocoa.dylib nach ${QT_PLATFORMS_DEST}"
     )
-    set(QT_TLS_SRC "/opt/homebrew/opt/qtbase/share/qt/plugins/tls")
+    set(QT_TLS_SRC "${HOMEBREW_PREFIX}/opt/qtbase/share/qt/plugins/tls")
     set(QT_TLS_DEST "${CMAKE_BINARY_DIR}/tls")
     add_custom_command(TARGET ImageEditor POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "${QT_TLS_DEST}"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${QT_TLS_SRC}" "${QT_TLS_DEST}"
         COMMENT "Kopiere Qt TLS-Plugins nach ${QT_TLS_DEST}"
     )
+
 endif()
 
 # ============================================================

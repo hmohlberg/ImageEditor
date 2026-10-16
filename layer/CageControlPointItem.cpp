@@ -31,8 +31,6 @@ CageControlPointItem::CageControlPointItem( LayerItem* layer, int index )
 {
     setZValue(10001);
     refreshStyle();
-    setFlag(ItemIsMovable);
-    setFlag(ItemSendsScenePositionChanges);
 }
 
 void CageControlPointItem::refreshStyle()

@@ -44,6 +44,34 @@
 // helpers
 // ---------------------------------------------------------------------------
 
+static int s_lastTabIndex = 0;
+
+// SpinBox that jumps from 0 to 20 on the first step up, and back to 0 on step down from 1.
+class CursorSizeSpinBox : public QSpinBox
+{
+    bool m_snapping = false;
+    int  m_prev     = 0;
+public:
+    explicit CursorSizeSpinBox(QWidget* parent = nullptr) : QSpinBox(parent) {
+        // Catch any input path (button, keyboard, wheel) that lands in the dead zone 1–19.
+        connect(this, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int v) {
+            if ( m_snapping ) return;
+            if ( v > 0 && v < 20 ) {
+                m_snapping = true;
+                setValue( m_prev == 0 ? 20 : 0 );
+                m_snapping = false;
+                return;
+            }
+            m_prev = v;
+        });
+    }
+    void stepBy(int steps) override {
+        if ( value() == 0 && steps > 0 ) { setValue(20); return; }
+        if ( value() == 1 && steps < 0 ) { setValue(0);  return; }
+        QSpinBox::stepBy(steps);
+    }
+};
+
 static void styleColorButton(QPushButton* btn, const QString& colorName)
 {
     QColor c(colorName);
@@ -93,6 +121,8 @@ ConfigDialog::ConfigDialog(QWidget* parent)
     tabs->addTab(buildPolygonTab(),     tr("Polygon"));
     tabs->addTab(buildImageLayerTab(),  tr("ImageLayer"));
     tabs->addTab(buildModelsTab(),      tr("Models"));
+    tabs->setCurrentIndex(s_lastTabIndex);
+    connect(tabs, &QTabWidget::currentChanged, [](int idx){ s_lastTabIndex = idx; });
 
     // button row
     QPushButton* loadBtn    = new QPushButton(tr("Load"),    this);
@@ -166,14 +196,26 @@ QWidget* ConfigDialog::buildMainTab()
     row(tr("Show overview map in layers dock"), m_showOverviewMap,
         tr("Show a minimap thumbnail above the layer list in the dock, with a red rectangle indicating the currently visible area."));
 
-    m_cursorSize = new QSpinBox; m_cursorSize->setRange(0, 128);
+    m_cursorSize = new CursorSizeSpinBox; m_cursorSize->setRange(0, 128);
+    m_cursorSize->setSpecialValueText(tr("0 (system default)"));
     row(tr("Cursor size"), m_cursorSize,
-        tr("Radius of the brush preview circle displayed at the cursor position, in pixels."));
+        tr("Size of the custom cursor in pixels. 0 = use the system default cursor without any override."));
+
+    auto emitCursorChanged = [this]() {
+        QColor fill(m_cursorFillColor   ? m_cursorFillColor->text()   : QString());
+        QColor border(m_cursorBorderColor ? m_cursorBorderColor->text() : QString());
+        if ( !fill.isValid() )   fill   = EditorStyle::instance().cursorFillColor();
+        if ( !border.isValid() ) border = EditorStyle::instance().cursorBorderColor();
+        emit cursorChanged(m_cursorSize->value(), fill, border);
+    };
+    connect(m_cursorSize, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, [emitCursorChanged](int) { emitCursorChanged(); });
 
     // color rows
     m_cursorFillColor = new QLineEdit;
     m_cursorFillBtn   = new QPushButton;
     connect(m_cursorFillBtn, &QPushButton::clicked, this, [this]{ pickColor(m_cursorFillColor, m_cursorFillBtn); });
+    connect(m_cursorFillColor, &QLineEdit::textChanged, this, [emitCursorChanged](const QString&) { emitCursorChanged(); });
     {
         QHBoxLayout* hl = new QHBoxLayout; hl->setContentsMargins(0,0,0,0); hl->addWidget(m_cursorFillColor); hl->addWidget(m_cursorFillBtn);
         QWidget* cw = new QWidget; cw->setLayout(hl);
@@ -183,6 +225,7 @@ QWidget* ConfigDialog::buildMainTab()
     m_cursorBorderColor = new QLineEdit;
     m_cursorBorderBtn   = new QPushButton;
     connect(m_cursorBorderBtn, &QPushButton::clicked, this, [this]{ pickColor(m_cursorBorderColor, m_cursorBorderBtn); });
+    connect(m_cursorBorderColor, &QLineEdit::textChanged, this, [emitCursorChanged](const QString&) { emitCursorChanged(); });
     {
         QHBoxLayout* hl = new QHBoxLayout; hl->setContentsMargins(0,0,0,0); hl->addWidget(m_cursorBorderColor); hl->addWidget(m_cursorBorderBtn);
         QWidget* cw = new QWidget; cw->setLayout(hl);

@@ -80,6 +80,7 @@ void LassoCutCommand::undo()
 {
   qCDebug(logEditor) << "LassoCutCommand::undo(): Processing...";
   {
+    if ( m_silent ) return;
     // Restore source data first.
     m_originalLayer->setOriginalImage(m_originalImageBackup);
     // Re-derive m_image for the cut region from restored m_originalImage via the current LUT.

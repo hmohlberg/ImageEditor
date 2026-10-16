@@ -61,6 +61,7 @@ class AbstractCommand : public QUndoCommand
     void markDeleted( bool v ) { m_deleted = v; }
     bool isDeleted() const { return m_deleted; }
     void setSilent( bool silent ) { m_silent = silent; }
+    bool isSilent() const { return m_silent; }
     QString timeString() const { return m_timestamp.toString("HH:mm"); }
     void setIcon( const QIcon &icon ) { m_icon = icon; }
     QIcon icon() const { return m_icon; }

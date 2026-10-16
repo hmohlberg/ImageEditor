@@ -1315,6 +1315,9 @@ void ImageView::mousePressEvent( QMouseEvent* event )
             break;
         }
     }
+    if ( m_selectedCageLayer != nullptr && event->button() == Qt::LeftButton )
+        m_cageBefore = m_selectedCageLayer->cageMesh().points();
+
     QGraphicsView::mousePressEvent(event);
 
   }
@@ -1543,7 +1546,9 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
            m_undoStack->resetClean();
          }
          if( selectedCageLayer ) {
-           selectedCageLayer->applyCageWarp("ImageView::1");
+           QImage warpedResult = selectedCageLayer->applyCageWarp("ImageView::1");
+           if( !warpedResult.isNull() )
+             selectedCageLayer->setOriginalImage(warpedResult, LayerItem::ImageType::Warped);
          }
          // Push cage-edit undo entry (per-layer stack, keeps cage session open)
          selectedCageLayer->cageEditStack()->push(new CageEditCommand(
@@ -2050,7 +2055,9 @@ void ImageView::initCageWarpForLayer( LayerItem *layerItem )
        m_undoStack->resetClean();
      }
      if ( m_selectedCageLayer ) {
-        m_selectedCageLayer->applyCageWarp("ImageView::2");
+        QImage warpedResult = m_selectedCageLayer->applyCageWarp("ImageView::2");
+        if( !warpedResult.isNull() )
+          m_selectedCageLayer->setOriginalImage(warpedResult, LayerItem::ImageType::Warped);
      }
      m_cageBefore.clear();
     } else {
@@ -3087,8 +3094,14 @@ void ImageView::setPolygonIndex( quint8 index, bool doUpdate )
         // qDebug() << " + polygon_name: " << editablePolygon->name() << ", hasLayer =" << editablePolygon->polygon()->layer();
         if ( editablePolygon->name() == polyName == true ) {
          m_activePolygonItem = editablePolygon;
+         editablePolygon->polygon()->setSelected(true);
          editablePolygon->visibilityChangedTo(true);
+         if ( mainWindow ) {
+           mainWindow->setPolygonOperationMode(-4);  // ensure combobox is enabled
+           mainWindow->setPolygonOperationMode((int)LayerItem::OperationMode::MovePoint);
+         }
         } else {
+         editablePolygon->polygon()->setSelected(false);
          editablePolygon->visibilityChangedTo(false);
         }
       }
@@ -3105,6 +3118,106 @@ void ImageView::setPolygonIndex( quint8 index, bool doUpdate )
       emit polygonHasLayer(hasLayer);
     }
     // end test
+  }
+}
+
+void ImageView::deletePolygon(const QString& name)
+{
+  qCDebug(logEditor) << "ImageView::deletePolygon(): name =" << name;
+  {
+    // Confirmation
+    auto reply = QMessageBox::question(
+        this, tr("Delete polygon"),
+        tr("Delete polygon \"%1\" and its associated cut layer?\n\nAll history entries for this polygon will be permanently removed.").arg(name),
+        QMessageBox::Yes | QMessageBox::No);
+    if ( reply != QMessageBox::Yes ) return;
+
+    // Find EditablePolygonCommand for this polygon
+    EditablePolygonCommand* polyCmd = nullptr;
+    for ( int i = 0; i < m_undoStack->count(); ++i ) {
+      auto* cmd = dynamic_cast<EditablePolygonCommand*>(const_cast<QUndoCommand*>(m_undoStack->command(i)));
+      if ( cmd && cmd->name() == name ) { polyCmd = cmd; break; }
+    }
+    if ( !polyCmd ) return;
+
+    const int cutLayerId = polyCmd->childLayerId();
+
+    // Find LassoCutCommand for this polygon's layer
+    LassoCutCommand* lassoCmd = nullptr;
+    if ( cutLayerId >= 0 ) {
+      for ( int i = 0; i < m_undoStack->count(); ++i ) {
+        auto* cmd = dynamic_cast<LassoCutCommand*>(const_cast<QUndoCommand*>(m_undoStack->command(i)));
+        if ( cmd && cmd->layerId() == cutLayerId ) { lassoCmd = cmd; break; }
+      }
+    }
+
+    // Clone the ENTIRE stack (applied + redo-future), excluding only this polygon's commands.
+    // We need both halves so commands the user had Ctrl+Z'd past are not permanently lost.
+    const int currentIndex = m_undoStack->index();  // number of currently applied commands
+    const int totalCount   = m_undoStack->count();  // applied + redo-future
+
+    std::vector<std::unique_ptr<AbstractCommand>> commandsToReplay;
+    int newIndex = 0;  // how many non-polygon commands sit in the applied range
+
+    for ( int i = 0; i < totalCount; ++i ) {
+      const auto* cmd = dynamic_cast<const AbstractCommand*>(m_undoStack->command(i));
+      if ( !cmd ) continue;
+      // Skip EditablePolygonCommand for THIS polygon
+      if ( const auto* pc = dynamic_cast<const EditablePolygonCommand*>(cmd) )
+        if ( pc->name() == name ) continue;
+      // Skip ALL commands that operate on the cut layer (move, transform, paint, etc.)
+      if ( cutLayerId >= 0 && cmd->layer() && cmd->layer()->id() == cutLayerId )
+        continue;
+      auto* clone = cmd->clone();
+      if ( !clone ) {
+        qWarning() << "ImageView::deletePolygon(): uncloneable command at index" << i << "skipped";
+        continue;
+      }
+      commandsToReplay.emplace_back(clone);
+      if ( i < currentIndex ) ++newIndex;  // count the applied non-polygon commands
+    }
+
+    // Null dangling pointers BEFORE clear() destroys the command objects
+    m_activePolygonItem = nullptr;
+    m_editablePolygons.clear();
+
+    // Undo all applied commands (scene → base state), then wipe the entire stack.
+    // setIndex(0) calls undo() on every applied command including the polygon ones.
+    m_undoStack->setIndex(0);
+    m_undoStack->clear();   // deletes polyCmd, lassoCmd, and all other command objects
+
+    // Mark the cut layer as deleted so the layer panel hides it
+    if ( cutLayerId >= 0 ) {
+      for ( auto* layer : m_layers ) {
+        if ( layer && layer->id() == cutLayerId ) {
+          layer->m_deleted = true;
+          break;
+        }
+      }
+    }
+
+    // Rebuild the stack from all clones — push() calls redo() on each, so after this
+    // every clone is "applied" and the stack index equals commandsToReplay.size().
+    for ( auto& clone : commandsToReplay )
+      m_undoStack->push(clone.release());
+
+    // Restore the original applied/redo-future split.
+    // newIndex applied commands should be active; the rest go back to the redo future.
+    m_undoStack->setIndex(newIndex);
+
+    // Re-populate the polygon tracking list from the rebuilt stack
+    for ( int i = 0; i < m_undoStack->count(); ++i ) {
+      auto* pc = dynamic_cast<EditablePolygonCommand*>(const_cast<QUndoCommand*>(m_undoStack->command(i)));
+      if ( pc && pc->model() ) pushEditablePolygon(pc->model());
+    }
+
+    MainWindow* mw = dynamic_cast<MainWindow*>(m_parent);
+    if ( mw ) {
+      mw->setPolygonOperationMode(-1);
+      mw->updateLayerList();
+    }
+    emit polygonHasLayer(false);
+    emit polygonNeedsUpdate(false);
   }
 }
 
@@ -3140,6 +3253,28 @@ EditablePolygonCommand* ImageView::getPolygonUndoCommand( const QString& name, b
    }
    return nullptr;
   }
+}
+
+int ImageView::getActiveCutLayerId() const
+{
+    const QString activeName = QString("Editable Polygon %1").arg(m_polygonIndex);
+    for ( int i = m_undoStack->count() - 1; i >= 0; --i ) {
+        const auto* cmd = dynamic_cast<const EditablePolygonCommand*>(m_undoStack->command(i));
+        if ( cmd && cmd->text() == activeName )
+            return cmd->childLayerId();
+    }
+    return -1;
+}
+
+int ImageView::getActivePolygonCmdStackIndex() const
+{
+    const QString activeName = QString("Editable Polygon %1").arg(m_polygonIndex);
+    for ( int i = m_undoStack->count() - 1; i >= 0; --i ) {
+        const auto* cmd = dynamic_cast<const EditablePolygonCommand*>(m_undoStack->command(i));
+        if ( cmd && cmd->text() == activeName )
+            return i;
+    }
+    return -1;
 }
 
 void ImageView::undoPolygonOperation()
@@ -3225,6 +3360,10 @@ void ImageView::createPolygonLayer()
         layerCut->setController(polyCmd);
         editablePolygon->setVisible(false);
         polyCmd->setChildLayerId(index);
+        connect(editablePolygon, &EditablePolygon::changed, this, [this, polyCmd](){
+          if ( polyCmd->childLayerId() >= 0 )
+            emit polygonNeedsUpdate(true);
+        });
         emit polygonHasLayer(true);
         emit polygonNeedsUpdate(false);
       }
@@ -3460,7 +3599,7 @@ void ImageView::setOnlySelectedPolygon( const QString& name )
       const QUndoCommand* cmd = m_undoStack->command(i);
       EditablePolygonCommand *polyCmd = const_cast<EditablePolygonCommand*>(dynamic_cast<const EditablePolygonCommand*>(cmd));
       if ( polyCmd != nullptr ) {
-        polyCmd->setSelected(cmd->text() == name ? true : false);
+        polyCmd->setSelected(polyCmd->name() == name);
       }
      }
   }

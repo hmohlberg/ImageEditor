@@ -187,74 +187,87 @@ QWidget* AboutDialog::buildShortcutsTab()
                        "</tr>").arg(action, desc);
     };
 
+    // Platform-specific modifier key labels
+#ifdef Q_OS_MAC
+    const QString kCtrl  = "⌘";
+    const QString kAlt   = "⌥";
+    const QString kShift = "⇧";
+    const QString kSep   = "";   // symbols need no extra separator
+#else
+    const QString kCtrl  = "Ctrl+";
+    const QString kAlt   = "Alt+";
+    const QString kShift = "Shift+";
+    const QString kSep   = "";
+#endif
+
     QString html =
         "<html><body style='font-size:9pt; margin:8px'>"
         "<table cellspacing='0' cellpadding='0' width='100%'>";
 
     // ── Global ────────────────────────────────────────────────────────────────
     html += section(tr("Global"));
-    html += row("Ctrl+Z",           tr("Undo"));
-    html += row("Ctrl+Y",           tr("Redo"));
-    html += row("Tab",              tr("Cycle to next visible layer"));
-    html += row("+",                tr("Zoom in"));
-    html += row("−",                tr("Zoom out"));
-    html += row("Shift + Drag",     tr("Pan the view"));
+    html += row(kCtrl+"Z",                  tr("Undo"));
+    html += row(kCtrl+"Y",                  tr("Redo"));
+    html += row("Tab",                      tr("Cycle to next visible layer"));
+    html += row("+",                        tr("Zoom in"));
+    html += row("−",                        tr("Zoom out"));
+    html += row(kShift+"Drag",              tr("Pan the view"));
 
     // ── Mouse – Navigation ─────────────────────────────────────────────────
     html += section(tr("Navigation (Mouse)"));
-    html += mouseRow(tr("Scroll wheel"),         tr("Zoom in / out (anchored under cursor)"));
-    html += mouseRow(tr("Shift + Left drag"),    tr("Pan the view"));
-    html += mouseRow(tr("Overview – Left drag"), tr("Scroll main view to clicked position"));
-    html += mouseRow(tr("Overview – Dbl-click"), tr("Jump main view to clicked position"));
+    html += mouseRow(tr("Scroll wheel"),                    tr("Zoom in / out (anchored under cursor)"));
+    html += mouseRow(kShift+tr("Left drag"),                tr("Pan the view"));
+    html += mouseRow(tr("Overview – Left drag"),            tr("Scroll main view to clicked position"));
+    html += mouseRow(tr("Overview – Dbl-click"),            tr("Jump main view to clicked position"));
 
     // ── Image Layer mode ──────────────────────────────────────────────────
     html += section(tr("Image Layer Mode"));
-    html += row("Ctrl+T",    tr("Switch to Translate mode"));
-    html += row("Ctrl+S",    tr("Switch to Scale mode"));
-    html += row("Ctrl+R",    tr("Switch to Rotate mode"));
-    html += row("Ctrl+M",    tr("Switch to Flip (mirror) mode"));
-    html += row("Ctrl+W",    tr("Switch to Cage Warp mode"));
-    html += row("Ctrl+P",    tr("Switch to Perspective Warp mode"));
-    html += row("Ctrl+V / Alt+V", tr("Make all layers visible"));
-    html += row("Ctrl+I / Alt+I", tr("Toggle visibility of selected layer"));
-    html += row("Q",         tr("Exit / disable current transform mode (Scale)"));
-    html += row("R",         tr("Reset transform overlay (Scale)"));
-    html += mouseRow(tr("Left drag on layer"),      tr("Move / rotate layer (depends on mode)"));
-    html += mouseRow(tr("Alt + Left click layer"),  tr("Add / remove layer from co-move group"));
-    html += mouseRow(tr("Dbl-click layer (Scale)"), tr("Enable scale transform overlay"));
-    html += mouseRow(tr("Dbl-click layer (Perspective)"), tr("Enable perspective warp"));
-    html += mouseRow(tr("Dbl-click layer (Cage, off)"),   tr("Enable cage warp overlay"));
-    html += mouseRow(tr("Dbl-click layer (Cage, on)"),    tr("Hide cage warp overlay"));
-    html += mouseRow(tr("Dbl-click layer (Flip)"),        tr("Apply mirror to layer"));
-    html += mouseRow(tr("Drag transform handle"),   tr("Scale / perspective warp"));
-    html += mouseRow(tr("Drag centre handle"),      tr("Translate layer via overlay"));
-    html += mouseRow(tr("Drag cage point"),         tr("Deform cage warp"));
+    html += row(kCtrl+"T",              tr("Switch to Translate mode"));
+    html += row(kCtrl+"S",              tr("Switch to Scale mode"));
+    html += row(kCtrl+"R",              tr("Switch to Rotate mode"));
+    html += row(kCtrl+"M",              tr("Switch to Flip (mirror) mode"));
+    html += row(kCtrl+"W",              tr("Switch to Cage Warp mode"));
+    html += row(kCtrl+"P",              tr("Switch to Perspective Warp mode"));
+    html += row(kCtrl+"V / "+kAlt+"V", tr("Make all layers visible"));
+    html += row(kCtrl+"I / "+kAlt+"I", tr("Toggle visibility of selected layer"));
+    html += row("Q",                    tr("Exit / disable current transform mode (Scale)"));
+    html += row("R",                    tr("Reset transform overlay (Scale)"));
+    html += mouseRow(tr("Left drag on layer"),                          tr("Move / rotate layer (depends on mode)"));
+    html += mouseRow(kAlt+tr("Left click layer"),                       tr("Add / remove layer from co-move group"));
+    html += mouseRow(tr("Dbl-click layer (Scale)"),                     tr("Enable scale transform overlay"));
+    html += mouseRow(tr("Dbl-click layer (Perspective)"),               tr("Enable perspective warp"));
+    html += mouseRow(tr("Dbl-click layer (Cage, off)"),                 tr("Enable cage warp overlay"));
+    html += mouseRow(tr("Dbl-click layer (Cage, on)"),                  tr("Hide cage warp overlay"));
+    html += mouseRow(tr("Dbl-click layer (Flip)"),                      tr("Apply mirror to layer"));
+    html += mouseRow(tr("Drag transform handle"),                        tr("Scale / perspective warp"));
+    html += mouseRow(tr("Drag centre handle"),                           tr("Translate layer via overlay"));
+    html += mouseRow(tr("Drag cage point"),                              tr("Deform cage warp"));
 
     // ── Paint mode ────────────────────────────────────────────────────────
     html += section(tr("Paint Mode"));
-    html += mouseRow(tr("Left drag on image"),  tr("Paint with brush colour"));
-    html += mouseRow(tr("Right drag on image"), tr("Paint with background (border-averaged) colour"));
+    html += mouseRow(tr("Left drag on image"),   tr("Paint with brush colour"));
+    html += mouseRow(tr("Right drag on image"),  tr("Paint with background (border-averaged) colour"));
     html += mouseRow(tr("Pipette + Left click"), tr("Sample pixel colour as brush colour"));
 
     // ── Mask mode ─────────────────────────────────────────────────────────
     html += section(tr("Mask Mode"));
-    html += mouseRow(tr("Left drag on image"),  tr("Paint mask label (selected class)"));
-    html += mouseRow(tr("Right drag on image"), tr("Erase mask label"));
+    html += mouseRow(tr("Left drag on image"),   tr("Paint mask label (selected class)"));
+    html += mouseRow(tr("Right drag on image"),  tr("Erase mask label"));
 
     // ── Lasso / Free Selection mode ───────────────────────────────────────
     html += section(tr("Lasso / Free Selection Mode"));
-    html += mouseRow(tr("Left drag on image"), tr("Draw freehand lasso selection path"));
+    html += mouseRow(tr("Left drag on image"),      tr("Draw freehand lasso selection path"));
     html += mouseRow(tr("Release after ≥3 points"), tr("Cut selection to new layer"));
 
     // ── Polygon mode ──────────────────────────────────────────────────────
     html += section(tr("Polygon Mode"));
     html += row("Return / Escape",  tr("Finish / close active polygon"));
-    html += row("Ctrl+A",           tr("Switch to Add Point mode"));
-    html += row("Ctrl+D",           tr("Switch to Delete Point mode"));
-    html += row("Ctrl+M",           tr("Switch to Move Point mode"));
-    html += row("Ctrl+R",           tr("Switch to Reduce Polygon mode"));
-    html += row("Ctrl+S",           tr("Switch to Smooth Polygon mode"));
-    html += row("Ctrl+T",           tr("Switch to Translate Polygon mode"));
+    html += row(kCtrl+"A",          tr("Switch to Add Point mode"));
+    html += row(kCtrl+"D",          tr("Switch to Delete Point mode"));
+    html += row(kCtrl+"M",          tr("Switch to Move Point mode"));
+    html += row(kCtrl+"R",          tr("Switch to Reduce Polygon mode"));
+    html += row(kCtrl+"S",          tr("Switch to Smooth Polygon mode"));
+    html += row(kCtrl+"T",          tr("Switch to Translate Polygon mode"));
     html += mouseRow(tr("Left click on canvas"),        tr("Add new polygon vertex"));
     html += mouseRow(tr("Dbl-click polygon (Add)"),     tr("Insert vertex on polygon edge"));
     html += mouseRow(tr("Dbl-click polygon (Delete)"),  tr("Remove vertex"));
