@@ -120,7 +120,7 @@ namespace TriangleWarp
           updateQuad = false;
           if( pointID == i00 || pointID == i10 || pointID == i01 || pointID == i11 ) {
             updateQuad = true;
-            std::cout << "Updating quad " << i00 << ", " << i10 << ", " << i01 << ", " << i11 << std::endl;
+            // std::cout << "Updating quad " << i00 << ", " << i10 << ", " << i01 << ", " << i11 << std::endl;
           }
         }
 // CLAUDE: added qreal cast to avoid truncating to int (cageMesh is done like this).

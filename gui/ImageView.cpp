@@ -601,8 +601,7 @@ void ImageView::removeOperationsByIdUndoStack( int layerId )
       qWarning() << "ImageView::removeOperationsByIdUndoStack(): Cannot rebuild undo stack: command is not AbstractCommand at index" << i;
       return;
     }
-    const auto* layer = cmd->layer();
-    if ( layer && layer->id() == layerId ) {
+    if ( cmd->concernsLayer(layerId) ) {
       continue;
     }
     auto* cloned = cmd->clone();
@@ -818,7 +817,7 @@ void ImageView::deleteLayer( Layer* layer )
   {
    if ( layer == nullptr || layer->m_item == nullptr ) return;
    LayerItem *imageLayer = dynamic_cast<LayerItem*>(layer->m_item);
-   m_undoStack->push(new DeleteLayerCommand(imageLayer,imageLayer->pos(),layer->id()));
+   m_undoStack->push(new DeleteLayerCommand(imageLayer, imageLayer->pos(), layer->id(), m_undoStack));
   }
 }
 
@@ -1315,8 +1314,11 @@ void ImageView::mousePressEvent( QMouseEvent* event )
             break;
         }
     }
-    if ( m_selectedCageLayer != nullptr && event->button() == Qt::LeftButton )
-        m_cageBefore = m_selectedCageLayer->cageMesh().points();
+    if ( event->button() == Qt::LeftButton ) {
+        LayerItem* pressCageLayer = m_selectedCageLayer != nullptr ? m_selectedCageLayer : getSelectedItem(true);
+        if ( pressCageLayer != nullptr )
+            m_cageBefore = pressCageLayer->cageMesh().points();
+    }
 
     QGraphicsView::mousePressEvent(event);
 
@@ -1533,22 +1535,28 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
         QVector<QPointF> cageBefore = selectedCageLayer->cageMesh().originalPoints();    
         qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): layer =" << selectedCageLayer->name() 
                                << ": cageAfter =" << cageAfter.size() << ", cageBefore =" << m_cageBefore.size();
-        if ( cageAfter != m_cageBefore ) {
+        if ( cageAfter != m_cageBefore && selectedCageLayer->isEditing() ) {
          if ( selectedCageLayer->getCageWarpCommand() == nullptr ) {
            qCDebug(logEditor) << "ImageView::mouseReleaseEvent(): Creating new cage layer undo/redo instance...";
            int rows = selectedCageLayer->cageMesh().rows();
            int columns = selectedCageLayer->cageMesh().cols();
-           m_undoStack->push( new CageWarpCommand(selectedCageLayer, cageBefore, cageAfter,
-                                                        selectedCageLayer->sceneBoundingRect(), selectedCageLayer->pos(),
-                                                        rows, columns ) );
+           auto* warpCmd = new CageWarpCommand(selectedCageLayer, cageBefore, cageAfter,
+                                               selectedCageLayer->sceneBoundingRect(), selectedCageLayer->pos(),
+                                               rows, columns);
+           warpCmd->setSkipApplyWarpOnRedo(true);   // warp will be done below — skip redundant call in redo()
+           m_undoStack->push(warpCmd);
+           warpCmd->setSkipApplyWarpOnRedo(false);  // restore for future undo/redo cycles
          } else {
            selectedCageLayer->getCageWarpCommand()->pushNewWarpStep( selectedCageLayer->pos(), cageAfter );
            m_undoStack->resetClean();
          }
          if( selectedCageLayer ) {
            QImage warpedResult = selectedCageLayer->applyCageWarp("ImageView::1");
-           if( !warpedResult.isNull() )
+           if( !warpedResult.isNull() ) {
              selectedCageLayer->setOriginalImage(warpedResult, LayerItem::ImageType::Warped);
+             if ( selectedCageLayer->getCageWarpCommand() )
+               selectedCageLayer->getCageWarpCommand()->setImage(warpedResult);  // store for JSON serialization
+           }
          }
          // Push cage-edit undo entry (per-layer stack, keeps cage session open)
          selectedCageLayer->cageEditStack()->push(new CageEditCommand(

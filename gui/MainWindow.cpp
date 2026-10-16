@@ -163,7 +163,8 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
         const QJsonObject o = v.toObject();
         m_fileList << FileListEntry{ o.value("title").toString(),
                                      o.value("imagePath").toString(),
-                                     o.value("projectPath").toString() };
+                                     o.value("projectPath").toString(),
+                                     o.value("comment").toString() };
     }
     bool useVulkan = options.value("vulkan").toBool();
     
@@ -439,13 +440,14 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
      // BigTIFF/HDF5 load via QTimer::singleShot → loadImage() not called → m_currentDisplayName empty
      if ( m_currentDisplayName.isEmpty() && !imagePath.isEmpty() )
        m_currentDisplayName = imagePath;
-     // ensure the current image appears in the filelist tab
-     if ( !m_currentDisplayName.isEmpty() ) {
+     // ensure the current image appears in the filelist tab (only when it has a meaningful title,
+     // i.e. was loaded via --list; skip for --file where dispName is empty and m_currentDisplayName
+     // would just be a temp download path like imageeditor_url_download.png)
+     if ( !m_currentDisplayName.isEmpty() && !dispName.isEmpty() ) {
        const bool inList = std::any_of(m_fileList.begin(), m_fileList.end(),
            [&](const FileListEntry& e){ return e.imagePath == m_currentDisplayName; });
        if ( !inList )
-         m_fileList.prepend(FileListEntry{ dispName.isEmpty() ? tr("Image") : dispName,
-                                           m_currentDisplayName, {} });
+         m_fileList.prepend(FileListEntry{ dispName, m_currentDisplayName, {} });
      }
     }
     if ( !classPath.isEmpty() ) {
@@ -659,14 +661,15 @@ void MainWindow::openImage()
                 const QStringList parts = t.split(';');
                 const QString title = parts[0].trimmed();
                 const QString img   = parts.size() > 1 ? parts[1].trimmed() : QString();
-                const QString proj  = parts.size() > 2 ? parts[2].trimmed() : QString();
+                const QString cmt   = parts.size() > 2 ? parts[2].trimmed() : QString();
                 if ( title.compare("path", Qt::CaseInsensitive) == 0 ) { searchPath = img; continue; }
                 if ( img.isEmpty() ) continue;
                 auto resolve = [&](const QString& p) -> QString {
                     if ( p.startsWith("http://") || p.startsWith("https://") || p.startsWith("github://") ) return p;
                     return QFileInfo(p).isAbsolute() ? p : ( searchPath.isEmpty() ? p : searchPath + "/" + p );
                 };
-                entries.append({ title, resolve(img), resolve(proj) });
+                const QString entryTitle = title.isEmpty() ? QString("Image %1").arg(autoIndex++) : title;
+                entries.append({ entryTitle, resolve(img), {}, cmt });
             } else {
                 // old format (no semicolon) — auto-title "Image N"
                 if ( t.startsWith("http://") || t.startsWith("https://") ) {
@@ -724,6 +727,26 @@ void MainWindow::openImage()
     auto* listTab    = new QWidget;
     auto* listLay    = new QVBoxLayout(listTab);
     listLay->setContentsMargins(8, 8, 8, 4);
+    auto wrapComment = [](const QString& text, int lineWidth) -> QString {
+        if ( text.isEmpty() ) return text;
+        const QStringList words = text.split(' ');
+        QString result, line;
+        for ( const QString& word : words ) {
+            if ( !line.isEmpty() && line.length() + 1 + word.length() > lineWidth ) {
+                if ( !result.isEmpty() ) result += '\n';
+                result += line;
+                line = word;
+            } else {
+                if ( !line.isEmpty() ) line += ' ';
+                line += word;
+            }
+        }
+        if ( !line.isEmpty() ) {
+            if ( !result.isEmpty() ) result += '\n';
+            result += line;
+        }
+        return result;
+    };
     auto populateListWidget = [&](QTreeWidget* lw, const QList<FileListEntry>& entries) {
         lw->clear();
         for ( const auto& entry : entries ) {
@@ -732,24 +755,34 @@ void MainWindow::openImage()
                             || entry.imagePath.startsWith("https://");
             const QString col2 = isUrl ? entry.imagePath
                                        : QFileInfo(entry.imagePath).fileName();
-            auto* item = new QTreeWidgetItem(lw, QStringList{ entry.title, col2 });
+            // third column: truncated comment
+            constexpr int kMaxCommentDisplay = 50;
+            const QString col3 = entry.comment.length() > kMaxCommentDisplay
+                ? entry.comment.left(kMaxCommentDisplay - 1) + QChar(0x2026)  // …
+                : entry.comment;
+            auto* item = new QTreeWidgetItem(lw, QStringList{ entry.title, col2, col3 });
             item->setData(0, Qt::UserRole,     entry.imagePath);
             item->setData(0, Qt::UserRole + 1, entry.projectPath);
+            item->setData(0, Qt::UserRole + 2, entry.comment);
             item->setToolTip(0, entry.imagePath
                 + (entry.projectPath.isEmpty() ? QString() : "\n" + entry.projectPath));
             item->setToolTip(1, entry.imagePath);
+            if ( !entry.comment.isEmpty() )
+                item->setToolTip(2, wrapComment(entry.comment, 60));
             if ( entry.imagePath == m_currentDisplayName ) {
                 QFont f = item->font(0); f.setBold(true);
-                item->setFont(0, f); item->setFont(1, f);
+                item->setFont(0, f); item->setFont(1, f); item->setFont(2, f);
                 item->setForeground(0, QColor("#5aabff"));
                 item->setForeground(1, QColor("#5aabff"));
+                item->setForeground(2, QColor("#5aabff"));
             }
         }
         lw->resizeColumnToContents(0);
+        lw->resizeColumnToContents(1);
     };
     auto* listWidget = new QTreeWidget(listTab);
-    listWidget->setColumnCount(2);
-    listWidget->setHeaderLabels({ tr("Title"), tr("File / URL") });
+    listWidget->setColumnCount(3);
+    listWidget->setHeaderLabels({ tr("Title"), tr("File / URL"), tr("Comment") });
     listWidget->setRootIsDecorated(false);
     listWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
     listWidget->header()->setStretchLastSection(true);
@@ -781,7 +814,12 @@ void MainWindow::openImage()
     connect(bbox, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(bbox, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
 
-    if ( dlg.exec() != QDialog::Accepted ) return;
+    tabs->setCurrentIndex(m_lastOpenTabIndex);
+    if ( dlg.exec() != QDialog::Accepted ) {
+        m_lastOpenTabIndex = tabs->currentIndex();
+        return;
+    }
+    m_lastOpenTabIndex = tabs->currentIndex();
 
     QString fileName;
     QString displayTitle;  // shown in window title + filelist highlight
@@ -816,7 +854,8 @@ void MainWindow::openImage()
           auto* wi = listWidget->topLevelItem(i);
           m_fileList << FileListEntry{ wi->text(0),
                                        wi->data(0, Qt::UserRole).toString(),
-                                       wi->data(0, Qt::UserRole + 1).toString() };
+                                       wi->data(0, Qt::UserRole + 1).toString(),
+                                       wi->data(0, Qt::UserRole + 2).toString() };
       }
     }
     if ( fileName.isEmpty() ) return;
@@ -2805,6 +2844,7 @@ void MainWindow::createActions()
 
     m_crosshairAction = new QAction("Crosshair", this);
     m_crosshairAction->setCheckable(true);
+    m_crosshairAction->setChecked(EditorStyle::instance().crosshair());
     m_crosshairAction->setToolTip(
         "<b>Crosshair</b><br>"
         "Toggle a crosshair cursor that follows the mouse pointer. "

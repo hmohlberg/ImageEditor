@@ -17,14 +17,16 @@
 
 #include "DeleteLayerCommand.h"
 #include "../core/Config.h"
+#include <QUndoStack>
 
 #include <QPainter>
 #include <QtMath>
 #include <QDebug>
 
 // -------------- Constructor --------------
-DeleteLayerCommand::DeleteLayerCommand( LayerItem* layer, const QPointF& pos, const int idx, QUndoCommand* parent )
-        : AbstractCommand(parent), m_layer(layer), m_pos(pos), m_layerId(idx)
+DeleteLayerCommand::DeleteLayerCommand( LayerItem* layer, const QPointF& pos, const int idx,
+                                        QUndoStack* undoStack, QUndoCommand* parent )
+        : AbstractCommand(parent), m_layer(layer), m_pos(pos), m_layerId(idx), m_undoStack(undoStack)
 {
     setText(QString("Delete Layer %1").arg(idx));
     QByteArray moveLayerSvg = 
@@ -38,25 +40,38 @@ DeleteLayerCommand::DeleteLayerCommand( LayerItem* layer, const QPointF& pos, co
 }
 
 // -------------- Undo / redo  -------------- 
-void DeleteLayerCommand::undo() 
-{ 
-  // qDebug() << "DeleteLayerCommand::undo(): pos =" << m_pos;
+void DeleteLayerCommand::setRelatedCommandsDeleted( bool deleted )
+{
+    if ( !m_undoStack ) return;
+    for ( int i = 0; i < m_undoStack->count(); ++i ) {
+        const QUndoCommand* base = m_undoStack->command(i);
+        if ( base == this ) continue;
+        if ( auto* ac = dynamic_cast<AbstractCommand*>(const_cast<QUndoCommand*>(base)) ) {
+            if ( ac->concernsLayer(m_layerId) )
+                ac->markDeleted(deleted);
+        }
+    }
+}
+
+void DeleteLayerCommand::undo()
+{
   {
     if ( !m_layer ) return;
     m_layer->setPos(m_pos);
     m_layer->setVisible(true);
     m_layer->setInActive(false);
+    setRelatedCommandsDeleted(false);
   }
 }
 
 void DeleteLayerCommand::redo()
-{ 
-  // qDebug() << "DeleteLayerCommand::redo(): pos= " << m_pos;
+{
   {
     if ( m_silent || !m_layer ) return;
-    m_layer->setPos(m_pos); 
+    m_layer->setPos(m_pos);
     m_layer->setVisible(false);
     m_layer->setInActive(true);
+    setRelatedCommandsDeleted(true);
   }
 }
 

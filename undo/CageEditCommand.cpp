@@ -53,6 +53,7 @@ void CageEditCommand::undo()
 
 void CageEditCommand::redo()
 {
+    if ( m_firstRedo ) { m_firstRedo = false; return; }
     if ( m_layer )
         m_layer->restoreCageState(m_ptsAfter, m_origAfter, m_colsAfter, m_rowsAfter, m_posAfter);
 }

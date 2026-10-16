@@ -2,6 +2,7 @@
 <RCC version="1.0">
     <qresource prefix="/icons">
         <file>icons/check.svg</file>
+        <file>icons/check_disabled.svg</file>
         <file>icons/eraser.svg</file>
         <file>icons/undo.svg</file>
         <file>icons/redo.svg</file>

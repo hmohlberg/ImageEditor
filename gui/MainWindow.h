@@ -245,6 +245,7 @@ class MainWindow : public QMainWindow, public IMainSystem
         QString title;
         QString imagePath;
         QString projectPath;
+        QString comment;
     };
 
     QString m_selectedLayerItemName;
@@ -253,7 +254,8 @@ class MainWindow : public QMainWindow, public IMainSystem
     QJsonArray m_saveHistory;
     QList<FileListEntry> m_fileList;
     QString m_currentDisplayName;
-    
+    int     m_lastOpenTabIndex = 0;
+
     bool m_updatingLayerList = false;
     bool m_saveImageDataInProjectFile = false;
     bool m_silentUpdateCheck = false;

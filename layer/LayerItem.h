@@ -125,6 +125,7 @@ class LayerItem : public QGraphicsPixmapItem
     const QImage& originalImage();
     /// @brief Rebuilds the display pixmap from the current working image.
     void updatePixmap();
+    void setRedOverlay( bool enabled );
     /// @brief Restores the display pixmap from the stored original image.
     void resetPixmap();
     /// @brief Sets the effective display LUT (colormap + brightness/contrast combined).

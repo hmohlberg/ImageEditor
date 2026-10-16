@@ -49,6 +49,7 @@ public:
     void redo() override;
 
 private:
+    bool              m_firstRedo = true;
     LayerItem*        m_layer;
     QVector<QPointF>  m_ptsBefore;
     QVector<QPointF>  m_origBefore;

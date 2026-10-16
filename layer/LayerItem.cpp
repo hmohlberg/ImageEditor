@@ -382,6 +382,24 @@ void LayerItem::updatePixmap() {
   }
 }
 
+void LayerItem::setRedOverlay( bool enabled )
+{
+    m_redOverlay = enabled;
+    if ( enabled ) {
+        const QPixmap& px = pixmap();
+        if ( !px.isNull() ) {
+            m_redOverlayPixmap = QPixmap(px.size());
+            m_redOverlayPixmap.fill(QColor(255, 0, 0, 100));
+            QPainter op(&m_redOverlayPixmap);
+            op.setCompositionMode(QPainter::CompositionMode_DestinationIn);
+            op.drawPixmap(0, 0, px);
+        }
+    } else {
+        m_redOverlayPixmap = QPixmap();
+    }
+    update();
+}
+
 void LayerItem::resetPixmap() {
   if ( m_suppressPixmapUpdate ) return;
   if ( qobject_cast<QApplication*>(qApp) ) {
@@ -870,26 +888,34 @@ QImage LayerItem::applyCageWarp( const QString &caller )
       }
 
       setOffset(QPointF(0, 0));   // reset pixmap offset accumulated during drag normalization
-      if (!m_suppressPixmapUpdate) setPixmap(QPixmap::fromImage(warped));
+      if (!m_suppressPixmapUpdate) {
+        setPixmap(QPixmap::fromImage(warped));
+        if (m_redOverlay) setRedOverlay(true);  // rebuild overlay from new pixmap
+      }
       m_image = warped;
       QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
       m_cageApplied = true;
       return m_image.copy();
     } else {
       // NOT YET WORKING: QuadWarp::WarpResult warped = QuadWarp::warp(m_cageMesh.image(),m_cageMesh);
-      TriangleWarp::WarpResult warped = TriangleWarp::warp(m_image, m_cageMesh.image(),m_cageMesh);
-      m_cageMesh.setActiveCagePointId(-1);
-      m_cageMesh.setOffset(0,0);   // CLAUDE reset after each drawing
-      if ( !warped.image.isNull() ) {
-       setOffset(QPointF(0, 0));   // reset pixmap offset accumulated during drag normalization
-       if (!m_suppressPixmapUpdate) setPixmap(QPixmap::fromImage(warped.image));
-       m_image = warped.image;
-       QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos());
-       // QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
-       m_cageApplied = true;
-       return m_image.copy();
-      } else {
-       qCritical() << "CRITICAL - LayerItem::applyCageWarp(): WARNING: Image isNull.";
+      if ( m_cageMesh.needUpdate() ) {
+       TriangleWarp::WarpResult warped = TriangleWarp::warp(m_image, m_cageMesh.image(),m_cageMesh);
+       m_cageMesh.setActiveCagePointId(-1);
+       m_cageMesh.setOffset(0,0);   // CLAUDE reset after each drawing
+       if ( !warped.image.isNull() ) {
+        setOffset(QPointF(0, 0));   // reset pixmap offset accumulated during drag normalization
+        if (!m_suppressPixmapUpdate) {
+          setPixmap(QPixmap::fromImage(warped.image));
+          if (m_redOverlay) setRedOverlay(true);  // rebuild overlay from new pixmap
+        }
+        m_image = warped.image;
+        QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos());
+        // QGraphicsPixmapItem::setPos(QGraphicsPixmapItem::pos() + m_cageMesh.getOffset());
+        m_cageApplied = true;
+        return m_image.copy();
+       } else {
+        qCritical() << "CRITICAL - LayerItem::applyCageWarp(): WARNING: Image isNull.";
+       }
       }
     }
     return QImage(); 

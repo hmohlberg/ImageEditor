@@ -111,6 +111,21 @@ ConfigDialog::ConfigDialog(QWidget* parent)
         "QCheckBox::indicator:checked:hover {"
         "  border-color: #cccccc;"
         "}"
+        "QCheckBox:disabled {"
+        "  color: #555555;"
+        "}"
+        "QCheckBox::indicator:disabled {"
+        "  border-color: #444444;"
+        "  background-color: #1e1e1e;"
+        "}"
+        "QCheckBox::indicator:checked:disabled {"
+        "  border-color: #444444;"
+        "  background-color: #1e1e1e;"
+        "  image: url(:/icons/icons/check_disabled.svg);"
+        "}"
+        "QLabel:disabled {"
+        "  color: #555555;"
+        "}"
     );
 
     QTabWidget* tabs = new QTabWidget(this);
@@ -278,6 +293,23 @@ QWidget* ConfigDialog::buildCageTab()
     m_liveWarp = new QCheckBox;
     row(tr("Live warp (GPU only)"), m_liveWarp,
         tr("Updates the warp result interactively while dragging control points (requires GPU)."));
+
+    // Store label widgets so we can gray them out together with the checkboxes
+    m_gpuCatmullRomLabel = qobject_cast<QLabel*>(f->labelForField(m_gpuCatmullRom));
+    m_liveWarpLabel      = qobject_cast<QLabel*>(f->labelForField(m_liveWarp));
+
+    // Disable GPU-dependent options until "Use GPU" is checked
+    m_gpuCatmullRom->setEnabled(false);
+    m_liveWarp->setEnabled(false);
+    if (m_gpuCatmullRomLabel) m_gpuCatmullRomLabel->setEnabled(false);
+    if (m_liveWarpLabel)      m_liveWarpLabel->setEnabled(false);
+
+    connect(m_gpu, &QCheckBox::toggled, this, [this](bool checked) {
+        m_gpuCatmullRom->setEnabled(checked);
+        m_liveWarp->setEnabled(checked);
+        if (m_gpuCatmullRomLabel) m_gpuCatmullRomLabel->setEnabled(checked);
+        if (m_liveWarpLabel)      m_liveWarpLabel->setEnabled(checked);
+    });
 
     m_noSelfIntersection = new QCheckBox;
     row(tr("No self-intersection"), m_noSelfIntersection,
@@ -544,6 +576,13 @@ void ConfigDialog::loadFromStyle()
     m_gpu->setChecked(s.useGPU());
     m_gpuCatmullRom->setChecked(s.gpuCatmullRom());
     m_liveWarp->setChecked(s.liveWarp());
+    {
+        const bool gpuOn = m_gpu->isChecked() && m_gpu->isEnabled();
+        m_gpuCatmullRom->setEnabled(gpuOn);
+        m_liveWarp->setEnabled(gpuOn);
+        if (m_gpuCatmullRomLabel) m_gpuCatmullRomLabel->setEnabled(gpuOn);
+        if (m_liveWarpLabel)      m_liveWarpLabel->setEnabled(gpuOn);
+    }
     m_noSelfIntersection->setChecked(s.noSelfIntersection());
     m_cageGridCols->setValue(s.cageGridCols());
     m_squareCageQuads->setChecked(s.squareCageQuads());

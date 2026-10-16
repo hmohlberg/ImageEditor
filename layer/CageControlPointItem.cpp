@@ -20,9 +20,10 @@
 
 #include "../core/Config.h"
 #include "../core/IMainSystem.h"
-#include <QGraphicsColorizeEffect>
 
 #include <QGraphicsSceneMouseEvent>
+#include <QGraphicsSceneHoverEvent>
+#include <QPainter>
 #include <iostream>
 
 CageControlPointItem::CageControlPointItem( LayerItem* layer, int index )
@@ -30,6 +31,7 @@ CageControlPointItem::CageControlPointItem( LayerItem* layer, int index )
       m_layer(layer), m_index(index)
 {
     setZValue(10001);
+    setAcceptHoverEvents(true);
     refreshStyle();
 }
 
@@ -64,10 +66,7 @@ void CageControlPointItem::mousePressEvent( QGraphicsSceneMouseEvent *e )
     m_layer->setCageEditing(true);
     if ( e->modifiers() & Qt::ControlModifier ) {
       m_layer->setOpacity(EditorStyle::instance().layerOverlayOpacity());
-      auto* colorEffect = new QGraphicsColorizeEffect();
-      colorEffect->setColor(Qt::red);
-      colorEffect->setStrength(1.0);
-      m_layer->setGraphicsEffect(colorEffect);
+      m_layer->setRedOverlay(true);
     }
   }
 }
@@ -105,9 +104,43 @@ void CageControlPointItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* e )
     if ( m_layer == nullptr ) return;
     if ( !(e->modifiers() & Qt::ControlModifier) ) {
       m_layer->setOpacity(1.0);
-      m_layer->setGraphicsEffect(nullptr);
+      m_layer->setRedOverlay(false);
     }
     m_layer->setCageEditing(false);
     e->accept();
   }
+}
+
+void CageControlPointItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget )
+{
+    if ( !m_hovered ) {
+        QGraphicsRectItem::paint(painter, option, widget);
+        return;
+    }
+    const int r = EditorStyle::instance().controlPointRadius();
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setPen(pen());
+    painter->setBrush(brush());
+    painter->drawRect(-r * 2, -r * 2, r * 4, r * 4);
+    painter->setPen(QPen(QColor(255, 220, 0, 200), 1.5));
+    painter->setBrush(Qt::NoBrush);
+    painter->drawEllipse(QPointF(0, 0), r * 4.0, r * 4.0);
+    painter->restore();
+}
+
+void CageControlPointItem::hoverEnterEvent( QGraphicsSceneHoverEvent* e )
+{
+    m_hovered = true;
+    const int r = EditorStyle::instance().controlPointRadius();
+    prepareGeometryChange();
+    setRect(-r * 4, -r * 4, r * 8, r * 8);
+    e->accept();
+}
+
+void CageControlPointItem::hoverLeaveEvent( QGraphicsSceneHoverEvent* e )
+{
+    m_hovered = false;
+    refreshStyle();
+    e->accept();
 }

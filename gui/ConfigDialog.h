@@ -79,7 +79,9 @@ private:
     QCheckBox* m_cageQuads          = nullptr;
     QCheckBox* m_gpu                = nullptr;
     QCheckBox* m_gpuCatmullRom      = nullptr;
+    QLabel*    m_gpuCatmullRomLabel = nullptr;
     QCheckBox* m_liveWarp           = nullptr;
+    QLabel*    m_liveWarpLabel      = nullptr;
     QCheckBox* m_noSelfIntersection = nullptr;
     QSpinBox*  m_cpRadius           = nullptr;
     QLineEdit* m_cpColor            = nullptr;

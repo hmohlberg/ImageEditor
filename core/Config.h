@@ -300,7 +300,7 @@
       m_loggingIsEnabled  = false;
       m_useCageQuads      = true;
       m_usegpu            = false;
-      m_gpuCatmullRom     = true;
+      m_gpuCatmullRom     = false;
       m_liveWarp          = false;
       m_noSelfIntersection= true;
       m_cageGridCols    = 3;
@@ -521,7 +521,7 @@
           m_loggingIsEnabled(false), 
           m_useCageQuads(true),
           m_usegpu(false),
-          m_gpuCatmullRom(true),
+          m_gpuCatmullRom(false),
           m_liveWarp(false),
           m_noSelfIntersection(true),
           m_cageGridCols(3),

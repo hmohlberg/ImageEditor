@@ -208,7 +208,7 @@ static QString downloadImageFromUrl( const QString& url )
     return tempPath;
 }
 
-struct FLEntry { QString title, imagePath, projectPath; };
+struct FLEntry { QString title, imagePath, projectPath, comment; };
 
 static QList<FLEntry> parseFileList( const QString& path )
 {
@@ -227,7 +227,7 @@ static QList<FLEntry> parseFileList( const QString& path )
             const QStringList parts = t.split(';');
             const QString title = parts[0].trimmed();
             const QString img   = parts.size() > 1 ? parts[1].trimmed() : QString();
-            const QString proj  = parts.size() > 2 ? parts[2].trimmed() : QString();
+            const QString cmt   = parts.size() > 2 ? parts[2].trimmed() : QString();
             if ( title.compare("path", Qt::CaseInsensitive) == 0 ) {
                 searchPath = img; continue;
             }
@@ -238,7 +238,8 @@ static QList<FLEntry> parseFileList( const QString& path )
                 return QFileInfo(p).isAbsolute() ? p
                        : ( searchPath.isEmpty() ? p : searchPath + "/" + p );
             };
-            entries.append({ title, resolve(img), resolve(proj) });
+            const QString entryTitle = title.isEmpty() ? QString("Image %1").arg(autoIndex++) : title;
+            entries.append({ entryTitle, resolve(img), {}, cmt });
         } else {
             // old format (no semicolon) — auto-title "Image N"
             if ( t.startsWith("http://") || t.startsWith("https://") ) {
@@ -394,6 +395,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
             o["title"]       = e.title;
             o["imagePath"]   = e.imagePath;
             o["projectPath"] = e.projectPath;
+            o["comment"]     = e.comment;
             arr.append(o);
         }
         obj["fileList"] = arr;

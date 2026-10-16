@@ -42,6 +42,12 @@ AbstractCommand::AbstractCommand( QUndoCommand* parent )
   m_timestamp = QDateTime::currentDateTime();
 }
 
+bool AbstractCommand::concernsLayer( int layerId ) const
+{
+    const LayerItem* l = layer();
+    return l && l->id() == layerId;
+}
+
 /**
  * @brief Factory zur Rekonstruktion eines Commands aus JSON
  *

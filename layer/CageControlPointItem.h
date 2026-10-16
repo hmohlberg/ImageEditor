@@ -34,13 +34,17 @@ class CageControlPointItem : public QGraphicsRectItem
     void mousePressEvent( QGraphicsSceneMouseEvent* ) override;
     void mouseMoveEvent( QGraphicsSceneMouseEvent* ) override;
     void mouseReleaseEvent( QGraphicsSceneMouseEvent* ) override;
+    void paint( QPainter*, const QStyleOptionGraphicsItem*, QWidget* ) override;
+    void hoverEnterEvent( QGraphicsSceneHoverEvent* ) override;
+    void hoverLeaveEvent( QGraphicsSceneHoverEvent* ) override;
 
  private:
- 
+
     LayerItem* m_layer;
     QPointF m_startPoint;
     QPointF m_lastPos;
     QPointF m_clickOffset;
     int m_index;
+    bool m_hovered = false;
 
 };

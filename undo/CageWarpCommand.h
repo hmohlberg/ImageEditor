@@ -58,6 +58,7 @@ class CageWarpCommand : public AbstractCommand
     }
     
     void setImage( const QImage& image ) { m_warpedImage = image; }
+    void setSkipApplyWarpOnRedo( bool skip ) { m_skipApplyWarpOnRedo = skip; }
     void save_image() {
       m_warpedImage.save("/tmp/imageeditor_backuppic.png");
     }
@@ -93,6 +94,8 @@ class CageWarpCommand : public AbstractCommand
     
     QTransform m_transform;     // transform operations before cage warp
     
+    bool m_skipApplyWarpOnRedo = false;
+
     QImage m_originalImage;     // copy of the original image
     QImage m_warpedImage;       // warped image
     QImage m_cachedWarpedImage; // pre-computed result loaded from JSON; cleared after first redo()

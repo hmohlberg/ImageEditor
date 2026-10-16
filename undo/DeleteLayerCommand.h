@@ -23,14 +23,18 @@
 #include "AbstractCommand.h"
 #include "../layer/LayerItem.h"
 
+class QUndoStack;
+
 class DeleteLayerCommand : public AbstractCommand
 {
 
  public:
 
-    DeleteLayerCommand( LayerItem* layer, const QPointF& pos, const int idx=0, QUndoCommand* parent = nullptr );
+    DeleteLayerCommand( LayerItem* layer, const QPointF& pos, const int idx=0,
+                        QUndoStack* undoStack = nullptr, QUndoCommand* parent = nullptr );
     
     AbstractCommand* clone() const override { return new DeleteLayerCommand(m_layer, m_pos, m_layerId); }
+
     
     QString type() const override { return "DeleteLayer"; }
     LayerItem* layer() const override { return m_layer; }
@@ -44,9 +48,12 @@ class DeleteLayerCommand : public AbstractCommand
 
  private:
 
+    void setRelatedCommandsDeleted( bool deleted );
+
     int m_layerId = 0;
     LayerItem* m_layer = nullptr;
-    
+    QUndoStack* m_undoStack = nullptr;
+
     QPointF m_pos;
     
 };

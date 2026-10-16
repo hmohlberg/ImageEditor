@@ -47,6 +47,10 @@ class AbstractCommand : public QUndoCommand
     virtual int id() const override = 0;
     virtual LayerItem* layer() const = 0;
     virtual QString type() const = 0;
+
+    // Returns true when this command concerns the given layer ID.
+    // Override in commands that affect a layer other than layer() (e.g. a child layer).
+    virtual bool concernsLayer( int layerId ) const;
     virtual QJsonObject toJson() const {
         QJsonObject obj;
         obj["text"] = text();

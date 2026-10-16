@@ -128,8 +128,10 @@ void CageWarpCommand::redo()
       m_layer->setPendingCacheImage(m_cachedWarpedImage);
       m_cachedWarpedImage = QImage();
     }
-    m_warpedImage = m_layer->applyCageWarp("CageWarpCommand");
-    m_layer->setOriginalImage(m_warpedImage,m_steps == 0 ? LayerItem::ImageType::Original : LayerItem::ImageType::Warped);
+    if (!m_skipApplyWarpOnRedo) {
+      m_warpedImage = m_layer->applyCageWarp("CageWarpCommand");
+      m_layer->setOriginalImage(m_warpedImage,m_steps == 0 ? LayerItem::ImageType::Original : LayerItem::ImageType::Warped);
+    }
     m_layer->setTotalTransform(QTransform());
     m_layer->resetPixmap();
     m_layer->setPos(m_newPos);

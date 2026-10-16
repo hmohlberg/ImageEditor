@@ -144,7 +144,8 @@ class DarkHistoryDelegate : public QStyledItemDelegate {
 
       // 2. icon-logic with sprecial treatment for index 0
       QIcon displayIcon;
-      bool isFuture = !(opt.state & QStyle::State_Enabled);
+      bool isFuture  = !(opt.state & QStyle::State_Enabled);
+      bool isDeleted = false;
 
       if ( index.row() == 0 ) {
         displayIcon = AbstractCommand::getIconFromSvg(
@@ -157,6 +158,7 @@ class DarkHistoryDelegate : public QStyledItemDelegate {
                 const QUndoCommand* cmd = stack->command(index.row() - 1);
                 if ( auto absCmd = dynamic_cast<const AbstractCommand*>(cmd) ) {
                     displayIcon = absCmd->icon();
+                    isDeleted   = absCmd->isDeleted();
                 }
             }
         }
@@ -166,16 +168,23 @@ class DarkHistoryDelegate : public QStyledItemDelegate {
       if ( !displayIcon.isNull() ) {
         QRect iconRect = opt.rect.adjusted(10, 8, 0, -8);
         iconRect.setWidth(18);
-        painter->setOpacity(isFuture ? 0.25 : 0.85);
+        painter->setOpacity(isFuture || isDeleted ? 0.25 : 0.85);
         displayIcon.paint(painter, iconRect, Qt::AlignCenter, QIcon::Normal);
         painter->setOpacity(1.0);
       }
 
       // 4. render text
-      painter->setPen(isFuture ? QColor("#555555") : (opt.state & QStyle::State_Selected ? Qt::white : QColor("#d0d0d0")));
+      const QColor textColor = (isFuture || isDeleted) ? QColor("#555555")
+                             : (opt.state & QStyle::State_Selected ? Qt::white : QColor("#d0d0d0"));
+      painter->setPen(textColor);
       if ( isFuture ) {
         QFont f = painter->font();
         f.setItalic(true);
+        painter->setFont(f);
+      }
+      if ( isDeleted ) {
+        QFont f = painter->font();
+        f.setStrikeOut(true);
         painter->setFont(f);
       }
       QRect textRect = opt.rect.adjusted(40, 0, -10, 0);
