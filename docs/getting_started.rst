@@ -84,7 +84,7 @@ Polygon
 * This does not yet create a new layer. You can still edit the polygon if you are not happy.
    * E.g., add a new point by selecting from the menu 'Operation mode: > Add new polygon point' or type Ctrl+A 
    * or Move (cmd+M) a point, or move (translate, cmd+T) the whole polygone by selecting the option from the 'OPeration mode' menu
-   * See `Shortcuts <https://imageeditor.readthedocs.io/en/latest/shortcuts.html/>` for a complete list and modifiere keys for other systems
+   * See `Shortcuts <https://imageeditor.readthedocs.io/en/latest/shortcuts.html/>`__ for a complete list and modifiere keys for other systems
 
 .. image:: images/getting_started/getting_started-09.png
    :alt: operation mode menu
