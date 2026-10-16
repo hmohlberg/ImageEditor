@@ -41,10 +41,9 @@ sample image, e.g. ``/ImageEditor/samples/images/pm2382o.png``.
 3. Create Your First Layers
 ------------------------
 
-Your first select image regions you want to edit, e.g. that you want to move, rotate, transform, etc in order to restore the image as best as possible.
-Each selected region defines a layer that you can edit then.
+First, select the image regions you want to edit. These regions can then be moved, rotated, or transformed to restore the image as accurately as possible. Each selected region becomes a separate layer that you can edit independently.
 
-So, first lets define two layers, i.e., regions we want to edit in the follow up steps.
+Let’s start by defining two layers, representing the image regions we will work with in the following steps.
 
 Lasso
 ~~~~~
@@ -81,15 +80,19 @@ Polygon
 .. image:: images/getting_started/getting_started-08.png
    :alt: Polygon layer
 
-* This does not yet create a new layer. You can still edit the polygon if you are not happy.
-   * E.g., add a new point by selecting from the menu 'Operation mode: > Add new polygon point' or type Ctrl+A 
-   * or Move (cmd+M) a point, or move (translate, cmd+T) the whole polygone by selecting the option from the 'OPeration mode' menu
+* This does not create a new layer yet. You can still adjust the polygon until you are satisfied with the selection.
+   * E.g., add a new point by selecting from the menu **Operation mode: > Add new polygon point** or type **Ctrl+A** 
+   * or **Move** (**Ctrl+M**) a point, or move (**translate, Ctrl+T**) the whole polygone by selecting the option from the **Operation mode** menu
    * See `Shortcuts <https://imageeditor.readthedocs.io/en/latest/shortcuts.html/>`__ for a complete list and modifiere keys for other systems
 
 .. image:: images/getting_started/getting_started-09.png
    :alt: operation mode menu
 
 * Select **Create new polygon layer** to confirm your polygon selection
+
+.. image:: images/getting_started/getting_started-09_1.png
+   :alt: operation mode menu
+
 * You have created your second layer, which is added to the list of layers
   in the **Layers** dock on the right.
 
@@ -99,8 +102,10 @@ Polygon
 
 4. Edit the Layers
 ------------------
+We have now defined two layers, each representing an image region that we can edit independently, for example by moving, rotating, or distorting it.
+
 * Move to the first Layer again, our Lasso selection (Shift + mouse drag)
-* Select Layer 1 from the Layers Dock or the **Layer** menu
+* Select **Layer 1** from the Layers Dock or the **Layer** menu
 
 .. image:: images/getting_started/getting_started-11.png
    :alt: select layer
