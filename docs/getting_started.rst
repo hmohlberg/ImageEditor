@@ -39,7 +39,7 @@ sample image, e.g. ``/ImageEditor/samples/images/pm2382o.png``.
 
 
 3. Create Your First Layers
-------------------------
+---------------------------
 
 First, select the image regions you want to edit. These regions can then be moved, rotated, or transformed to restore the image as accurately as possible. Each selected region becomes a separate layer that you can edit independently.
 
@@ -81,8 +81,8 @@ Polygon
    :alt: Polygon layer
 
 * This does not create a new layer yet. You can still adjust the polygon until you are satisfied with the selection.
-   * E.g., add a new point by selecting from the menu **Operation mode: > Add new polygon point** or type **Ctrl+A** 
-   * or **Move** (**Ctrl+M**) a point, or move (**translate, Ctrl+T**) the whole polygone by selecting the option from the **Operation mode** menu
+   * E.g., add a new point by selecting from the menu **Operation mode: Add new polygon point** or type **Ctrl+A** 
+   * or **Move** (**Ctrl+M**) a point, or move (**Translate, Ctrl+T**) the whole polygone by selecting the option from the **Operation mode** menu
    * See `Shortcuts <https://imageeditor.readthedocs.io/en/latest/shortcuts.html/>`__ for a complete list and modifiere keys for other systems
 
 .. image:: images/getting_started/getting_started-09.png
@@ -139,6 +139,9 @@ We have now defined two layers, each representing an image region that we can ed
    :alt: Cage warp, detail
    :width: 300px
 
+
+5. Save and Load with History
+-----------------------------
 
 * Save your image as png-file and the history as json-file to ensure provenance tracking
 
