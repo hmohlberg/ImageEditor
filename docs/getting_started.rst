@@ -28,8 +28,8 @@ sample image, e.g. ``/ImageEditor/samples/images/pm2382o.png``.
 2. Zoom and Pan
 ---------------
 
-* Zoom in and out with your mouse wheel.
-* Shift your image view with **Shift + Left Mouse Button**.
+* Zoom in and out with your mouse wheel (Mac: Command + Swipe up or down on the Magic Mouse)
+* Shift your image view with **Shift + Left Mouse Button**. 
 * **1:1**: Zoom into your image's resolution with the 1:1 button in the
   top menu row.
 * **Fit**: Zoom out to fit the image into your current window.
