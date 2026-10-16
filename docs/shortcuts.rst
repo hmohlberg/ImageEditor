@@ -26,9 +26,9 @@ Global
    * - Cycle to next visible layer
      - Tab
    * - Zoom in
-     - \+ *or* Scroll wheel
+     - \+ *or* Scroll wheel |  Mac: Command + Swipe up on the Magic Mouse
    * - Zoom out
-     - \− *or* Scroll wheel
+     - \− *or* Scroll wheel|  Mac: Command + Swipe down on the Magic Mouse
    * - Pan the view
      - Shift+Drag
    * - Exit the application
