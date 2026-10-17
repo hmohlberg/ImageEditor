@@ -30,10 +30,14 @@ Quick links
      - How to build on Linux, macOS, or Windows/WSL
    * - :doc:`usage`
      - Command-line options and usage examples
+   * - :doc:`getting_started`
+     - Introduction into the GUI and first steps with the tool
    * - :doc:`tools`
      - Paint, Mask Classes, Lasso, Polygon, and Layer tools explained
    * - :doc:`docks`
      - Layers dock and Undo History dock
+   * - :doc:`shortcuts`
+     - List of keyboard shortcuts
    * - :doc:`dialogs`
      - Open Image dialog and Configuration dialog
    * - :doc:`technical`
@@ -54,8 +58,10 @@ Quick links
    features
    installation
    usage
+   getting_started
    tools
    docks
+   shortcuts
    dialogs
    technical
 
