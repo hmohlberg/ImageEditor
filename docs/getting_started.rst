@@ -159,6 +159,15 @@ We have now defined two layers, each representing an image region that we can ed
 .. image:: images/getting_started/getting_started-19.png
    :alt: enter meta data details
 
+6. Short Video Demos
+--------------------
+ .. raw:: html
+
+   <video width="100%" controls>
+      <source src="images/getting_started/video_pm4284_edit_polygons_compressed.webm" type="video/webm">
+      Your browser does not support HTML5 video.
+   </video>
+
 
 
 
