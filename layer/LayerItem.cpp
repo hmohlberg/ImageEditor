@@ -367,6 +367,7 @@ QString LayerItem::name() const {
 // ------------------------ Update ------------------------
 void LayerItem::updatePixmap() {
   if ( m_suppressPixmapUpdate ) return;
+  m_displayScale = -1.0; // invalidate mipmap cache
   if ( qobject_cast<QApplication*>(qApp) ) {
     setPixmap(QPixmap::fromImage(m_image));
     if ( m_redOverlay ) {
@@ -708,7 +709,32 @@ void LayerItem::restoreTransformState( const QTransform& totalTransform, const Q
 void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget )
 {
   {
-    QGraphicsPixmapItem::paint(painter,option,widget);
+    const qreal viewScale = painter->worldTransform().m11();
+    constexpr qreal kMipmapThreshold = 0.5;
+    if ( viewScale < kMipmapThreshold && !m_image.isNull() ) {
+      // Progressive halving (area-averaging) for extreme zoom-out.
+      // Regenerate only when scale changes by more than 10%.
+      if ( m_displayScale < 0.0 || qAbs(viewScale - m_displayScale) > m_displayScale * 0.1 ) {
+        const qreal targetScale = qMax(viewScale * 2.0, 0.02);
+        const QSize targetSz( qMax(1, qRound(m_image.width()  * targetScale)),
+                               qMax(1, qRound(m_image.height() * targetScale)) );
+        QImage img = m_image;
+        while ( img.width() / 2 >= targetSz.width() && img.width() > 1 )
+          img = img.scaled(img.size() / 2, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        if ( img.size() != targetSz )
+          img = img.scaled(targetSz, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        m_displayPixmap = QPixmap::fromImage(img);
+        m_displayScale  = viewScale;
+      }
+      painter->save();
+      painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+      painter->drawPixmap(QRectF(offset(), QSizeF(m_image.size())),
+                          m_displayPixmap, QRectF(m_displayPixmap.rect()));
+      painter->restore();
+    } else {
+      if ( m_displayScale >= 0.0 ) { m_displayPixmap = QPixmap(); m_displayScale = -1.0; }
+      QGraphicsPixmapItem::paint(painter,option,widget);
+    }
     if ( m_redOverlay && !m_redOverlayPixmap.isNull() ) {
       painter->drawPixmap(QPointF(0, 0), m_redOverlayPixmap);
     }
@@ -1103,7 +1129,7 @@ int LayerItem::changeNumberOfActiveCagePoints( int step )
 
       // resize() uses general bilinear interpolation and handles arbitrary size
       // changes (including non-power-of-2 steps for squareCageQuads).
-      m_cageMesh.needUpdate();
+      m_cageMesh.setNeedUpdate();
       m_cageMesh.update(boundingRect(), std::max(3,columns), std::max(3,rows));
       // update handles
       qDeleteAll(m_handles);
@@ -1144,7 +1170,7 @@ void LayerItem::setCageWarpProperty( int type, double value ) {
     } else {
        return;
     }
-    m_cageMesh.needUpdate();
+    m_cageMesh.setNeedUpdate();
 }
 
 void LayerItem::setCagePoints( const QVector<QPointF>& pts ) {
@@ -1546,6 +1572,20 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
       }
       QGraphicsPixmapItem::mousePressEvent(event);
       return;
+    }
+
+    // If a different layer is currently active and the click also falls within it,
+    // yield to that layer so the active layer always has priority over overlapping
+    // inactive layers regardless of Z-order.
+    if ( !isSelected() && !(event->modifiers() & Qt::ControlModifier) ) {
+      if ( ImageView* view = getParentImageView() ) {
+        LayerItem* active = dynamic_cast<LayerItem*>(view->getSelectedItem());
+        if ( active && active != this
+             && active->contains(active->mapFromScene(event->scenePos())) ) {
+          event->ignore();
+          return;
+        }
+      }
     }
 
     if ( isSelected() || event->modifiers() & Qt::ControlModifier ) {

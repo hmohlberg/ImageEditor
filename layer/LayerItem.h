@@ -266,6 +266,7 @@ class LayerItem : public QGraphicsPixmapItem
     OperationMode getPolygonOperationMode();
 
     const CageMesh& cageMesh() const { return m_cageMesh; }
+    CageMesh& cageMesh() { return m_cageMesh; }
     void setCagePoint( int idx, const QPointF& pos );
     void setCagePoints( const QVector<QPointF>& pts );
     void initCage( const QVector<QPointF>& pts, const QRectF& rect, int rows, int columns );
@@ -376,6 +377,9 @@ class LayerItem : public QGraphicsPixmapItem
 	
     QPen m_lassoPen;
     QPen m_selectedPen;
+
+    QPixmap m_displayPixmap;
+    qreal   m_displayScale = -1.0;
 	
     QPointF m_pressScenePos;
     QTransform m_startTransform;

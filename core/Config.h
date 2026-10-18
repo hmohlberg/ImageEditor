@@ -83,6 +83,7 @@
       m_crosshair = settings.value("Main/crosshair", true).toBool();
       m_showDocksAtStartup = settings.value("Main/showDocksAtStartup", false).toBool();
       m_showOverviewMap    = settings.value("Main/showOverviewMap",    false).toBool();
+      m_showHistogram      = settings.value("Main/showHistogram",      true).toBool();
       m_pixelScale = settings.value("Main/pixelScale", 20.0).toDouble();
       
       // cursor stuff
@@ -173,7 +174,7 @@
       // ImageLayer handle radius
       m_handleRadius = settings.value("ImageLayer/handleRadius", 4.0).toDouble();
       // ImageLayer transformationMode
-      QString transformMode = settings.value("ImageLayer/transformationMode", "fast").toString().trimmed().toLower();
+      QString transformMode = settings.value("ImageLayer/transformationMode", "smooth").toString().trimmed().toLower();
       if ( transformMode == "fast" || transformMode == "fasttransformation" ) {
         m_transformationMode = Qt::FastTransformation;
       } else if ( transformMode == "smooth" || transformMode == "smoothtransformation" ) {
@@ -215,6 +216,7 @@
     bool crosshair() const { return m_crosshair; }
     bool showDocksAtStartup() const { return m_showDocksAtStartup; }
     bool showOverviewMap()    const { return m_showOverviewMap; }
+    bool showHistogram()      const { return m_showHistogram; }
     bool isLoggingEnabled() const { return m_loggingIsEnabled; }
     bool useCageQuads() const { return m_useCageQuads; }
     bool useGPU() const { return m_usegpu; }
@@ -533,10 +535,11 @@
           m_crosshair(true),
           m_showDocksAtStartup(false),
           m_showOverviewMap(false),
+          m_showHistogram(true),
           m_windowSize("default"),
           m_version("public"),
           m_cageWarpColor(Qt::green),
-          m_transformationMode(Qt::FastTransformation),
+          m_transformationMode(Qt::SmoothTransformation),
           m_interpolationMode(InterpolationMode::Linear),
           m_path(QString()),
           m_githubBaseUrl("https://raw.githubusercontent.com/hmohlberg/ImageEditor/main/samples")
@@ -567,6 +570,7 @@
     bool m_crosshair;
     bool m_showDocksAtStartup;
     bool m_showOverviewMap;
+    bool m_showHistogram;
     bool m_loggingIsEnabled;
     bool m_useCageQuads;
     bool m_useClaudeQuads;

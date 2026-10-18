@@ -159,6 +159,7 @@ set(SOURCES
     gui/ConfigDialog.cpp
     gui/LayerEditorView.cpp
     gui/OverviewWidget.cpp
+    gui/HistogramWidget.cpp
     layer/LayerItem.cpp
     layer/CageMesh.cpp
     layer/CageControlPointItem.cpp
@@ -211,6 +212,7 @@ set(HEADERS
     gui/ConfigDialog.h
     gui/LayerEditorView.h
     gui/OverviewWidget.h
+    gui/HistogramWidget.h
     layer/LayerItem.h
     layer/CageMesh.h
     layer/CageControlPointItem.h
@@ -360,6 +362,7 @@ endif()
 include(GNUInstallDirs)
 
 install(TARGETS ${PROJECT_NAME}
+    BUNDLE  DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 

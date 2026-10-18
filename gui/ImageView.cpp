@@ -441,6 +441,14 @@ void ImageView::rebuildUndoStack()
   if ( !m_undoStack || m_layers.size() == 0 ) return;
   qCDebug(logEditor) << "ImageView::rebuildUndoStack(): undoStack =" << m_undoStack->count();
   {
+    // Preserve display settings: the setIndex(0)/setIndex(count) replay below fires
+    // indexChanged many times and individual commands may read/write image data that
+    // interacts with m_lut in edge cases. Saving and restoring here guarantees the
+    // user-chosen colormap survives the sort-and-replay unconditionally.
+    const QVector<QRgb> savedLut        = m_lut;
+    const int           savedBrightness = m_brightness;
+    const int           savedContrast   = m_contrast;
+
     QList<int> possible_ids;
     for ( int i=0 ; i<m_layers.size() ; i++ ) {
       possible_ids.append(m_layers[i]->id());
@@ -535,6 +543,13 @@ void ImageView::rebuildUndoStack()
     m_undoStack->setIndex(0);
     m_undoStack->setIndex(m_undoStack->count());
 
+    // Restore display settings and apply them so the scene reflects the correct
+    // colormap regardless of what the replay may have done.
+    m_lut        = savedLut;
+    m_brightness = savedBrightness;
+    m_contrast   = savedContrast;
+    applyDisplayAdjustments();
+
     MainWindow *mw = dynamic_cast<MainWindow*>(m_parent);
     if ( mw ) mw->updateLayerList();
   }
@@ -590,6 +605,13 @@ void ImageView::removeOperationsByIdUndoStack( int layerId )
    if ( !m_undoStack ) {
     return;
    }
+   // Preserve colormap/brightness/contrast across the replay: individual commands'
+   // redo() or the applyDisplayAdjustments() calls triggered by indexChanged may
+   // interact with m_lut in unexpected ways. Saving here and restoring at the end
+   // guarantees the user-chosen display settings survive the delete operation.
+   const QVector<QRgb> savedLut        = m_lut;
+   const int           savedBrightness = m_brightness;
+   const int           savedContrast   = m_contrast;
    const int oldIndex = m_undoStack->index();
    std::vector<std::unique_ptr<AbstractCommand>> commandsToReplay;
    commandsToReplay.reserve(oldIndex);
@@ -617,10 +639,17 @@ void ImageView::removeOperationsByIdUndoStack( int layerId )
    m_undoStack->setIndex(0);
    // Now it is safe to delete the old command objects.
    m_undoStack->clear();
-   // Mark layer as deleted before replaying remaining commands.
+   // Mark layer as deleted and hide its scene item before replaying remaining
+   // commands. setIndex(0) above called DeleteLayerCommand::undo() which made
+   // the item visible again; without hiding it here the layer would remain
+   // composited over the restored image during and after the replay.
    for ( auto* layer : m_layers ) {
     if ( layer && layer->id() == layerId ) {
       layer->m_deleted = true;
+      if ( auto* li = dynamic_cast<LayerItem*>(layer->m_item) ) {
+          li->setVisible(false);
+          li->setInActive(true);
+      }
       break;
     }
    }
@@ -629,6 +658,13 @@ void ImageView::removeOperationsByIdUndoStack( int layerId )
    for ( auto& command : commandsToReplay ) {
      m_undoStack->push(command.release());
    }
+   // Restore the display settings saved at the top and apply them so the
+   // scene reflects the correct colormap regardless of what individual
+   // command redo()s may have done to m_lut during replay.
+   m_lut        = savedLut;
+   m_brightness = savedBrightness;
+   m_contrast   = savedContrast;
+   applyDisplayAdjustments();
   }
 }
 
@@ -1736,6 +1772,7 @@ bool ImageView::event( QEvent* e )
             if ( newScale >= 0.01 && newScale <= 100.0 ) {
                 setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
                 scale(factor, factor);
+                updateLayerTransformModes();
                 emit scaleChanged(transform().m11());
                 emit viewportChanged(
                     mapToScene(viewport()->rect()).boundingRect(), sceneRect());
@@ -1754,6 +1791,7 @@ bool ImageView::event( QEvent* e )
             if ( newScale >= 0.01 && newScale <= 100.0 ) {
                 setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
                 scale(factor, factor);
+                updateLayerTransformModes();
                 emit scaleChanged(transform().m11());
                 emit viewportChanged(
                     mapToScene(viewport()->rect()).boundingRect(), sceneRect());
@@ -1763,6 +1801,18 @@ bool ImageView::event( QEvent* e )
         }
     }
     return QGraphicsView::event(e);
+}
+
+void ImageView::updateLayerTransformModes()
+{
+    if ( !scene() ) return;
+    const Qt::TransformationMode mode = transform().m11() < 1.0
+        ? Qt::SmoothTransformation
+        : Qt::FastTransformation;
+    for ( auto* item : scene()->items() ) {
+        if ( auto* px = dynamic_cast<QGraphicsPixmapItem*>(item) )
+            px->setTransformationMode(mode);
+    }
 }
 
 bool ImageView::scaleScene( int direction )
@@ -1775,9 +1825,10 @@ bool ImageView::scaleScene( int direction )
     if ( newScale < 0.01 || newScale > 100.0 ) {
       return false;
     }
-    emit scaleChanged(transform().m11());
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     scale(factor, factor);
+    updateLayerTransformModes();
+    emit scaleChanged(transform().m11());
     emit viewportChanged(mapToScene(viewport()->rect()).boundingRect(), sceneRect());
     return true;
   }
@@ -3134,11 +3185,25 @@ void ImageView::deletePolygon(const QString& name)
   qCDebug(logEditor) << "ImageView::deletePolygon(): name =" << name;
   {
     // Confirmation
-    auto reply = QMessageBox::question(
-        this, tr("Delete polygon"),
-        tr("Delete polygon \"%1\" and its associated cut layer?\n\nAll history entries for this polygon will be permanently removed.").arg(name),
-        QMessageBox::Yes | QMessageBox::No);
-    if ( reply != QMessageBox::Yes ) return;
+    QMessageBox dlg(this);
+    dlg.setWindowTitle(tr("Delete polygon"));
+    dlg.setText(tr("Delete polygon \"%1\" and its associated cut layer?\n\nAll history entries for this polygon will be permanently removed.").arg(name));
+    dlg.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+    {
+        QPixmap iconPx(48, 48);
+        iconPx.fill(Qt::transparent);
+        QPainter p(&iconPx);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setBrush(QColor(60, 120, 200));
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(iconPx.rect().adjusted(1, 1, -1, -1));
+        p.setPen(Qt::white);
+        p.setFont(QFont("Arial", 26, QFont::Bold));
+        p.drawText(iconPx.rect(), Qt::AlignCenter, "?");
+        p.end();
+        dlg.setIconPixmap(iconPx);
+    }
+    if ( dlg.exec() != QMessageBox::Yes ) return;
 
     // Find EditablePolygonCommand for this polygon
     EditablePolygonCommand* polyCmd = nullptr;

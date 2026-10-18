@@ -21,6 +21,7 @@
 #include "CageWarpCommand.h"
 
 #include "../gui/MainWindow.h"
+#include "../layer/CageMesh.h" 
 #include "../layer/LayerItem.h"
 #include "../core/Config.h"
 
@@ -129,6 +130,7 @@ void CageWarpCommand::redo()
       m_cachedWarpedImage = QImage();
     }
     if (!m_skipApplyWarpOnRedo) {
+      m_layer->cageMesh().setNeedUpdate(true);
       m_warpedImage = m_layer->applyCageWarp("CageWarpCommand");
       m_layer->setOriginalImage(m_warpedImage,m_steps == 0 ? LayerItem::ImageType::Original : LayerItem::ImageType::Warped);
     }

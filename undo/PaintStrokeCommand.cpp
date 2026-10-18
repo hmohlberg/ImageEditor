@@ -212,6 +212,35 @@ QJsonObject PaintStrokeCommand::toJson() const
     return obj; 
 }
 
+// -------------------------------- clone --------------------------------
+// Direct-copy constructor: copies all fields from an existing command without
+// calling redo(). This ensures clones pushed during stack rebuild have correct
+// m_origBackup and m_dirtyRect so their undo() properly restores m_originalImage.
+PaintStrokeCommand::PaintStrokeCommand( LayerItem* layer, const QVector<QPoint>& points,
+                    const QColor& color, int radius, qreal hardness, const QRect& dirtyRect,
+                    const QImage& backup, const QImage& origBackup, const QColor& origColor )
+    : AbstractCommand(nullptr)
+    , m_layer(layer)
+    , m_points(points)
+    , m_color(color)
+    , m_radius(radius)
+    , m_hardness(hardness)
+    , m_dirtyRect(dirtyRect)
+    , m_backup(backup)
+    , m_origBackup(origBackup)
+    , m_origColor(origColor)
+{
+    m_layerId = layer ? layer->id() : -1;
+    setText(QString("PaintStroke %1").arg(points.size()));
+    setIcon(AbstractCommand::getIconFromSvg(s_brushSvg));
+}
+
+AbstractCommand* PaintStrokeCommand::clone() const
+{
+    return new PaintStrokeCommand(m_layer, m_points, m_color, m_radius, m_hardness,
+                                  m_dirtyRect, m_backup, m_origBackup, m_origColor);
+}
+
 // *** *** *** *** BEGIN OLD STYLE *** *** *** ***
 PaintStrokeCommand* PaintStrokeCommand::fromJson( const QJsonObject& obj, LayerItem* layer )
 {

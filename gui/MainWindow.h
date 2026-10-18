@@ -46,6 +46,7 @@ class Hdf5Viewer;
 class LayerItem;
 class Layer;
 class DarkHistoryDelegate;
+class HistogramWidget;
 
 class MainWindow : public QMainWindow, public IMainSystem
 {
@@ -129,6 +130,7 @@ class MainWindow : public QMainWindow, public IMainSystem
  private:
 
     void setEditorToolbarsEnabled( bool enabled );
+    void updateHistoryHighlight( int layerNumber );
     bool checkUnsavedData( bool isCloseProgram = true );
     bool loadImage( const QString&, bool askForNewLoad=false );
     void loadHistory( const QString& );
@@ -168,8 +170,10 @@ class MainWindow : public QMainWindow, public IMainSystem
     QDockWidget*    m_overviewDock   = nullptr;
     QDockWidget*    m_layerDock      = nullptr;
     QDockWidget*    m_historyDock    = nullptr;
+    QDockWidget*    m_histogramDock  = nullptr;
     QListWidget*    m_layerList      = nullptr;
     OverviewWidget* m_overviewWidget = nullptr;
+    HistogramWidget* m_histogramWidget = nullptr;
     
     QToolBar* m_controlToolbar = nullptr;
     QToolBar* m_editToolbar = nullptr;

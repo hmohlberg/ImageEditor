@@ -20,6 +20,7 @@
 #include "ConfigDialog.h"
 #include "../util/CursorUtil.h"
 #include "OverviewWidget.h"
+#include "HistogramWidget.h"
 #include "AboutDialog.h"
 #include "LayerEditorView.h"
 #ifdef HASTIFF
@@ -623,9 +624,11 @@ bool MainWindow::loadImage( const QString& filePath, bool askForNewLoad )
     scene->setSceneRect(m_layerItem->boundingRect());
     // center
     m_imageView->centerOn(m_layerItem);
-    // update overview with the newly loaded image
+    // update overview and histogram with the newly loaded image
     if ( m_overviewWidget )
         m_overviewWidget->setImage(m_layerItem->image());
+    if ( m_histogramWidget )
+        m_histogramWidget->setImage(m_layerItem->image());
     // create main image layer
     rebuildLayerList();
     // ready
@@ -1067,13 +1070,15 @@ void MainWindow::openBigTiff(const QString& filePath)
     setEditorToolbarsEnabled(false);
     m_centralStack->setCurrentIndex(2);
 
-    if ( m_overviewWidget ) {
+    if ( m_overviewWidget || m_histogramWidget ) {
         // Use the coarsest pyramid level (scaleFactor 64) as thumbnail; fast to read.
         const QImage thumb = bigTiffReadLevel(filePath, 64);
-        if ( !thumb.isNull() )
-            m_overviewWidget->setImage(thumb);
-        else
-            m_overviewWidget->clear();
+        if ( !thumb.isNull() ) {
+            if ( m_overviewWidget )  m_overviewWidget->setImage(thumb);
+            if ( m_histogramWidget ) m_histogramWidget->setImage(thumb);
+        } else {
+            if ( m_overviewWidget ) m_overviewWidget->clear();
+        }
     }
 
     // Resize window to match image aspect ratio, up to 80% of available screen
@@ -1122,10 +1127,12 @@ void MainWindow::openHdf5(const QString& filePath)
                 disconnect(*conn);
                 delete conn;
                 QTimer::singleShot(0, this, [this] {
-                    if (!m_overviewWidget || !m_hdf5Viewer->isOpen()) return;
+                    if ((!m_overviewWidget && !m_histogramWidget) || !m_hdf5Viewer->isOpen()) return;
                     const QImage thumb = m_hdf5Viewer->thumbnail();
-                    if (!thumb.isNull())
-                        m_overviewWidget->setImage(thumb);
+                    if (!thumb.isNull()) {
+                        if ( m_overviewWidget )  m_overviewWidget->setImage(thumb);
+                        if ( m_histogramWidget ) m_histogramWidget->setImage(thumb);
+                    }
                 });
             });
     }
@@ -1136,14 +1143,14 @@ void MainWindow::openHdf5(const QString& filePath)
 // Works for all three viewers (ImageView, BigTIFF, HDF5).
 void MainWindow::scheduleOverviewRefresh()
 {
-    if (!m_overviewWidget) return;
+    if (!m_overviewWidget && !m_histogramWidget) return;
     auto* t = findChild<QTimer*>("ovRefresh");
     if (!t) {
         t = new QTimer(this);
         t->setObjectName("ovRefresh");
         t->setSingleShot(true);
         connect(t, &QTimer::timeout, this, [this] {
-            if (!m_overviewWidget) return;
+            if (!m_overviewWidget && !m_histogramWidget) return;
             QImage thumb;
             const int idx = m_centralStack->currentIndex();
 #ifdef HASTIFF
@@ -1167,8 +1174,10 @@ void MainWindow::scheduleOverviewRefresh()
                     sc->render(&p, QRectF(QPointF(0, 0), sz), sr);
                 }
             }
-            if (!thumb.isNull())
-                m_overviewWidget->setImage(thumb);
+            if (!thumb.isNull()) {
+                if (m_overviewWidget)  m_overviewWidget->setImage(thumb);
+                if (m_histogramWidget) m_histogramWidget->setImage(thumb);
+            }
         });
     }
     t->start(120);
@@ -1964,7 +1973,21 @@ void MainWindow::createDockWidgets()
    m_layerList->setDragDropMode(QAbstractItemView::InternalMove);
    m_layerList->setDefaultDropAction(Qt::MoveAction);
    m_layerDock->setWidget(m_layerList);
-   splitDockWidget(m_overviewDock, m_layerDock, Qt::Vertical);
+   // color correction + histogram dock — sits directly below overview
+   if (EditorStyle::instance().showHistogram()) {
+       m_histogramWidget = new HistogramWidget;
+       m_histogramWidget->setBrightness(EditorStyle::instance().brightness());
+       m_histogramWidget->setContrast(EditorStyle::instance().contrast());
+       m_histogramDock = new QDockWidget(tr("Color Correction"), this);
+       m_histogramDock->setAllowedAreas(Qt::RightDockWidgetArea);
+       m_histogramDock->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable);
+       m_histogramDock->setWidget(m_histogramWidget);
+       addDockWidget(Qt::RightDockWidgetArea, m_histogramDock);
+       splitDockWidget(m_overviewDock, m_histogramDock, Qt::Vertical);
+       splitDockWidget(m_histogramDock, m_layerDock, Qt::Vertical);
+   } else {
+       splitDockWidget(m_overviewDock, m_layerDock, Qt::Vertical);
+   }
    for ( Layer* layer : m_imageView->layers() ) {
     QListWidgetItem* item = new QListWidgetItem(layer->name(), m_layerList);
     item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
@@ -2013,6 +2036,32 @@ void MainWindow::createDockWidgets()
 #endif
        m_imageView->centerOn(scenePos);
    });
+
+   // histogram widget signals (dock was already created above near layer dock)
+   if (m_histogramWidget) {
+       connect(m_histogramWidget, &HistogramWidget::brightnessChanged, this, [this](int v) {
+           EditorStyle::instance().setBrightness(v);
+           m_imageView->setBrightness(v);
+#ifdef HASTIFF
+           if (m_bigTiffViewer) m_bigTiffViewer->setBrightness(v);
+#endif
+#ifdef HASHDF5
+           if (m_hdf5Viewer) m_hdf5Viewer->setBrightness(v);
+#endif
+           scheduleOverviewRefresh();
+       });
+       connect(m_histogramWidget, &HistogramWidget::contrastChanged, this, [this](int v) {
+           EditorStyle::instance().setContrast(v);
+           m_imageView->setContrast(v);
+#ifdef HASTIFF
+           if (m_bigTiffViewer) m_bigTiffViewer->setContrast(v);
+#endif
+#ifdef HASHDF5
+           if (m_hdf5Viewer) m_hdf5Viewer->setContrast(v);
+#endif
+           scheduleOverviewRefresh();
+       });
+   }
 
    // history dock
    m_undoView = new QUndoView(m_imageView->undoStack());
@@ -2170,6 +2219,7 @@ void MainWindow::createDockWidgets()
    m_historyDock->setMinimumWidth(200);
    m_overviewDock->hide();
    m_layerDock->hide();
+   if (m_histogramDock) m_histogramDock->hide();
    m_historyDock->hide();
    connect(m_undoView, &QUndoView::activated, this, [this](const QModelIndex &index){
      int i = index.row();
@@ -2238,10 +2288,12 @@ void MainWindow::toggleDocks()
       m_overviewDock->hide();
       m_historyDock->hide();
       m_layerDock->hide();
+      if (m_histogramDock) m_histogramDock->hide();
   } else {
       m_overviewDock->setVisible(EditorStyle::instance().showOverviewMap());
       m_historyDock->show();
       m_layerDock->show();
+      if (m_histogramDock) m_histogramDock->show();
   }
 }
 
@@ -2399,6 +2451,16 @@ void MainWindow::setSelectedLayer( int caller, const QString &name, bool forcedE
     m_mirrorLayerToolbar->setEnabled(isEnabled);
     m_perspectiveLayerToolbar->setEnabled(isEnabled);
     m_transformLayerItem->setEnabled(isEnabled);
+    // Sync history highlight so Tab-key layer switches colour the undo view
+    // the same way a layers-panel click does.
+    bool ok = false;
+    const int layerNum = name.section(' ', 1, 1).toInt(&ok);
+    if ( ok && layerNum > 0 )
+      updateHistoryHighlight(layerNum);
+    else {
+      m_undoViewDelegate->setHighlightedRows({});
+      m_undoView->viewport()->update();
+    }
   }
 }
 
@@ -2467,39 +2529,38 @@ void MainWindow::onLayerItemClicked( QListWidgetItem* item )
        }
      }
     }
-    QSet<int> selectedItemIdents = {};
-    if ( selectedLayerId > 0 ) {
-      // get all undo entries with layer N
-      int polygonIndex = -1;
-      // first run
-      const QAbstractItemModel* model = m_undoView->model();
-      for ( int row = 0; row < model->rowCount(); ++row ) {
-        const QModelIndex index = model->index(row, 0);
-        const QString text = model->data(index, Qt::DisplayRole).toString();
-        // qDebug().noquote() << QString("%1: %2").arg(row).arg(text);
-        if ( text.contains(QString("Layer %1").arg(selectedLayerId)) ) {
-         QRegularExpression re("Polygon (\\d+)");
-         QRegularExpressionMatch match = re.match(text);
-         if ( match.hasMatch()) {
-           polygonIndex = match.captured(1).toInt();
-         }
-         selectedItemIdents.insert(row);
-        }
-      }
-      // second run
-      if ( polygonIndex > 0 ) {
-        model = m_undoView->model();
-        for ( int row = 0; row < model->rowCount(); ++row ) {
-          const QString text = model->data(model->index(row, 0), Qt::DisplayRole).toString();
-          if ( text.contains(QString("Polygon %1").arg(polygonIndex)) ) {
-            selectedItemIdents.insert(row);
-          }
-        }
-      }
+    if ( selectedLayerId > 0 )
+      updateHistoryHighlight(selectedLayerId);
+    else {
+      m_undoViewDelegate->setHighlightedRows({});
+      m_undoView->viewport()->update();
     }
-    m_undoViewDelegate->setHighlightedRows(selectedItemIdents);
-    m_undoView->viewport()->update();
   }
+}
+
+void MainWindow::updateHistoryHighlight( int layerNumber )
+{
+  QSet<int> selectedItemIdents;
+  int polygonIndex = -1;
+  const QAbstractItemModel* model = m_undoView->model();
+  for ( int row = 0; row < model->rowCount(); ++row ) {
+    const QString text = model->data(model->index(row, 0), Qt::DisplayRole).toString();
+    if ( text.contains(QString("Layer %1").arg(layerNumber)) ) {
+      QRegularExpressionMatch match = QRegularExpression("Polygon (\\d+)").match(text);
+      if ( match.hasMatch() )
+        polygonIndex = match.captured(1).toInt();
+      selectedItemIdents.insert(row);
+    }
+  }
+  if ( polygonIndex > 0 ) {
+    for ( int row = 0; row < model->rowCount(); ++row ) {
+      const QString text = model->data(model->index(row, 0), Qt::DisplayRole).toString();
+      if ( text.contains(QString("Polygon %1").arg(polygonIndex)) )
+        selectedItemIdents.insert(row);
+    }
+  }
+  m_undoViewDelegate->setHighlightedRows(selectedItemIdents);
+  m_undoView->viewport()->update();
 }
 
 void MainWindow::showLayerContextMenu( const QPoint& pos )
@@ -2681,26 +2742,32 @@ void MainWindow::deleteLayer()
         "Press <b>Destroy</b> to permanently remove the layer without any history entry. "
         "This cannot be undone."
     ).arg(layer->id());
-    int result = QWidgetUtils::showIconDialog(this,QString("Delete %1").arg(layer->name()),labelText);
-    if ( result == 1 ) { // Revoke
-      // Undo all operations from the stack. Preserve original state
-      m_imageView->removeOperationsByIdUndoStack(layer->id());
-    } else if ( result == 2 ) { // Delete layer
+    const int  layerId   = layer->id();
+    const QString layerName = layer->name();
+    int result = QWidgetUtils::showIconDialog(this,QString("Delete %1").arg(layerName),labelText);
+    if ( result == 1 ) { // Revert — undo all ops that created/modified this layer
+      m_imageView->removeOperationsByIdUndoStack(layerId);
+      // Rebuild list and re-apply LUT once the stack replay is complete so the
+      // colormap is correct for all remaining layers.
+      rebuildLayerList();
+      m_imageView->applyDisplayAdjustments();
+      scheduleOverviewRefresh();
+      showMessage(QString("Layer %1 reverted and removed.").arg(layerId));
+    } else if ( result == 2 ) { // Delete layer (keep history entry)
       m_imageView->deleteLayer(layer);
-      // if ( layer->m_item ) 
-      //   m_imageView->getScene()->removeItem(layer->m_item);
-      // m_imageView->layers().removeOne(layer);
       rebuildLayerList();
       m_imageView->rebuildUndoStack();
-    } else if ( result == 3 ) { // Destroy layer
+      showMessage(QString("Layer %1 deleted.").arg(layerId));
+    } else if ( result == 3 ) { // Destroy layer (no history)
       if ( layer->m_item != nullptr ) {
         layer->m_deleted = true;
         LayerItem* m_item = dynamic_cast<LayerItem*>(layer->m_item);
         if ( m_item != nullptr ) {
           m_item->setVisible(false);
           m_item->setInActive(true);
-        } 
+        }
         rebuildLayerList();
+        showMessage(QString("Layer %1 destroyed.").arg(layerId));
       }
     }
   }
@@ -3700,20 +3767,25 @@ void MainWindow::createToolbars()
     // --- cage control points ---
     QLabel* cageControlPointsLabel = new QLabel(" Cage control points:");
     m_canvasWarpLayerToolbar->addWidget(cageControlPointsLabel);
-    QPushButton* btnPlus = new QPushButton("+", this);
+    QToolButton* btnPlus = new QToolButton(this);
+    btnPlus->setText("+");
     btnPlus->setFocusPolicy(Qt::ClickFocus);
     btnPlus->setToolTip("<b>Add control point</b><br>Increase the number of cage warp control points to allow finer local deformation.");
-    QPushButton* btnMinus = new QPushButton("-", this);
+    QToolButton* btnMinus = new QToolButton(this);
+    btnMinus->setText("−"); // unicode minus sign, visually centered
     btnMinus->setFocusPolicy(Qt::ClickFocus);
     btnMinus->setToolTip("<b>Remove control point</b><br>Decrease the number of cage warp control points for a coarser, smoother deformation.");
-    btnPlus->setStyleSheet("QPushButton { font-size: 20px; font-weight: bold; } QToolTip { font-size: 13px; font-weight: normal; }");
-    btnMinus->setStyleSheet("QPushButton { font-size: 20px; font-weight: bold; } QToolTip { font-size: 13px; font-weight: normal; }");
-    btnPlus->setFixedSize(18, 18);
-    btnMinus->setFixedSize(18, 18);
+    const QString cpBtnStyle =
+        "QToolButton { font-size: 15px; font-weight: bold; padding: 0; margin: 0; } "
+        "QToolTip { font-size: 13px; font-weight: normal; }";
+    btnPlus->setStyleSheet(cpBtnStyle);
+    btnMinus->setStyleSheet(cpBtnStyle);
+    btnPlus->setFixedSize(22, 22);
+    btnMinus->setFixedSize(22, 22);
     m_canvasWarpLayerToolbar->addWidget(btnPlus);
     m_canvasWarpLayerToolbar->addWidget(btnMinus);
-    connect(btnPlus, &QPushButton::clicked, m_imageView, &ImageView::setIncreaseNumberOfCageControlPoints);
-    connect(btnMinus, &QPushButton::clicked, m_imageView, &ImageView::setDecreaseNumberOfCageControlPoints);
+    connect(btnPlus, &QToolButton::clicked, m_imageView, &ImageView::setIncreaseNumberOfCageControlPoints);
+    connect(btnMinus, &QToolButton::clicked, m_imageView, &ImageView::setDecreaseNumberOfCageControlPoints);
     // --- fix boundary ---
     QCheckBox* fixBoundaryCheck = new QCheckBox("Fix boundary", this);
     fixBoundaryCheck->setFocusPolicy(Qt::ClickFocus);
@@ -4563,12 +4635,13 @@ void MainWindow::populateMaskComboBox(int numClasses)
 
 /* =================== View Helpers =================== */
 
-void MainWindow::zoom1to1() { m_imageView->resetTransform(); }
+void MainWindow::zoom1to1() { m_imageView->resetTransform(); m_imageView->updateLayerTransformModes(); }
 void MainWindow::forcedUpdate() { m_imageView->forcedUpdate(); }
 
 void MainWindow::fitToWindow() {
   if ( m_layerItem != nullptr ) {
      m_imageView->fitInView(m_layerItem,Qt::KeepAspectRatio);
+     m_imageView->updateLayerTransformModes();
   }
 }
 
