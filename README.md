@@ -70,7 +70,7 @@ A versatile Qt6-based image processing tool with JSON-history support, designed 
 
 ### Executables (this repository)
 
-Ready-to-run executables for version **1.0.2** are located in the `bin/` subdirectory.
+Ready-to-run executables for version **1.0.2** (architecture-specific) are located in the `bin/` subdirectory.
 **Clone the repository once** to get everything you need:
 
 ```bash
@@ -78,11 +78,11 @@ git clone https://github.com/hmohlberg/ImageEditor.git
 cd ImageEditor
 ```
 
-| Platform | Directory | Notes |
-| :--- | :--- | :--- |
-| **Debian / Ubuntu** | `bin/debian/` | Built on Debian 13 (Trixie) with Qt 6.8. |
-| **macOS** | `bin/macos/` | Requires macOS 13 (Ventura) or later. |
-| **Windows (WSL)** | `bin/windows/` | Run `wsl.bat` to launch ImageEditor inside WSL from Windows Explorer. |
+| Platform | Architecture | Directory | Notes |
+| :--- | :--- | :--- | :--- |
+| **Debian / Ubuntu** | x86_64  | `bin/debian/` | Built on Debian 13 (Trixie) with Qt 6.8. |
+| **macOS** | Apple Silicon (ARM64) | `bin/macos/` | Requires macOS 13 (Ventura) or later. |
+| **Windows (WSL)** | x86_64 | `bin/windows/` | Run `wsl.bat` to launch ImageEditor inside WSL from Windows Explorer. |
 
 > **Note:** When launched from the command line without arguments, ImageEditor runs in batch mode and prints help information to the console. Pass `--gui` to open the graphical window.
 
