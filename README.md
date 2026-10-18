@@ -105,13 +105,27 @@ bin/macos/ImageEditor --gui
 
 Installer packages for **macOS** (`.dmg`) and **Debian/Ubuntu** (`.deb`) can be downloaded from the
 **[GitHub Releases page](https://github.com/hmohlberg/ImageEditor/releases/latest)**.
-  
+
 | Package | Platform | Notes |
-| :--- | :--- | :--- | 
+| :--- | :--- | :--- |
 | `ImageEditor-1.0.2.dmg` | macOS 13+ | Drag **ImageEditor.app** to Applications, then launch from there. |
 | `imageeditor_1.0.2_amd64.deb` | Debian 13 / Ubuntu 24.10+ | `sudo dpkg -i imageeditor_*.deb && sudo apt-get install -f` |
 
 > If you prefer to build from source instead, follow the instructions in the [Building from Source](#building-from-source) section below.
+
+#### macOS Gatekeeper warning
+
+Because the app is not yet signed with an Apple Developer certificate, macOS may show:
+
+> *"Apple could not verify that ImageEditor is free of malware."*
+
+To open it anyway, **right-click** the app icon → **Open** → **Open**. After that first confirmation the app launches normally without further warnings.
+
+Alternatively, remove the quarantine flag via Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/ImageEditor.app
+```
 
 ---
 
