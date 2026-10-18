@@ -103,13 +103,11 @@ bin/macos/ImageEditor --gui
 
 ### Installation Packages (download)
 
-Installer packages for **macOS** (`.dmg`) and **Debian/Ubuntu** (`.deb`) can be downloaded from:
-
-> **[https://example.com/imageeditor/releases](https://example.com/imageeditor/releases)**
-> *(URL will be updated once the release page is live)*
-
+Installer packages for **macOS** (`.dmg`) and **Debian/Ubuntu** (`.deb`) can be downloaded from the
+**[GitHub Releases page](https://github.com/hmohlberg/ImageEditor/releases/latest)**.
+  
 | Package | Platform | Notes |
-| :--- | :--- | :--- |
+| :--- | :--- | :--- | 
 | `ImageEditor-1.0.2.dmg` | macOS 13+ | Drag **ImageEditor.app** to Applications, then launch from there. |
 | `imageeditor_1.0.2_amd64.deb` | Debian 13 / Ubuntu 24.10+ | `sudo dpkg -i imageeditor_*.deb && sudo apt-get install -f` |
 
