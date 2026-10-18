@@ -121,10 +121,10 @@ Because the app is not yet signed with an Apple Developer certificate, macOS may
 
 To open it anyway, **right-click** the app icon → **Open** → **Open**. After that first confirmation the app launches normally without further warnings.
 
-Alternatively, remove the quarantine flag via Terminal:
+Alternatively, remove the quarantine flag via Terminal (requires administrator password):
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/ImageEditor.app
+sudo xattr -dr com.apple.quarantine /Applications/ImageEditor.app
 ```
 
 ---
