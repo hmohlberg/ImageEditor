@@ -1,3 +1,6 @@
+Installation
+============
+
 Pre-built Binaries
 ------------------
 
