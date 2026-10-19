@@ -171,7 +171,6 @@ We have now defined two layers, each representing an image region that we can ed
       </video>
    </div>
 
-<br>
 
 .. raw:: html
 
