@@ -1,5 +1,5 @@
 Pre-built Binaries
-==================
+------------------
 
 
 .. note::
@@ -10,7 +10,7 @@ Pre-built Binaries
 
 
 Executables 
------------
+~~~~~~~~~~~
 
 
 Ready-to-run executables for version **1.0.2** (architecture-specific) are located in the `bin/` subdirectory.
@@ -66,8 +66,8 @@ Ready-to-run executables for version **1.0.2** (architecture-specific) are locat
 **Windows (via WSL):** double-click `bin/windows/wsl.bat` — the launcher passes `--gui` automatically. WSL must be installed first — see Windows with WSL and Debian.
 
 
-Installation Packages (download)
---------------------------------
+Installation Packages
+~~~~~~~~~~~~~~~~~~~~~
 
 
 Installer packages for **macOS** (`.dmg`) and **Debian/Ubuntu** (`.deb`) can be downloaded from the
@@ -92,35 +92,32 @@ Installer packages for **macOS** (`.dmg`) and **Debian/Ubuntu** (`.deb`) can be 
    If you prefer to build from source instead, follow the instructions in the [Building from Source](#building-from-source) section below.
 
 
-macOS Gatekeeper warning
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-Because the app is not yet signed with an Apple Developer certificate, macOS may show:
-
 .. note::
 
+   **macOS Gatekeeper warning**
+   
+   Because the app is not yet signed with an Apple Developer certificate, macOS may show:
+   
    *"Apple could not verify that ImageEditor is free of malware."*
+   
+   To open it anyway, **right-click** the app icon → **Open** → **Open**. After that first confirmation the app launches normally without further warnings.
+   
+   Alternatively, remove the quarantine flag via Terminal (requires administrator password):
 
+   .. code-block:: bash
 
-To open it anyway, **right-click** the app icon → **Open** → **Open**. After that first confirmation the app launches normally without further warnings.
-
-Alternatively, remove the quarantine flag via Terminal (requires administrator password):
-
-.. code-block:: bash
-
-   sudo xattr -dr com.apple.quarantine /Applications/ImageEditor.app
+       sudo xattr -dr com.apple.quarantine /Applications/ImageEditor.app
 
 
 
 Updating ImageEditor
-====================
+--------------------
 
 
 Because the binaries are part of this repository, updating ImageEditor is simply a matter of pulling the latest commits.
 
 Linux and macOS
----------------
+~~~~~~~~~~~~~~~
 
 
 Open a terminal in the ImageEditor directory and run:
@@ -133,7 +130,7 @@ Open a terminal in the ImageEditor directory and run:
 The updated binary is immediately available in `bin/debian/` or `bin/macos/` — no reinstallation required.
 
 Windows (via WSL)
------------------
+~~~~~~~~~~~~~~~~~
 
 
 On Windows the update is handled automatically by the launcher.
@@ -152,16 +149,14 @@ No manual steps are needed — every time you start the application via `wsl.bat
 
 
 Building from Source
-====================
+--------------------
 
 
 Prerequisites
--------------
+~~~~~~~~~~~~~
 
 
-Toolchain Requirements
-~~~~~~~~~~~~~~~~~~~~~~
-
+**Toolchain Requirements**
 
 .. list-table::
    :header-rows: 1
@@ -400,7 +395,7 @@ Build Process
 
 
 CMake Options
--------------
+~~~~~~~~~~~~~
 
 
 .. list-table::
@@ -434,7 +429,7 @@ Example — build a macOS app bundle:
 
 
 Debian Package (.deb)
----------------------
+~~~~~~~~~~~~~~~~~~~~~
 
 
 After a successful build, a `.deb` installer can be generated with CPack:
@@ -458,7 +453,7 @@ The package installs the `ImageEditor` binary to `/usr/local/bin/` and registers
 
 
 MS Windows (not yet tested)
----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 1. **Install Qt6**: Download the open-source installer from `qt.io <https://www.qt.io/download>`_. Ensure **CMake** and a compiler (like **MinGW** or **MSVC**) are selected during installation.
