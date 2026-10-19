@@ -366,7 +366,7 @@ Windows with WSL and Debian
 - To run ImageEditor open the file in ``ImageEditor/bin/windows/wsl.bat``
 
 Windows with WSL and Ubuntu 24.04
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
 .. code-block:: bash
