@@ -12,8 +12,8 @@ Pre-built Binaries
    The ``bin/`` subdirectory is always kept in sync with the latest release.
 
 
-Executables (this repository)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Executables 
+~~~~~~~~~~~
 
 
 Ready-to-run executables for version **1.0.2** (architecture-specific) are located in the ``bin/`` subdirectory.
@@ -69,8 +69,8 @@ Ready-to-run executables for version **1.0.2** (architecture-specific) are locat
 **Windows (via WSL):** double-click ``bin/windows/wsl.bat`` — the launcher passes ``--gui`` automatically. WSL must be installed first — see :ref:`Windows with WSL and Debian <windows-with-wsl-and-debian>`.
 
 
-Installation Packages (download)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Installation Packages
+~~~~~~~~~~~~~~~~~~~~~
 
 
 Installer packages for **macOS** (``.dmg``) and **Debian/Ubuntu** (``.deb``) can be downloaded from the
@@ -260,11 +260,11 @@ Supported Debian Versions
 
    **Note for older systems:** If you are using an unsupported version (like Ubuntu 20.04), you must install Qt6 manually via the Qt Online Installer or use a containerized environment (Docker).
 
+Installation
+~~~~~~~~~~~~
 
-
-Installation on Linux
-~~~~~~~~~~~~~~~~~~~~~
-
+Linux
+^^^^^
 
 .. code-block:: bash
 
@@ -314,8 +314,7 @@ Installation on Linux
 
 
 macOS
-~~~~~
-
+^^^^^
 
 .. code-block:: bash
 
@@ -348,7 +347,7 @@ macOS
 .. _windows-with-wsl-and-debian:
 
 Windows with WSL and Debian
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
 - Create a directory where ImageEditor should be installed, open the Powershell there (Open the folder → Right-click → Open in terminal) and enter ``wsl --install Debian``
@@ -409,7 +408,7 @@ Build Process
 
 
 CMake Options
-~~~~~~~~~~~~~
+^^^^^^^^^^^^^
 
 
 .. list-table::
@@ -445,7 +444,7 @@ Example — build a macOS app bundle:
 
 
 Debian Package (.deb)
-~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^
 
 
 After a successful build, a ``.deb`` installer can be generated with CPack:
@@ -469,9 +468,11 @@ Install the package with:
 The package installs the ``ImageEditor`` binary to ``/usr/local/bin/`` and registers a ``.desktop`` entry so it appears in the application menu.
 
 
-MS Windows (not yet tested)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+MS Windows
+^^^^^^^^^^
 
+.. note
+   not yet tested 
 
 1. **Install Qt6**: Download the open-source installer from `qt.io <https://www.qt.io/download>`_. Ensure **CMake** and a compiler (like **MinGW** or **MSVC**) are selected during installation.
 2. **Setup Environment**: Add the Qt ``bin`` folder to your System PATH (e.g., ``C:\\Qt\\6.x.x\\mingw_64\\bin``).
