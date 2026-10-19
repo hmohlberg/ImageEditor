@@ -9,8 +9,8 @@ Pre-built Binaries
    The `bin/` subdirectory is always kept in sync with the latest release.
 
 
-Executables (this repository)
------------------------------
+Executables 
+-----------
 
 
 Ready-to-run executables for version **1.0.2** (architecture-specific) are located in the `bin/` subdirectory.
@@ -49,6 +49,7 @@ Ready-to-run executables for version **1.0.2** (architecture-specific) are locat
 
 
 **Debian / Ubuntu:**
+
 .. code-block:: bash
 
    cd bin/debian
@@ -56,6 +57,7 @@ Ready-to-run executables for version **1.0.2** (architecture-specific) are locat
 
 
 **macOS:**
+
 .. code-block:: bash
 
    bin/macos/ImageEditor --gui
