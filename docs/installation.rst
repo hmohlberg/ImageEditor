@@ -9,14 +9,14 @@ Pre-built Binaries
 
    **The pre-built binaries are distributed as part of this Git repository.**
    They are **not** separate downloads — clone or pull the repository to obtain them.
-   The `bin/` subdirectory is always kept in sync with the latest release.
+   The ``bin/`` subdirectory is always kept in sync with the latest release.
 
 
-Executables 
-~~~~~~~~~~~
+Executables (this repository)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-Ready-to-run executables for version **1.0.2** (architecture-specific) are located in the `bin/` subdirectory.
+Ready-to-run executables for version **1.0.2** (architecture-specific) are located in the ``bin/`` subdirectory.
 **Clone the repository once** to get everything you need:
 
 .. code-block:: bash
@@ -34,21 +34,21 @@ Ready-to-run executables for version **1.0.2** (architecture-specific) are locat
      - Notes
    * - **Debian / Ubuntu**
      - x86_64
-     - `bin/debian/`
+     - ``bin/debian/``
      - Built on Debian 13 (Trixie) with Qt 6.8.
    * - **macOS**
      - Apple Silicon (ARM64)
-     - `bin/macos/`
+     - ``bin/macos/``
      - Requires macOS 13 (Ventura) or later.
    * - **Windows (WSL)**
      - x86_64
-     - `bin/windows/`
-     - Run `wsl.bat` to launch ImageEditor inside WSL from Windows Explorer.
+     - ``bin/windows/``
+     - Run ``wsl.bat`` to launch ImageEditor inside WSL from Windows Explorer.
 
 
 .. note::
 
-   **Note:** When launched from the command line without arguments, ImageEditor runs in batch mode and prints help information to the console. Pass `--gui` to open the graphical window.
+   **Note:** When launched from the command line without arguments, ImageEditor runs in batch mode and prints help information to the console. Pass ``--gui`` to open the graphical window.
 
 
 **Debian / Ubuntu:**
@@ -66,14 +66,14 @@ Ready-to-run executables for version **1.0.2** (architecture-specific) are locat
    bin/macos/ImageEditor --gui
 
 
-**Windows (via WSL):** double-click `bin/windows/wsl.bat` — the launcher passes `--gui` automatically. WSL must be installed first — see Windows with WSL and Debian.
+**Windows (via WSL):** double-click ``bin/windows/wsl.bat`` — the launcher passes ``--gui`` automatically. WSL must be installed first — see :ref:`Windows with WSL and Debian <windows-with-wsl-and-debian>`.
 
 
-Installation Packages
-~~~~~~~~~~~~~~~~~~~~~
+Installation Packages (download)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-Installer packages for **macOS** (`.dmg`) and **Debian/Ubuntu** (`.deb`) can be downloaded from the
+Installer packages for **macOS** (``.dmg``) and **Debian/Ubuntu** (``.deb``) can be downloaded from the
 **`GitHub Releases page <https://github.com/hmohlberg/ImageEditor/releases/latest>`_**.
 
 .. list-table::
@@ -82,34 +82,37 @@ Installer packages for **macOS** (`.dmg`) and **Debian/Ubuntu** (`.deb`) can be 
    * - Package
      - Platform
      - Notes
-   * - `ImageEditor-1.0.2.dmg`
+   * - ``ImageEditor-1.0.2.dmg``
      - macOS 13+
      - Drag **ImageEditor.app** to Applications, then launch from there.
-   * - `imageeditor_1.0.2_amd64.deb`
+   * - ``imageeditor_1.0.2_amd64.deb``
      - Debian 13 / Ubuntu 24.10+
-     - `sudo dpkg -i imageeditor_*.deb && sudo apt-get install -f`
+     - ``sudo dpkg -i imageeditor_*.deb && sudo apt-get install -f``
 
 
 .. note::
 
-   If you prefer to build from source instead, follow the instructions in the [Building from Source](#building-from-source) section below.
+   If you prefer to build from source instead, follow the instructions in the :ref:`Building from Source <building-from-source>` section below.
 
+
+macOS Gatekeeper warning
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+Because the app is not yet signed with an Apple Developer certificate, macOS may show:
 
 .. note::
 
-   **macOS Gatekeeper warning**
-   
-   Because the app is not yet signed with an Apple Developer certificate, macOS may show:
-   
    *"Apple could not verify that ImageEditor is free of malware."*
-   
-   To open it anyway, **right-click** the app icon → **Open** → **Open**. After that first confirmation the app launches normally without further warnings.
-   
-   Alternatively, remove the quarantine flag via Terminal (requires administrator password):
 
-   .. code-block:: bash
 
-       sudo xattr -dr com.apple.quarantine /Applications/ImageEditor.app
+To open it anyway, **right-click** the app icon → **Open** → **Open**. After that first confirmation the app launches normally without further warnings.
+
+Alternatively, remove the quarantine flag via Terminal (requires administrator password):
+
+.. code-block:: bash
+
+   sudo xattr -dr com.apple.quarantine /Applications/ImageEditor.app
 
 
 
@@ -130,26 +133,28 @@ Open a terminal in the ImageEditor directory and run:
    git pull
 
 
-The updated binary is immediately available in `bin/debian/` or `bin/macos/` — no reinstallation required.
+The updated binary is immediately available in ``bin/debian/`` or ``bin/macos/`` — no reinstallation required.
 
 Windows (via WSL)
 ~~~~~~~~~~~~~~~~~
 
 
 On Windows the update is handled automatically by the launcher.
-Double-clicking `bin/windows/wsl.bat` will:
+Double-clicking ``bin/windows/wsl.bat`` will:
 
 1. Open the WSL environment.
-2. Run `git pull` inside the repository to fetch the latest binary and project files.
-3. Launch ImageEditor with `--gui` automatically.
+2. Run ``git pull`` inside the repository to fetch the latest binary and project files.
+3. Launch ImageEditor with ``--gui`` automatically.
 
-No manual steps are needed — every time you start the application via `wsl.bat` it checks for and applies updates before launching.
+No manual steps are needed — every time you start the application via ``wsl.bat`` it checks for and applies updates before launching.
 
 .. note::
 
-   **Prerequisite:** The initial clone must have been performed inside the WSL environment as described in [Windows with WSL and Debian](#windows-with-wsl-and-debian). If the clone was done outside WSL, the `git pull` step in the launcher will have no effect.
+   **Prerequisite:** The initial clone must have been performed inside the WSL environment as described in :ref:`Windows with WSL and Debian <windows-with-wsl-and-debian>`. If the clone was done outside WSL, the ``git pull`` step in the launcher will have no effect.
 
 
+
+.. _building-from-source:
 
 Building from Source
 --------------------
@@ -159,7 +164,9 @@ Prerequisites
 ~~~~~~~~~~~~~
 
 
-**Toolchain Requirements**
+Toolchain Requirements
+^^^^^^^^^^^^^^^^^^^^^^
+
 
 .. list-table::
    :header-rows: 1
@@ -178,7 +185,7 @@ Prerequisites
      - Components: Core, Gui, Widgets, OpenGL, OpenGLWidgets, Svg, Network
    * - **libtiff**
      - 4.0
-     - Required for BigTIFF/Pyramid TIFF viewer. `TIFFIsBigTIFF` must be present (libtiff < 4.0 is rejected). libtiff ≥ 4.5 additionally enables exact version display in the About dialog.
+     - Required for BigTIFF/Pyramid TIFF viewer. ``TIFFIsBigTIFF`` must be present (libtiff < 4.0 is rejected). libtiff ≥ 4.5 additionally enables exact version display in the About dialog.
    * - **libhdf5**
      - any recent
      - *Optional.* Required only for the HDF5 image viewer (C interface).
@@ -188,13 +195,13 @@ Prerequisites
 
 
 Qt6 Availability by Linux Distribution
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
-The ImageEditor application requires **Qt6**. Below is a list of Linux distributions that provide native support for Qt6 through their official package repositories (`apt`).
+The ImageEditor application requires **Qt6**. Below is a list of Linux distributions that provide native support for Qt6 through their official package repositories (``apt``).
 
 Supported Ubuntu Versions
-^^^^^^^^^^^^^^^^^^^^^^^^^
+"""""""""""""""""""""""""
 
 .. list-table::
    :header-rows: 1
@@ -226,7 +233,7 @@ Supported Ubuntu Versions
 
 
 Supported Debian Versions
-^^^^^^^^^^^^^^^^^^^^^^^^^
+"""""""""""""""""""""""""
 
 .. list-table::
    :header-rows: 1
@@ -293,12 +300,12 @@ Installation on Linux
 
 .. note::
 
-   **libtiff version:** `libtiff-dev` on Debian 12+ and Ubuntu 22.04+ provides libtiff 4.x, which satisfies the ≥ 4.0 requirement. Run `dpkg -s libtiff-dev | grep Version` to verify.
+   **libtiff version:** ``libtiff-dev`` on Debian 12+ and Ubuntu 22.04+ provides libtiff 4.x, which satisfies the ≥ 4.0 requirement. Run ``dpkg -s libtiff-dev | grep Version`` to verify.
 
 
 .. note::
 
-   **HDF5:** If `libhdf5-dev` is not installed, CMake will print a notice and the HDF5 viewer will simply not be compiled. All other functionality remains unaffected.
+   **HDF5:** If ``libhdf5-dev`` is not installed, CMake will print a notice and the HDF5 viewer will simply not be compiled. All other functionality remains unaffected.
 
 
 .. note::
@@ -330,7 +337,7 @@ macOS
 
 .. note::
 
-   **Qt not found by CMake?** Run `export CMAKE_PREFIX_PATH=$(brew --prefix qt)` before invoking cmake, or add it to your shell profile.
+   **Qt not found by CMake?** Run ``export CMAKE_PREFIX_PATH=$(brew --prefix qt)`` before invoking cmake, or add it to your shell profile.
 
 
 .. note::
@@ -338,22 +345,26 @@ macOS
    **libtiff version:** Homebrew installs the latest libtiff (currently 4.6.x), which satisfies all requirements including the ≥ 4.5 version-display feature.
 
 
+.. _windows-with-wsl-and-debian:
+
 Windows with WSL and Debian
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-- Create a directory where ImageEditor should be installed, open the Powershell there (Open the folder → Right-click → Open in terminal) and enter `wsl --install Debian`
+- Create a directory where ImageEditor should be installed, open the Powershell there (Open the folder → Right-click → Open in terminal) and enter ``wsl --install Debian``
 - Wait for Download and Installation to finish — at the end you will be asked to create a username and password.
 - After picking a user and password combination the Linux environment will autostart. Now run the following commands:
-  ```bash
-  sudo apt-get update
-  sudo apt-get install qt6-base-dev qt6-declarative-dev qt6-svg-dev git cmake
-  sudo apt-get install libtiff-dev libxkbcommon-dev libxkbcommon-x11-dev
-  sudo apt-get install libhdf5-dev   # optional, for HDF5 viewer
-  git clone https://github.com/hmohlberg/ImageEditor.git
-  ```
-- Leave the Linux environment by entering `exit`
-- To run ImageEditor open the file in `ImageEditor/bin/windows/wsl.bat`
+
+  .. code-block:: bash
+
+     sudo apt-get update
+     sudo apt-get install qt6-base-dev qt6-declarative-dev qt6-svg-dev git cmake
+     sudo apt-get install libtiff-dev libxkbcommon-dev libxkbcommon-x11-dev
+     sudo apt-get install libhdf5-dev   # optional, for HDF5 viewer
+     git clone https://github.com/hmohlberg/ImageEditor.git
+
+- Leave the Linux environment by entering ``exit``
+- To run ImageEditor open the file in ``ImageEditor/bin/windows/wsl.bat``
 
 Windows with WSL and Ubuntu 24.04
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -371,7 +382,7 @@ Windows with WSL and Ubuntu 24.04
    sudo apt install libhdf5-dev   # optional, for HDF5 viewer
 
 
-These environment variables are necessary for WSL rendering and can be saved in `.bashrc`:
+These environment variables are necessary for WSL rendering and can be saved in ``.bashrc``:
 
 .. code-block:: bash
 
@@ -381,7 +392,7 @@ These environment variables are necessary for WSL rendering and can be saved in 
 
 
 Build Process
--------------
+~~~~~~~~~~~~~
 
 
 .. code-block:: bash
@@ -407,24 +418,26 @@ CMake Options
    * - Option
      - Default
      - Description
-   * - `WITH_TIFF`
-     - `ON`
+   * - ``WITH_TIFF``
+     - ``ON``
      - Enable BigTIFF/Pyramid TIFF support via libtiff.
-   * - `WITH_HDF5`
-     - `ON`
+   * - ``WITH_HDF5``
+     - ``ON``
      - Enable HDF5 image viewer support.
-   * - `BUILD_MACOS_BUNDLE`
-     - `OFF`
-     - Build a self-contained macOS `.app` bundle (macOS only). Used by `scripts/create_dmg.sh` to produce a distributable DMG.
+   * - ``BUILD_MACOS_BUNDLE``
+     - ``OFF``
+     - Build a self-contained macOS ``.app`` bundle (macOS only). Used by ``scripts/create_dmg.sh`` to produce a distributable DMG.
 
 
 Example — build without HDF5:
+
 .. code-block:: bash
 
    cmake -DWITH_HDF5=OFF ..
 
 
 Example — build a macOS app bundle:
+
 .. code-block:: bash
 
    cmake -DBUILD_MACOS_BUNDLE=ON ..
@@ -435,7 +448,7 @@ Debian Package (.deb)
 ~~~~~~~~~~~~~~~~~~~~~
 
 
-After a successful build, a `.deb` installer can be generated with CPack:
+After a successful build, a ``.deb`` installer can be generated with CPack:
 
 .. code-block:: bash
 
@@ -443,16 +456,17 @@ After a successful build, a `.deb` installer can be generated with CPack:
    cpack
 
 
-This produces a file named `imageeditor_1.0.2_amd64.deb` (architecture is detected automatically via `dpkg --print-architecture`).
+This produces a file named ``imageeditor_1.0.2_amd64.deb`` (architecture is detected automatically via ``dpkg --print-architecture``).
 
 Install the package with:
+
 .. code-block:: bash
 
    sudo dpkg -i imageeditor_1.0.2_amd64.deb
    sudo apt-get install -f   # resolve any missing runtime dependencies
 
 
-The package installs the `ImageEditor` binary to `/usr/local/bin/` and registers a `.desktop` entry so it appears in the application menu.
+The package installs the ``ImageEditor`` binary to ``/usr/local/bin/`` and registers a ``.desktop`` entry so it appears in the application menu.
 
 
 MS Windows (not yet tested)
@@ -460,9 +474,10 @@ MS Windows (not yet tested)
 
 
 1. **Install Qt6**: Download the open-source installer from `qt.io <https://www.qt.io/download>`_. Ensure **CMake** and a compiler (like **MinGW** or **MSVC**) are selected during installation.
-2. **Setup Environment**: Add the Qt `bin` folder to your System PATH (e.g., `C:\Qt\6.x.x\mingw_64\bin`).
+2. **Setup Environment**: Add the Qt ``bin`` folder to your System PATH (e.g., ``C:\\Qt\\6.x.x\\mingw_64\\bin``).
 
 **Build via Command Line (PowerShell/CMD):**
+
 .. code-block:: powershell
 
    mkdir build
