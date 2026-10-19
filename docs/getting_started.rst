@@ -162,19 +162,23 @@ We have now defined two layers, each representing an image region that we can ed
 6. Short Video Demos
 --------------------
 
- .. raw:: html
+.. raw:: html
 
-   <video width="700" controls style="display: block; margin-left: 0; margin-right: auto;">
-      <source src="_static/video_pm2382.webm" type="video/webm">
-      Your browser does not support HTML5 video.
-   </video>
+   <div style="text-align: left; margin: 0; padding: 0;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/video_pm2382.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
 
 .. raw:: html
 
-   <video width="700" controls style="display: block; margin-left: 0; margin-right: auto;">
-      <source src="_static/video_pm4284_edit_polygons_crf37.webm" type="video/webm">
-      Your browser does not support HTML5 video.
-   </video>
+   <div style="text-align: left; margin: 0; padding: 0;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/video_pm4284_edit_polygons_crf37.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
 
 
 
