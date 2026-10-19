@@ -54,7 +54,6 @@ Quick links
    :hidden:
    :caption: User Guide
 
-   getting_started
    features
    installation
    usage
