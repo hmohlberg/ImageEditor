@@ -164,17 +164,19 @@ We have now defined two layers, each representing an image region that we can ed
 
 .. raw:: html
 
-   <div style="text-align: left; margin: 0; padding: 0;">
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
       <video width="700" controls style="display: block; margin: 0;">
          <source src="_static/video_pm2382.webm" type="video/webm">
          Your browser does not support HTML5 video.
       </video>
    </div>
 
+<br>
+
 .. raw:: html
 
    <div style="text-align: left; margin: 0; padding: 0;">
-      <video width="700" controls style="display: block; margin: 0;">
+      <video width="700" controls style="display: block; margin: 0; margin-bottom: 30px;">
          <source src="_static/video_pm4284_edit_polygons_crf37.webm" type="video/webm">
          Your browser does not support HTML5 video.
       </video>
