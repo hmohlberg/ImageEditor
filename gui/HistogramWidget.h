@@ -18,6 +18,8 @@
 #pragma once
 
 #include <QWidget>
+#include <QVector>
+#include <QRgb>
 #include <array>
 
 class QSlider;
@@ -33,6 +35,7 @@ public:
     void setImage(const QImage& image);
     void setBrightness(int v);
     void setContrast(int v);
+    void setColorTable(const QVector<QRgb>& lut);
 
 signals:
     void brightnessChanged(int);
@@ -50,9 +53,20 @@ private:
         QSize minimumSizeHint() const override { return {60,   60}; }
     };
 
-    Canvas*  m_canvas           = nullptr;
-    QSlider* m_brightnessSlider = nullptr;
-    QSlider* m_contrastSlider   = nullptr;
-    QLabel*  m_brightnessVal    = nullptr;
-    QLabel*  m_contrastVal      = nullptr;
+    class ColorBar : public QWidget {
+    public:
+        explicit ColorBar(QWidget* parent = nullptr);
+        std::array<QRgb, 256> lut{};
+    protected:
+        void paintEvent(QPaintEvent*) override;
+        QSize sizeHint()        const override { return {200, 14}; }
+        QSize minimumSizeHint() const override { return {60,  14}; }
+    };
+
+    Canvas*   m_canvas           = nullptr;
+    ColorBar* m_colorBar         = nullptr;
+    QSlider*  m_brightnessSlider = nullptr;
+    QSlider*  m_contrastSlider   = nullptr;
+    QLabel*   m_brightnessVal    = nullptr;
+    QLabel*   m_contrastVal      = nullptr;
 };

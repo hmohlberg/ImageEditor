@@ -276,6 +276,7 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
     createDockWidgets();
     if ( options.value("showDocks").toBool() || EditorStyle::instance().showDocksAtStartup() ) {
         if ( EditorStyle::instance().showOverviewMap() ) m_overviewDock->show();
+        if ( EditorStyle::instance().showHistogram() && m_histogramDock ) m_histogramDock->show();
         m_layerDock->show();
         m_historyDock->show();
     }
@@ -438,12 +439,14 @@ MainWindow::MainWindow( const QJsonObject& options, QWidget* parent ) : QMainWin
            : "ImageEditor - " + dispName + " : " + m_currentDisplayName;
        setWindowTitle(wTitle);
      }
-     // BigTIFF/HDF5 load via QTimer::singleShot → loadImage() not called → m_currentDisplayName empty
-     if ( m_currentDisplayName.isEmpty() && !imagePath.isEmpty() )
+     // For --file URL: origPath holds the original URL; override whatever loadImage() stored.
+     // For local files: origPath is empty, fall back to what loadImage() or imagePath gives us.
+     if ( !origPath.isEmpty() )
+       m_currentDisplayName = origPath;
+     else if ( m_currentDisplayName.isEmpty() && !imagePath.isEmpty() )
        m_currentDisplayName = imagePath;
      // ensure the current image appears in the filelist tab (only when it has a meaningful title,
-     // i.e. was loaded via --list; skip for --file where dispName is empty and m_currentDisplayName
-     // would just be a temp download path like imageeditor_url_download.png)
+     // i.e. was loaded via --list; skip for --file where dispName is empty)
      if ( !m_currentDisplayName.isEmpty() && !dispName.isEmpty() ) {
        const bool inList = std::any_of(m_fileList.begin(), m_fileList.end(),
            [&](const FileListEntry& e){ return e.imagePath == m_currentDisplayName; });
@@ -643,9 +646,6 @@ void MainWindow::openImage()
     const bool isMaskImage = sender() == m_openMaskImageAction;
     if ( !isMaskImage ) {
       if ( !checkUnsavedData(false) ) return;
-      m_imageView->undoStack()->clear();
-      m_imageView->clearLayers();
-      rebuildLayerList();
     }
 
     // helper: parse a .list file
@@ -978,6 +978,14 @@ void MainWindow::openImage()
         loadHistory(p);
     };
 
+    // Clear history and layers only now — after all dialog/download/parse failures
+    // have been ruled out. Clearing earlier would lose history on a cancelled dialog.
+    if ( !isMaskImage ) {
+      m_imageView->undoStack()->clear();
+      m_imageView->clearLayers();
+      rebuildLayerList();
+    }
+
     if ( isMaskImage ) {
       m_imageView->loadMaskImage(fileName);
     } else {
@@ -1232,7 +1240,7 @@ void MainWindow::saveAsImage()
 
 // --------------------------- History ---------------------------
 
-void MainWindow::saveHistory()
+bool MainWindow::saveHistory()
 {
     // Use a non-native QFileDialog so we can embed metadata fields directly into
     // its layout — resulting in a single window with no secondary popups.
@@ -1302,7 +1310,7 @@ void MainWindow::saveHistory()
     if ( fnEdit ) connect(fnEdit, &QLineEdit::textChanged, &dlg, updateWarn);
     connect(&dlg, &QFileDialog::directoryEntered, &dlg, [&](const QString&){ updateWarn(); });
 
-    if ( dlg.exec() != QDialog::Accepted ) return;
+    if ( dlg.exec() != QDialog::Accepted ) return false;
 
     // Resolve the final file path (prefer what the user typed over the list selection)
     QString fileName;
@@ -1314,9 +1322,9 @@ void MainWindow::saveHistory()
         }
     }
     if ( fileName.isEmpty() ) fileName = dlg.selectedFiles().value(0);
-    if ( fileName.isEmpty() ) return;
+    if ( fileName.isEmpty() ) return false;
 
-    saveProject(fileName, nameEdit->text().trimmed(), commentEdit->toPlainText().trimmed());
+    return saveProject(fileName, nameEdit->text().trimmed(), commentEdit->toPlainText().trimmed());
 }
 
 bool MainWindow::saveProject( const QString& filePath, const QString& name, const QString& comment )
@@ -1509,30 +1517,66 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
     }
     
     // --- Check whether the main input image and the main project image are identical ---
-    for ( const QJsonValue& v : layerArray ) {
-       QJsonObject layerObj = v.toObject();
-       QString name = layerObj["name"].toString();
-       int id = layerObj["id"].toInt();
-       if ( id == 0 && !Config::skipValidation ) {
-          QString filename = layerObj["filename"].toString();
-          if ( filename != m_mainImageName ) {
-            if ( QWidgetUtils::showImageMismatchError(m_mainImageName,filename) ) {
-             QUndoStack* undoStack = m_imageView->undoStack();
-             if ( undoStack != nullptr ) undoStack->clear();
-             m_imageView->clearLayers();
-             return loadProject(filePath,false);
-            } else {
-             showMessage(QString("Abort loading '%1'").arg(filePath),1);
-             // return false;
+    if ( !skipMainImage ) {
+      for ( const QJsonValue& v : layerArray ) {
+         QJsonObject layerObj = v.toObject();
+         QString name = layerObj["name"].toString();
+         int id = layerObj["id"].toInt();
+         if ( id == 0 && !Config::skipValidation ) {
+            QString filename = layerObj["filename"].toString();
+            if ( filename != m_mainImageName ) {
+              if ( QWidgetUtils::showImageMismatchError(m_mainImageName,filename) ) {
+               QUndoStack* undoStack = m_imageView->undoStack();
+               if ( undoStack != nullptr ) undoStack->clear();
+               m_imageView->clearLayers();
+               return loadProject(filePath,false);
+              } else {
+               showMessage(QString("Abort loading '%1'").arg(filePath),1);
+               // return false;
+              }
             }
-          }
-       }
+         }
+      }
     }
     
     // --- Clear current scene ---
     QUndoStack* undoStack = m_imageView->undoStack();
+
+    if ( skipMainImage && undoStack != nullptr && undoStack->index() > 0 ) {
+        // Block signals so the indexChanged lambda (which does complex UI operations
+        // like setOnlyCageVisible, updateLayerList) does not fire during the undo loop.
+        // The actual undo() method of each command still runs — that restores base-image
+        // pixels, removes overlay LayerItems from the scene, etc.
+        undoStack->blockSignals(true);
+        undoStack->setIndex(0);
+        undoStack->blockSignals(false);
+
+        // Any LayerItem removed from the scene by undo() (but not yet deleted) must be
+        // deleted explicitly — scene->clear() below only touches items still in the scene.
+        for ( Layer* layer : m_imageView->layers() ) {
+            if ( layer->m_item && !layer->m_item->scene() ) {
+                delete layer->m_item;
+                layer->m_item = nullptr;
+            }
+        }
+    }
+
     if ( undoStack != nullptr ) undoStack->clear();
-    
+
+    // Mirror what loadImage() does: detach m_layerItem, clear the scene (which deletes
+    // all overlay LayerItems still in it), then re-attach m_layerItem.
+    if ( skipMainImage ) {
+        // Clear selection pointers BEFORE scene->clear() so they don't become dangling.
+        // m_selectedLayer and m_selectedLayers in ImageView would otherwise point to
+        // freed LayerItems and crash in the indexChanged lambda during subsequent push()es.
+        m_imageView->setSelectedLayer(0, static_cast<LayerItem*>(nullptr));
+        auto* scene = m_imageView->getScene();
+        scene->removeItem(m_layerItem);
+        scene->clear();
+        scene->addItem(m_layerItem);
+        m_imageView->clearLayers();
+    }
+
     // --- Parsing layers (does not contain layer positions) ---
     // Pass 1: load all layers with image data
     int nCreatedLayers = 0;
@@ -1575,7 +1619,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
             alphaBleedImage(mask);
             newLayer = new LayerItem(name, mask);
             isBinaryMask = false;
-         } else if ( isBinaryMask ) {
+         } else if ( isBinaryMask && m_layerItem ) {
            QImage mainImage = m_layerItem->image();
            QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
            subImage = subImage.convertToFormat(QImage::Format_ARGB32);
@@ -1587,13 +1631,13 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
              // if ( maskData[x] != 255 ) {
              //  rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
              // }
-             if (maskData[x] != 255 || qRed(rowData[x]) == backgroundPixelColor) {
+             if (maskData[x] != 255 || (qRed(rowData[x]) == backgroundPixelColor && qGreen(rowData[x]) == backgroundPixelColor && qBlue(rowData[x]) == backgroundPixelColor)) {
                rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
              }
             }
            }
            newLayer = new LayerItem("SubImage",subImage);
-         } else if ( EditorStyle::instance().binaryMasking() && x >= 0 && y >= 0 ) {
+         } else if ( EditorStyle::instance().binaryMasking() && x >= 0 && y >= 0 && m_layerItem ) {
             if ( mask.format() != QImage::Format_ARGB32 && mask.format() != QImage::Format_ARGB32_Premultiplied ) {
               mask = mask.convertToFormat(QImage::Format_ARGB32);
             }
@@ -1606,7 +1650,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
              const auto *maskRowData = reinterpret_cast<const QRgb*>(mask.constScanLine(y));  
              for ( int x = 0; x < subImage.width(); ++x ) {
               // OLD: if ( qRed(rowData[x]) == backgroundPixelColor || qAlpha(maskRowData[x]) != 255 ) {
-              if ( qRed(rowData[x]) == backgroundPixelColor && qAlpha(maskRowData[x]) == 255 ) {
+              if ( qRed(rowData[x]) == backgroundPixelColor && qGreen(rowData[x]) == backgroundPixelColor && qBlue(rowData[x]) == backgroundPixelColor && qAlpha(maskRowData[x]) == 255 ) {
                rowData[x] = 0; 
               }
              }
@@ -2144,6 +2188,181 @@ void MainWindow::createDockWidgets()
        infoBtn->setStyleSheet("QToolButton { border: none; background: transparent; }"
                               "QToolButton:hover { background: rgba(255,255,255,40); border-radius: 3px; }");
        tl->addWidget(infoBtn);
+
+       // --- Load JSON history button (floppy-disk icon) ---
+       auto* loadJsonBtn = new QToolButton(titleWidget);
+       {
+           static const char* svg =
+               "<svg viewBox='0 0 16 16' xmlns='http://www.w3.org/2000/svg'>"
+               // body with top-right corner notch
+               "<path d='M2 1.5 L11 1.5 L14.5 5 L14.5 14.5 L1.5 14.5 L1.5 1.5 Z'"
+               " fill='none' stroke='#b0b0b0' stroke-width='1.2' stroke-linejoin='round'/>"
+               // notch corner lines
+               "<line x1='11' y1='1.5' x2='11' y2='5' stroke='#b0b0b0' stroke-width='1.2'/>"
+               "<line x1='11' y1='5'   x2='14.5' y2='5' stroke='#b0b0b0' stroke-width='1.2'/>"
+               // bottom label area
+               "<rect x='3.5' y='9' width='9' height='5' rx='0.5' fill='#808080'/>"
+               // top write-protect window
+               "<rect x='5'   y='2' width='4' height='3.5' rx='0.4' fill='#707070'/>"
+               "</svg>";
+           QByteArray svgData(svg);
+           QSvgRenderer renderer(svgData);
+           QPixmap pm(14, 14);
+           pm.fill(Qt::transparent);
+           QPainter p(&pm);
+           renderer.render(&p);
+           loadJsonBtn->setIcon(QIcon(pm));
+       }
+       loadJsonBtn->setToolTip(tr("Load JSON history from input file"));
+       loadJsonBtn->setAutoRaise(true);
+       loadJsonBtn->setFixedSize(18, 18);
+       loadJsonBtn->setStyleSheet("QToolButton { border: none; background: transparent; }"
+                                  "QToolButton:hover { background: rgba(255,255,255,40); border-radius: 3px; }");
+       tl->addWidget(loadJsonBtn);
+       connect(loadJsonBtn, &QToolButton::clicked, this, [this]() {
+           const QString src = !m_currentDisplayName.isEmpty() ? m_currentDisplayName
+                                                                : m_projectFileName;
+           if (src.isEmpty()) {
+               QMessageBox::information(this, tr("Load JSON History"),
+                                        tr("No input file loaded."));
+               return;
+           }
+           // Warn if there are already history entries that would be overwritten
+           const bool hasEntries = !m_imageView->layers().isEmpty() ||
+                                   (m_imageView->undoStack() && m_imageView->undoStack()->count() > 0);
+           if (hasEntries) {
+               QMessageBox msgBox(this);
+               msgBox.setWindowTitle(tr("Load JSON History"));
+               msgBox.setText(tr("The current session already contains history entries that will be lost."));
+               msgBox.setInformativeText(tr("What do you want to do?"));
+               auto* overwriteBtn = msgBox.addButton(tr("Overwrite"),        QMessageBox::DestructiveRole);
+               auto* saveBtn      = msgBox.addButton(tr("Save && Overwrite"), QMessageBox::AcceptRole);
+               auto* cancelBtn    = msgBox.addButton(QMessageBox::Cancel);
+               msgBox.setDefaultButton(cancelBtn);
+               msgBox.exec();
+               if (msgBox.clickedButton() == cancelBtn)              return;
+               if (msgBox.clickedButton() == saveBtn && !saveHistory()) return;
+               Q_UNUSED(overwriteBtn)
+           }
+           const QUrl url(src);
+           const bool isRemote = url.scheme() == "ftp" || url.scheme() == "http" || url.scheme() == "https";
+           if (isRemote) {
+               QString path = url.path();
+               const int dot = path.lastIndexOf('.');
+               const QString jsonPath = (dot >= 0) ? path.left(dot) + ".json" : path + ".json";
+               QUrl jsonUrl = url;
+               jsonUrl.setPath(jsonPath);
+               QNetworkAccessManager nam;
+               QNetworkRequest req(jsonUrl);
+               req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                                 QNetworkRequest::NoLessSafeRedirectPolicy);
+               req.setSslConfiguration(QSslConfiguration::defaultConfiguration());
+               QNetworkReply* reply = nam.get(req);
+               QObject::connect(reply, &QNetworkReply::sslErrors, reply,
+                                [reply](const QList<QSslError>&){ reply->ignoreSslErrors(); });
+               QEventLoop loop;
+               connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+               loop.exec();
+               if (reply->error() != QNetworkReply::NoError) {
+                   QMessageBox::critical(this, tr("Load JSON History"),
+                                         tr("Download failed:\n%1\n\n%2")
+                                         .arg(jsonUrl.toString(), reply->errorString()));
+                   reply->deleteLater();
+                   return;
+               }
+               const QByteArray data = reply->readAll();
+               reply->deleteLater();
+               const QString tmpPath = QDir::tempPath() + "/imageeditor_json_history.json";
+               QFile f(tmpPath);
+               if (!f.open(QIODevice::WriteOnly)) {
+                   QMessageBox::critical(this, tr("Load JSON History"),
+                                         tr("Could not write temporary file."));
+                   return;
+               }
+               f.write(data);
+               f.close();
+               loadProject(tmpPath, true);
+           } else {
+               const QFileInfo fi(src);
+               const QString jsonPath = fi.absolutePath() + "/" + fi.completeBaseName() + ".json";
+               if (!QFile::exists(jsonPath)) {
+                   QMessageBox::information(this, tr("Load JSON History"),
+                                            tr("No JSON history file found:\n%1").arg(jsonPath));
+                   return;
+               }
+               loadProject(jsonPath, true);
+           }
+       });
+
+       // --- Clear history button (trash icon) ---
+       auto* clearHistoryBtn = new QToolButton(titleWidget);
+       {
+           static const char* svg =
+               "<svg viewBox='0 0 16 16' xmlns='http://www.w3.org/2000/svg'>"
+               // lid
+               "<rect x='2.5' y='2' width='11' height='1.5' rx='0.5' fill='#b0b0b0'/>"
+               "<rect x='5.5' y='0.5' width='5' height='1.7' rx='0.5' fill='#b0b0b0'/>"
+               // bin body
+               "<path d='M3.5 4 L4.2 14 L11.8 14 L12.5 4 Z' fill='none' stroke='#b0b0b0' stroke-width='1.2' stroke-linejoin='round'/>"
+               // vertical lines inside bin
+               "<line x1='6.5' y1='5.5' x2='6.5' y2='12.5' stroke='#b0b0b0' stroke-width='1'/>"
+               "<line x1='9.5' y1='5.5' x2='9.5' y2='12.5' stroke='#b0b0b0' stroke-width='1'/>"
+               "</svg>";
+           QByteArray svgData(svg);
+           QSvgRenderer renderer(svgData);
+           QPixmap pm(14, 14);
+           pm.fill(Qt::transparent);
+           QPainter p(&pm);
+           renderer.render(&p);
+           clearHistoryBtn->setIcon(QIcon(pm));
+       }
+       clearHistoryBtn->setToolTip(tr("Clear history"));
+       clearHistoryBtn->setAutoRaise(true);
+       clearHistoryBtn->setFixedSize(18, 18);
+       clearHistoryBtn->setStyleSheet("QToolButton { border: none; background: transparent; }"
+                                      "QToolButton:hover { background: rgba(255,255,255,40); border-radius: 3px; }");
+       tl->addWidget(clearHistoryBtn);
+       connect(clearHistoryBtn, &QToolButton::clicked, this, [this]() {
+           const bool hasEntries = !m_imageView->layers().isEmpty() ||
+                                   (m_imageView->undoStack() && m_imageView->undoStack()->count() > 0);
+           if (!hasEntries) {
+               QMessageBox::information(this, tr("Clear History"), tr("The history is already empty."));
+               return;
+           }
+           QMessageBox msgBox(this);
+           msgBox.setWindowTitle(tr("Clear History"));
+           msgBox.setText(tr("All history entries will be permanently deleted."));
+           msgBox.setInformativeText(tr("What do you want to do?"));
+           auto* clearBtn  = msgBox.addButton(tr("Clear"),          QMessageBox::DestructiveRole);
+           auto* saveBtn   = msgBox.addButton(tr("Save && Clear"),  QMessageBox::AcceptRole);
+           auto* cancelBtn = msgBox.addButton(QMessageBox::Cancel);
+           msgBox.setDefaultButton(cancelBtn);
+           msgBox.exec();
+           if (msgBox.clickedButton() == cancelBtn)             return;
+           if (msgBox.clickedButton() == saveBtn && !saveHistory()) return;
+           // Undo everything so commands restore whatever they changed, then wipe state
+           QUndoStack* undoStack = m_imageView->undoStack();
+           if (undoStack && undoStack->index() > 0) {
+               undoStack->blockSignals(true);
+               undoStack->setIndex(0);
+               undoStack->blockSignals(false);
+               for (Layer* layer : m_imageView->layers()) {
+                   if (layer->m_item && !layer->m_item->scene()) {
+                       delete layer->m_item;
+                       layer->m_item = nullptr;
+                   }
+               }
+           }
+           if (undoStack) undoStack->clear();
+           m_imageView->setSelectedLayer(0, static_cast<LayerItem*>(nullptr));
+           auto* scene = m_imageView->getScene();
+           if (m_layerItem) scene->removeItem(m_layerItem);
+           scene->clear();
+           if (m_layerItem) scene->addItem(m_layerItem);
+           m_imageView->clearLayers();
+           rebuildLayerList();
+       });
+
        auto* closeBtn = new QToolButton(titleWidget);
        closeBtn->setIcon(style()->standardIcon(QStyle::SP_DockWidgetCloseButton));
        closeBtn->setAutoRaise(true);
@@ -2234,6 +2453,16 @@ void MainWindow::createDockWidgets()
          m_paintControlAction->setChecked(true);
      }
    });
+   // "Window" menu — one toggle entry per dock, added after all docks exist
+   {
+       QMenu* winMenu = menuBar()->addMenu(tr("Windows"));
+       winMenu->addAction(m_layerDock->toggleViewAction());
+       winMenu->addAction(m_historyDock->toggleViewAction());
+       winMenu->addAction(m_overviewDock->toggleViewAction());
+       if ( m_histogramDock )
+           winMenu->addAction(m_histogramDock->toggleViewAction());
+   }
+
    connect(m_undoView, &QUndoView::customContextMenuRequested, this, [this](const QPoint &pos) {
     QModelIndex index = m_undoView->indexAt(pos);
     if ( !index.isValid() ) return;
@@ -2266,9 +2495,14 @@ void MainWindow::createDockWidgets()
         );
         int result = QWidgetUtils::showIconDialog(this,QString("Delete %1").arg(cmd->text()),labelText);
         if ( result == 1 ) {
-           // --- sort required so that the requested layer is at the end ---
-           int currentIndex = m_imageView->undoStack()->index();
-           m_imageView->removeOperationsByIndexUndoStack(cmd->text(),currentIndex-1);
+           const auto* ac = dynamic_cast<const AbstractCommand*>(cmd);
+           const int layerId = (ac && ac->layer()) ? ac->layer()->id() : -1;
+           if ( layerId > 0 ) {
+               m_imageView->removeOperationsByIdUndoStack(layerId);
+               rebuildLayerList();
+               m_imageView->applyDisplayAdjustments();
+               scheduleOverviewRefresh();
+           }
         } else if ( result == 2 ) {
            QUndoStack *undoStack = m_imageView->undoStack();
            if ( undoStack ) {
@@ -2293,7 +2527,7 @@ void MainWindow::toggleDocks()
       m_overviewDock->setVisible(EditorStyle::instance().showOverviewMap());
       m_historyDock->show();
       m_layerDock->show();
-      if (m_histogramDock) m_histogramDock->show();
+      if (m_histogramDock && EditorStyle::instance().showHistogram()) m_histogramDock->show();
   }
 }
 
@@ -2545,7 +2779,7 @@ void MainWindow::updateHistoryHighlight( int layerNumber )
   const QAbstractItemModel* model = m_undoView->model();
   for ( int row = 0; row < model->rowCount(); ++row ) {
     const QString text = model->data(model->index(row, 0), Qt::DisplayRole).toString();
-    if ( text.contains(QString("Layer %1").arg(layerNumber)) ) {
+    if ( QRegularExpression(QString("Layer %1(?!\\d)").arg(layerNumber)).match(text).hasMatch() ) {
       QRegularExpressionMatch match = QRegularExpression("Polygon (\\d+)").match(text);
       if ( match.hasMatch() )
         polygonIndex = match.captured(1).toInt();
@@ -2555,7 +2789,7 @@ void MainWindow::updateHistoryHighlight( int layerNumber )
   if ( polygonIndex > 0 ) {
     for ( int row = 0; row < model->rowCount(); ++row ) {
       const QString text = model->data(model->index(row, 0), Qt::DisplayRole).toString();
-      if ( text.contains(QString("Polygon %1").arg(polygonIndex)) )
+      if ( QRegularExpression(QString("Polygon %1(?!\\d)").arg(polygonIndex)).match(text).hasMatch() )
         selectedItemIdents.insert(row);
     }
   }
@@ -3420,6 +3654,7 @@ void MainWindow::createToolbars()
                        {192,20,90,140},{255,0,30,100}});
 
        m_imageView->setColorTable(lut);
+       if (m_histogramWidget) m_histogramWidget->setColorTable(lut);
 #ifdef HASTIFF
        m_bigTiffViewer->setColorTable(lut);
 #endif
@@ -4358,9 +4593,11 @@ void MainWindow::showConfig()
               m_inpaintModelCombo->setCurrentIndex(0);
       }
   }
-  // Apply showOverviewMap toggle immediately (only when dock panel is open).
+  // Apply showOverviewMap / showHistogram toggles immediately (only when dock panel is open).
   if ( m_overviewDock && m_layerDock->isVisible() )
       m_overviewDock->setVisible(EditorStyle::instance().showOverviewMap());
+  if ( m_histogramDock && m_layerDock->isVisible() )
+      m_histogramDock->setVisible(EditorStyle::instance().showHistogram());
   // Apply final brightness/contrast to all viewers in case live preview was not in sync.
   {
       const int b = EditorStyle::instance().brightness();

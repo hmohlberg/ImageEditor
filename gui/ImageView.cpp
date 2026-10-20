@@ -306,7 +306,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
       // indexChanged with index 0 while the scene is already being torn down).
       // Also skip during bulk project loading (setUpdatesEnabled(false) is set then)
       // to avoid O(N × layers × pixels) LUT passes — loadProject() calls it once at the end.
-      if ( m_scene && !m_scene->items().isEmpty() && updatesEnabled() )
+      if ( m_scene && !m_scene->items().isEmpty() && updatesEnabled() && !m_suppressIndexChangedAdjustments )
           applyDisplayAdjustments();
       m_lastIndex = currentIndex;
     });
@@ -1340,12 +1340,20 @@ void ImageView::mousePressEvent( QMouseEvent* event )
         for ( QGraphicsItem* gi : pivotItems ) {
             LayerItem* layer = dynamic_cast<LayerItem*>(gi);
             if ( !layer || layer->getType() == LayerItem::MainImage ) break;
-            if ( layer->isSelected() && layer->operationMode() == LayerItem::Rotate
-                 && layer->beginPivotDragIfHit(scenePos) ) {
-                m_pivotDragLayer  = layer;
-                m_pivotDragActive = true;
-                event->accept();
-                return;
+            if ( layer->isSelected() && layer->operationMode() == LayerItem::Rotate ) {
+                const QPointF itemPos = layer->mapFromScene(scenePos);
+                const bool nearPivot  = QLineF(itemPos, layer->pivot()).length() <= 12.0;
+                if ( nearPivot ) {
+                    if ( (event->modifiers() & Qt::AltModifier)
+                         && layer->beginPivotDragIfHit(scenePos) ) {
+                        m_pivotDragLayer  = layer;
+                        m_pivotDragActive = true;
+                    }
+                    // Always accept when near pivot to prevent clearSelection().
+                    // Qt's itemsAtPosition dispatch can miss the extended pivot area.
+                    event->accept();
+                    return;
+                }
             }
             break;
         }
@@ -1580,18 +1588,22 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
                                                selectedCageLayer->sceneBoundingRect(), selectedCageLayer->pos(),
                                                rows, columns);
            warpCmd->setSkipApplyWarpOnRedo(true);   // warp will be done below — skip redundant call in redo()
+           m_suppressIndexChangedAdjustments = true;  // prevent applyDisplayAdjustments from corrupting m_image before applyCageWarp
            m_undoStack->push(warpCmd);
+           m_suppressIndexChangedAdjustments = false;
            warpCmd->setSkipApplyWarpOnRedo(false);  // restore for future undo/redo cycles
          } else {
            selectedCageLayer->getCageWarpCommand()->pushNewWarpStep( selectedCageLayer->pos(), cageAfter );
            m_undoStack->resetClean();
          }
          if( selectedCageLayer ) {
+           selectedCageLayer->resetPixmap();  // strip any LUT from m_image so applyCageWarp warps the raw original
            QImage warpedResult = selectedCageLayer->applyCageWarp("ImageView::1");
            if( !warpedResult.isNull() ) {
              selectedCageLayer->setOriginalImage(warpedResult, LayerItem::ImageType::Warped);
              if ( selectedCageLayer->getCageWarpCommand() )
                selectedCageLayer->getCageWarpCommand()->setImage(warpedResult);  // store for JSON serialization
+             applyDisplayAdjustments();  // apply current LUT to the newly warped image
            }
          }
          // Push cage-edit undo entry (per-layer stack, keeps cage session open)
@@ -2388,7 +2400,9 @@ LassoCutCommand* ImageView::createNewLayer( const QPolygonF& polygon, const QStr
     newLayer->setLayer(layer);
     newLayer->setUndoStack(m_undoStack);
     LassoCutCommand* cmd = new LassoCutCommand(base, newLayer, bounds, cut, nidx, name);
+    m_suppressIndexChangedAdjustments = true;
     m_undoStack->push(cmd);
+    m_suppressIndexChangedAdjustments = false;
     newLayer->setPos(base->mapToScene(bounds.topLeft()));
     newLayer->setZValue(base->zValue()+1);
     // newLayer->setShowGreenBorder(true); // falls vorhanden
@@ -3651,13 +3665,13 @@ void ImageView::finishPolygonDrawing( LayerItem* layer )
     }
     setOnlySelectedPolygon(m_activePolygon->name());
     QPolygonF poly = m_activePolygon->polygon();
-    scene()->removeItem(m_activePolygonItem);
-    m_activePolygonItem->deleteLater();
-    
+    if (m_activePolygonItem) {
+      scene()->removeItem(m_activePolygonItem);
+      m_activePolygonItem->deleteLater();
+      m_activePolygonItem = nullptr;
+    }
     // delete m_activePolygon;
     m_activePolygon = nullptr;
-    
-    m_activePolygonItem = nullptr;
     EditablePolygonCommand *polyCmd = new EditablePolygonCommand(layer,scene(),poly,QString("Polygon %1").arg(m_polygonIndex)); // m_editablePolygons.size()));
     polyCmd->setColor(color);
     m_undoStack->push(polyCmd);

@@ -175,6 +175,7 @@ class ImageView : public QGraphicsView
     void printself();
 
     void applyDisplayAdjustments();
+    void setSuppressIndexChangedAdjustments(bool v) { m_suppressIndexChangedAdjustments = v; }
 
  private:
 
@@ -267,6 +268,7 @@ class ImageView : public QGraphicsView
     bool m_maskPainting = false;
     bool m_polygonEnabled = false;
     bool m_maskEraser = false;
+    bool m_suppressIndexChangedAdjustments = false;
     
     quint8 m_currentMaskLabel = 1;
     InpaintParams m_inpaintParams;

@@ -119,6 +119,17 @@ void LassoCutCommand::redo()
   qCDebug(logEditor) << "LassoCutCommand::redo(): Processing...";
   {
     if ( m_silent ) return;
+    // Capture the pre-cut state so undo() can restore exactly this baseline, even after the
+    // command is replayed from a different starting point (e.g. after another layer is Reverted).
+    m_originalImageBackup = m_originalLayer->originalImage().copy();
+    if ( !m_originalImageBackup.isNull()
+         && m_originalImageBackup.width() >= 2 && m_originalImageBackup.height() >= 2 ) {
+        int r = 0, g = 0, b = 0;
+        const int iw = m_originalImageBackup.width()-1, ih = m_originalImageBackup.height()-1;
+        for ( const QPoint& p : { QPoint{0,0}, QPoint{iw,0}, QPoint{0,ih}, QPoint{iw,ih} } )
+            { QColor c(m_originalImageBackup.pixel(p)); r += c.red(); g += c.green(); b += c.blue(); }
+        m_origBgColor = QColor(r/4, g/4, b/4);
+    }
     // Update m_originalImage: fill cut pixels with source-space background (m_origBgColor).
     QImage& orig = m_originalLayer->image(1);
     if ( !orig.isNull() && orig.size() == m_originalLayer->image().size() ) {

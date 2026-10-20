@@ -30,8 +30,30 @@
 HistogramWidget::Canvas::Canvas(QWidget* parent) : QWidget(parent)
 {
     setAttribute(Qt::WA_OpaquePaintEvent);
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     bins.fill(0);
+}
+
+// ---- ColorBar --------------------------------------------------------------
+
+HistogramWidget::ColorBar::ColorBar(QWidget* parent) : QWidget(parent)
+{
+    setAttribute(Qt::WA_OpaquePaintEvent);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    setFixedHeight(14);
+    for (int i = 0; i < 256; ++i)
+        lut[i] = qRgb(i, i, i);
+}
+
+void HistogramWidget::ColorBar::paintEvent(QPaintEvent*)
+{
+    QPainter p(this);
+    const double W = width();
+    for (int i = 0; i < 256; ++i) {
+        const int x1 = qRound(i       * W / 256.0);
+        const int x2 = qRound((i + 1) * W / 256.0);
+        p.fillRect(x1, 0, qMax(1, x2 - x1), height(), QColor(lut[i]));
+    }
 }
 
 void HistogramWidget::Canvas::paintEvent(QPaintEvent*)
@@ -67,7 +89,10 @@ HistogramWidget::HistogramWidget(QWidget* parent) : QWidget(parent)
     vl->setSpacing(4);
 
     m_canvas = new Canvas(this);
-    vl->addWidget(m_canvas, 1);
+    vl->addWidget(m_canvas, 0);
+
+    m_colorBar = new ColorBar(this);
+    vl->addWidget(m_colorBar);
 
     auto* grid = new QGridLayout;
     grid->setSpacing(4);
@@ -156,4 +181,12 @@ void HistogramWidget::setContrast(int v)
     QSignalBlocker blk(m_contrastSlider);
     m_contrastSlider->setValue(v);
     m_contrastVal->setText(QString::number(v));
+}
+
+void HistogramWidget::setColorTable(const QVector<QRgb>& lut)
+{
+    const int n = qMin(256, lut.size());
+    for (int i = 0; i < n; ++i)
+        m_colorBar->lut[i] = lut[i];
+    m_colorBar->update();
 }

@@ -376,6 +376,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
     if ( imageFilePath.startsWith("http://") || imageFilePath.startsWith("https://") ) {
       if ( !isWebBigTiffUrl(imageFilePath) ) {
         std::cout << "Downloading image from URL: " << imageFilePath.toStdString() << std::endl;
+        obj["imageOriginalPath"] = imageFilePath;  // preserve original URL for m_currentDisplayName
         imageFilePath = downloadImageFromUrl(imageFilePath);
         if ( imageFilePath.isEmpty() ) exit(1);
       }
@@ -426,7 +427,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
         }
     }
     if ( !isWebBigTiffUrl(imageFilePath) ) {
-      if ( !validateFile(imageFilePath,"image file",{"png","mnc","mnc2","tif","tiff","h5","hdf5","hdf"}) ) {
+      if ( !validateFile(imageFilePath,"image file",{"png","jpg","jpeg","mnc","mnc2","tif","tiff","h5","hdf5","hdf"}) ) {
         exit(1);
       }
     }

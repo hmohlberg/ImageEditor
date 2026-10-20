@@ -40,8 +40,8 @@ void CageOverlayItem::paint( QPainter* p, const QStyleOptionGraphicsItem*, QWidg
     const CageMesh& mesh = m_layer->cageMesh();
     if ( mesh.pointCount() == 0 )
         return;
-    QPen pen(EditorStyle::instance().cageGridColor()); // Cage color
-    pen.setWidth(0);
+    QPen pen(EditorStyle::instance().cageGridColor());
+    pen.setWidth(EditorStyle::instance().cageGridWidth());
     p->setPen(pen);
     int cols = mesh.cols();
     int rows = mesh.rows();

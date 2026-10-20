@@ -118,6 +118,23 @@ if [ ! -d "$TLS_DST" ]; then
     done
 fi
 
+# ── JPEG image format plugin ───────────────────────────────────────────────────
+# macdeployqt misses libqjpeg.dylib; deploy it and fix its libjpeg-turbo dep.
+IMGFMT_DST="$APP_PATH/Contents/PlugIns/imageformats"
+JPEG_DST="$IMGFMT_DST/libqjpeg.dylib"
+JPEG_SRC="/opt/homebrew/opt/qtbase/share/qt/plugins/imageformats/libqjpeg.dylib"
+if [ ! -f "$JPEG_DST" ]; then
+    echo "→ Deploying libqjpeg.dylib …"
+    mkdir -p "$IMGFMT_DST"
+    cp "$JPEG_SRC" "$JPEG_DST"
+    chmod u+w "$JPEG_DST"
+    install_name_tool -change \
+        "$(otool -L "$JPEG_DST" | awk '/libjpeg/{print $1}')" \
+        "@rpath/libjpeg.8.dylib" "$JPEG_DST" 2>/dev/null || true
+    codesign --force --sign - "$JPEG_DST"
+    echo "  ✓ libqjpeg.dylib"
+fi
+
 echo "→ Re-signing bundle …"
 codesign --force --deep --sign - "$APP_PATH" || true
 

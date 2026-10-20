@@ -404,6 +404,7 @@ void LayerItem::setRedOverlay( bool enabled )
 void LayerItem::resetPixmap() {
   if ( m_suppressPixmapUpdate ) return;
   if ( qobject_cast<QApplication*>(qApp) ) {
+    m_image = m_originalImage;
     setPixmap(QPixmap::fromImage(m_originalImage));
   }
 }
@@ -742,25 +743,34 @@ void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option
       return;
     }
     if ( isSelected() || m_isMultiSelected ) {
-      painter->setPen(m_selectedPen);
+      QPen selPen(m_selectedPen);
+      selPen.setWidth(EditorStyle::instance().layerBoundingBoxWidth());
+      painter->setPen(selPen);
       painter->setBrush(Qt::NoBrush);
       painter->drawRect(boundingRect());
     } else if ( m_showBoundingBox ) {
-      painter->setPen(m_lassoPen);
+      QPen bbPen(m_lassoPen);
+      bbPen.setWidth(EditorStyle::instance().layerBoundingBoxWidth());
+      painter->setPen(bbPen);
       painter->setBrush(Qt::NoBrush);
       painter->drawRect(boundingRect());
     }
-    // rotation centre marker
+    // rotation centre marker — drawn in viewport space so pos() rounding
+    // in setImageTransform() does not cause the cross to drift visually.
     if ( m_operationMode == OperationMode::Rotate && ( isSelected() || m_isMultiSelected ) ) {
-      const QPointF c   = pivot();
-      const qreal   arm = 8.0;
+      const QPointF pivSc = m_hasPivot ? m_pivot : mapToScene(boundingRect().center());
+      const qreal   viewScale = painter->worldTransform().m11();
+      const qreal   arm = 8.0 * qMax(1.0, viewScale);
+      const QPointF cVp = painter->worldTransform().map(mapFromScene(pivSc));
+      painter->save();
+      painter->resetTransform();
       QPen crossPen(m_pivotSelected ? Qt::yellow : Qt::red, 1.5);
-      crossPen.setCosmetic(true);
       painter->setPen(crossPen);
       painter->setBrush(Qt::NoBrush);
-      painter->drawLine(c + QPointF(-arm, 0), c + QPointF(arm, 0));
-      painter->drawLine(c + QPointF(0, -arm), c + QPointF(0, arm));
-      painter->drawEllipse(c, 4.0, 4.0);
+      painter->drawLine(cVp + QPointF(-arm, 0), cVp + QPointF(arm, 0));
+      painter->drawLine(cVp + QPointF(0, -arm), cVp + QPointF(0, arm));
+      painter->drawEllipse(cVp, 4.0 * qMax(1.0, viewScale), 4.0 * qMax(1.0, viewScale));
+      painter->restore();
     }
     // render cage
     if ( m_cageEnabled ) {
@@ -813,8 +823,10 @@ QImage LayerItem::applyCageWarp( const QString &caller )
         << ", activeCagePointId =" << m_cageMesh.activeCagePointId()
         << ", cageEnabled =" << m_cageEnabled << ", cageEditing =" << m_cageEditing << ", intialized =" << m_cageMesh.isInitialized();
   {
-    // Fast path: use a pre-computed warped image cached from JSON (avoids recomputing on project load)
-    if (!m_pendingCacheImage.isNull()) {
+    // Fast path: use a pre-computed warped image cached from JSON (avoids recomputing on project load).
+    // In batch mode (m_nogui) the layer image comes from the batch input, so the cache from a
+    // previous GUI session would have the wrong pixel values — always recompute there.
+    if (!m_pendingCacheImage.isNull() && !m_nogui) {
       QImage cached = m_pendingCacheImage;
       m_pendingCacheImage = QImage();
       m_cageMesh.setActiveCagePointId(-1);
@@ -825,6 +837,7 @@ QImage LayerItem::applyCageWarp( const QString &caller )
       m_cageApplied = true;
       return cached.copy();
     }
+    m_pendingCacheImage = QImage(); // discard if batch mode skipped the block above
     #if 0
      // removed by CLAUDE
      if ( !m_cageEditing ) {
@@ -1560,18 +1573,23 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
       return;
     }
     if ( event->modifiers() & Qt::AltModifier ) {
-      // Multi-select (Alt/Option): toggle this layer in/out of the co-move group
-      ImageView* view = getParentImageView();
-      if ( view ) {
-        if ( view->isInLayerSelection(this) )
-          view->removeLayerFromSelection(this);
-        else
-          view->addLayerToSelection(this);
-        for ( LayerItem* l : view->selectedLayers() )
-          l->resetDragStartPos();
+      // In Rotate mode, Alt+click near the pivot starts pivot dragging — don't multi-select.
+      const bool nearPivot = ( m_operationMode == OperationMode::Rotate && isSelected()
+                                && QLineF(event->pos(), pivot()).length() <= 12.0 );
+      if ( !nearPivot ) {
+        // Multi-select (Alt/Option): toggle this layer in/out of the co-move group
+        ImageView* view = getParentImageView();
+        if ( view ) {
+          if ( view->isInLayerSelection(this) )
+            view->removeLayerFromSelection(this);
+          else
+            view->addLayerToSelection(this);
+          for ( LayerItem* l : view->selectedLayers() )
+            l->resetDragStartPos();
+        }
+        QGraphicsPixmapItem::mousePressEvent(event);
+        return;
       }
-      QGraphicsPixmapItem::mousePressEvent(event);
-      return;
     }
 
     // If a different layer is currently active and the click also falls within it,
@@ -1602,9 +1620,11 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
           if ( view )
             view->clearLayerSelection();
         } else if ( m_operationMode == OperationMode::Rotate ) {
-          // Check whether the click lands on the pivot marker (12 px hit tolerance in item coords)
+          // Check whether the click lands on the pivot marker (12 px hit tolerance in item coords).
+          // Pivot dragging requires Alt to be held; without it the click starts rotation.
           const QPointF clickItemPos = event->pos();
-          if ( QLineF(clickItemPos, pivot()).length() <= 12.0 ) {
+          const bool altHeld = event->modifiers() & Qt::AltModifier;
+          if ( altHeld && QLineF(clickItemPos, pivot()).length() <= 12.0 ) {
             m_pivotAtDragStart  = pivotScene();   // scene coords
             m_pivot             = m_pivotAtDragStart;  // ensure release without drag doesn't corrupt m_pivot
             m_pivotDragging     = true;
@@ -1631,6 +1651,8 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
             m_rotationPressScreenPos = event->screenPos();
             m_mouseOperationActive = true;
             m_startPos         = pos();
+            if ( ImageView* view = getParentImageView() )
+                view->setSuppressIndexChangedAdjustments(true);
             QGraphicsPixmapItem::mousePressEvent(event);
           }
         } else {
@@ -1687,6 +1709,10 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
        } else {
          MainWindow* parent = m_parent != nullptr ? dynamic_cast<MainWindow*>(m_parent) : nullptr;
          if ( parent != nullptr ) {
+           // Ensure adjustments are suppressed for the entire drag, even when Alt was
+           // held at press time (which takes an early-return path in mousePressEvent).
+           if ( ImageView* view = getParentImageView() )
+               view->setSuppressIndexChangedAdjustments(true);
            QPointF delta = QPointF(event->screenPos()) - QPointF(m_rotationPressScreenPos);
            double angleDelta = m_startLayerRotation + delta.x() * EditorStyle::instance().rotationSingleStep() / 10.0 - m_currentRotation;
            setRotationAngle(angleDelta);
@@ -1753,7 +1779,14 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
             if ( QLineF(newPivotScene, m_pivotAtDragStart).length() > 0.5 ) {
                 m_undoStack->push(new SetPivotCommand(this, m_pivotAtDragStart, newPivotScene, m_pivotWasSet));
             }
-        } else if ( EditorStyle::instance().allowIntegerMoveOnly() && m_undoStack->index() > 0 ) {
+        } else {
+            // End of rotation drag: re-enable adjustments and apply once with full quality.
+            if ( ImageView* view = getParentImageView() ) {
+                view->setSuppressIndexChangedAdjustments(false);
+                view->applyDisplayAdjustments();
+            }
+        }
+        if ( !m_pivotDragging && EditorStyle::instance().allowIntegerMoveOnly() && m_undoStack->index() > 0 ) {
             const QPointF snapped(qRound(pos().x()), qRound(pos().y()));
             const QPointF adj = snapped - pos();
             if ( !adj.isNull() ) {
@@ -1773,6 +1806,9 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
         }
     }
     // m_operationMode = None;
+    // Safety: ensure suppress flag is always cleared on any release path.
+    if ( ImageView* view = getParentImageView() )
+        view->setSuppressIndexChangedAdjustments(false);
     QGraphicsPixmapItem::mouseReleaseEvent(event);
     // Qt's default handler deselects the item on click-without-drag (toggle behavior).
     // We always want the layer to stay selected after an active press.

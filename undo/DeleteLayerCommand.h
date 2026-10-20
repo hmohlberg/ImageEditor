@@ -33,7 +33,7 @@ class DeleteLayerCommand : public AbstractCommand
     DeleteLayerCommand( LayerItem* layer, const QPointF& pos, const int idx=0,
                         QUndoStack* undoStack = nullptr, QUndoCommand* parent = nullptr );
     
-    AbstractCommand* clone() const override { return new DeleteLayerCommand(m_layer, m_pos, m_layerId); }
+    AbstractCommand* clone() const override { return new DeleteLayerCommand(m_layer, m_pos, m_layerId, m_undoStack); }
 
     
     QString type() const override { return "DeleteLayer"; }

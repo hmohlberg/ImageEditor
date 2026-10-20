@@ -66,7 +66,6 @@ private:
     QCheckBox*  m_binaryMasking     = nullptr;
     QCheckBox*  m_crosshair         = nullptr;
     QCheckBox*  m_showDocksAtStartup = nullptr;
-    QCheckBox*  m_showOverviewMap    = nullptr;
     QSpinBox*   m_cursorSize        = nullptr;
     QLineEdit*  m_cursorFillColor   = nullptr;
     QPushButton* m_cursorFillBtn    = nullptr;
@@ -75,6 +74,7 @@ private:
     QLineEdit*  m_githubBaseUrl     = nullptr;
 
     // ---- Cage ----
+    QSpinBox*  m_cageGridWidth      = nullptr;
     QCheckBox* m_claudeQuads        = nullptr;
     QCheckBox* m_cageQuads          = nullptr;
     QCheckBox* m_gpu                = nullptr;
@@ -110,6 +110,7 @@ private:
     QPushButton* m_polygonHandleColorBtn= nullptr;
 
     // ---- ImageLayer ----
+    QSpinBox*       m_boundingBoxWidth   = nullptr;
     QCheckBox*      m_integerMoveOnly    = nullptr;
     QDoubleSpinBox* m_overlayOpacity     = nullptr;
     QDoubleSpinBox* m_rotationStep       = nullptr;

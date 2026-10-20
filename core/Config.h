@@ -211,6 +211,8 @@
     int polygonHandleSize() const { return m_polygonHandleSize; }
     QColor polygonHandleColor() const { return m_polygonHandleColor; }
     int controlPointRadius() const { return m_controlPointRadius; }
+    int cageGridWidth() const { return m_cageGridWidth; }
+    int layerBoundingBoxWidth() const { return m_layerBoundingBoxWidth; }
     double handleRadius() const { return m_handleRadius; }
     double pixelScale() const { return m_pixelScale; }
     bool crosshair() const { return m_crosshair; }
@@ -247,6 +249,7 @@
     void setCrosshair(bool v) { m_crosshair = v; }
     void setShowDocksAtStartup(bool v) { m_showDocksAtStartup = v; }
     void setShowOverviewMap(bool v)    { m_showOverviewMap = v; }
+    void setShowHistogram(bool v)      { m_showHistogram = v; }
     void setCursorSize(int v) { m_cursorSize = v; }
     void setCursorFillColor(const QColor& v) { m_cursorFillColor = v; }
     void setCursorBorderColor(const QColor& v) { m_cursorBorderColor = v; }
@@ -259,6 +262,8 @@
     void setCageGridCols(int v) { m_cageGridCols = v; }
     void setSquareCageQuads(bool v) { m_squareCageQuads = v; }
     void setControlPointRadius(int v) { m_controlPointRadius = v; }
+    void setCageGridWidth(int v) { m_cageGridWidth = v; }
+    void setLayerBoundingBoxWidth(int v) { m_layerBoundingBoxWidth = v; }
     void setControlPointColor(const QColor& v) { m_controlPointColor = v; }
     void setCageGridColor(const QColor& v) { m_gridColor = v; }
     void setCageWarpColor(const QColor& v) { m_cageWarpColor = v; }
@@ -376,6 +381,8 @@
           "Show all dock panels automatically when the application starts.");
       val("showOverviewMap",   b(m_showOverviewMap),
           "Show a minimap thumbnail above the layer list in the dock, with a red rectangle indicating the currently visible area.");
+      val("showHistogram",     b(m_showHistogram),
+          "Show the color correction dock (histogram + brightness/contrast sliders) in the dock panel.");
       val("pixelScale",        d(m_pixelScale),
           "Scale factor applied when exporting pixel-accurate overlays (e.g. mask images).");
       val("cursorSize",        n(m_cursorSize),
@@ -408,6 +415,8 @@
           "Color used to draw cage control point handles.");
       val("gridColor",          m_gridColor.name(),
           "Color of the cage grid lines.");
+      val("gridWidth",          n(m_cageGridWidth),
+          "Line width of the cage grid in pixels (0 = cosmetic 1px).");
       val("color",              m_cageWarpColor.name(),
           "Color of the cage warp boundary outline.");
 
@@ -432,6 +441,8 @@
           "Color of the polygon vertex handles.");
 
       sec("ImageLayer");
+      val("boundingBoxWidth",   n(m_layerBoundingBoxWidth),
+          "Line width of the layer bounding box in pixels (0 = cosmetic 1px).");
       val("integerMoveOnly",    b(m_allowIntegerMoveOnly),
           "Restricts layer movement to whole pixel positions only.");
       val("overlayOpacity",     d(m_layerOverlayOpacity),
@@ -514,6 +525,8 @@
           m_handleRadius(4.0),
           m_cursorSize(0),
           m_controlPointRadius(4),
+          m_cageGridWidth(0),
+          m_layerBoundingBoxWidth(0),
           m_gridColor(Qt::green),
           m_controlPointColor(Qt::red),
           m_cursorFillColor(Qt::black),
@@ -588,6 +601,8 @@
     int m_polygonHandleSize;
     QColor m_polygonHandleColor;
     int m_controlPointRadius;
+    int m_cageGridWidth;
+    int m_layerBoundingBoxWidth;
     int m_handleSize;
     int m_cageGridCols;
     int m_cursorSize;

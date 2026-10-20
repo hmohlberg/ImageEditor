@@ -453,7 +453,7 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
              // if ( maskData[x] != 255 ) {
              //  rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
              // }
-             if ( maskData[x] != 255 || qRed(rowData[x]) == backgroundPixelColor ) {
+             if ( maskData[x] != 255 || (qRed(rowData[x]) == backgroundPixelColor && qGreen(rowData[x]) == backgroundPixelColor && qBlue(rowData[x]) == backgroundPixelColor) ) {
                rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
              }
             }
@@ -471,7 +471,7 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
             const auto *maskRowData = reinterpret_cast<const QRgb*>(mask.constScanLine(y));  
             for ( int x = 0; x < subImage.width(); ++x ) {
               // OLD: if ( qRed(rowData[x]) == backgroundPixelColor || qAlpha(maskRowData[x]) != 255 ) {
-              if ( qRed(rowData[x]) == backgroundPixelColor && qAlpha(maskRowData[x]) == 255 ) {
+              if ( qRed(rowData[x]) == backgroundPixelColor && qGreen(rowData[x]) == backgroundPixelColor && qBlue(rowData[x]) == backgroundPixelColor && qAlpha(maskRowData[x]) == 255 ) {
                 rowData[x] = 0; 
               }
             }

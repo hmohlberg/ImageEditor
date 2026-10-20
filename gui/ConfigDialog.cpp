@@ -207,10 +207,6 @@ QWidget* ConfigDialog::buildMainTab()
     row(tr("Show docks at startup"), m_showDocksAtStartup,
         tr("Show all dock panels automatically when the application starts."));
 
-    m_showOverviewMap = new QCheckBox;
-    row(tr("Show overview map in layers dock"), m_showOverviewMap,
-        tr("Show a minimap thumbnail above the layer list in the dock, with a red rectangle indicating the currently visible area."));
-
     m_cursorSize = new CursorSizeSpinBox; m_cursorSize->setRange(0, 128);
     m_cursorSize->setSpecialValueText(tr("0 (system default)"));
     row(tr("Cursor size"), m_cursorSize,
@@ -333,6 +329,11 @@ QWidget* ConfigDialog::buildCageTab()
     makeColorRow(tr("Cage warp color"), tr("Color of the cage warp boundary outline."),
                  m_cageColor, m_cageColorBtn);
 
+    m_cageGridWidth = new QSpinBox; m_cageGridWidth->setRange(0, 20);
+    m_cageGridWidth->setSpecialValueText(tr("0 (cosmetic 1px)"));
+    row(tr("Grid line width"), m_cageGridWidth,
+        tr("Line width of the cage warp grid in pixels. 0 = cosmetic (always 1px on screen)."));
+
     m_cageGridCols = new QSpinBox; m_cageGridCols->setRange(3, 33); m_cageGridCols->setSingleStep(1);
     row(tr("Grid columns"), m_cageGridCols,
         tr("Number of columns in the cage control grid."));
@@ -452,6 +453,11 @@ QWidget* ConfigDialog::buildImageLayerTab()
         f->addRow(lbl, widget);
     };
 
+    m_boundingBoxWidth = new QSpinBox; m_boundingBoxWidth->setRange(0, 20);
+    m_boundingBoxWidth->setSpecialValueText(tr("0 (cosmetic 1px)"));
+    row(tr("Bounding box line width"), m_boundingBoxWidth,
+        tr("Line width of the layer bounding box in pixels. 0 = cosmetic (always 1px on screen)."));
+
     m_integerMoveOnly = new QCheckBox;
     row(tr("Integer move only"), m_integerMoveOnly,
         tr("Restricts layer movement to whole pixel positions only."));
@@ -562,7 +568,6 @@ void ConfigDialog::loadFromStyle()
     m_binaryMasking->setChecked(s.binaryMasking());
     m_crosshair->setChecked(s.crosshair());
     m_showDocksAtStartup->setChecked(s.showDocksAtStartup());
-    m_showOverviewMap->setChecked(s.showOverviewMap());
     m_cursorSize->setValue(s.cursorSize());
     m_cursorFillColor->setText(s.cursorFillColor().name());
     styleColorButton(m_cursorFillBtn, s.cursorFillColor().name());
@@ -584,6 +589,7 @@ void ConfigDialog::loadFromStyle()
         if (m_liveWarpLabel)      m_liveWarpLabel->setEnabled(gpuOn);
     }
     m_noSelfIntersection->setChecked(s.noSelfIntersection());
+    m_cageGridWidth->setValue(s.cageGridWidth());
     m_cageGridCols->setValue(s.cageGridCols());
     m_squareCageQuads->setChecked(s.squareCageQuads());
     m_cpRadius->setValue(s.controlPointRadius());
@@ -618,6 +624,7 @@ void ConfigDialog::loadFromStyle()
     m_lamaModelPath->setText(s.lamaModelPath());
 
     // ImageLayer
+    m_boundingBoxWidth->setValue(s.layerBoundingBoxWidth());
     m_integerMoveOnly->setChecked(s.allowIntegerMoveOnly());
     m_overlayOpacity->setValue(s.layerOverlayOpacity());
     m_rotationStep->setValue(s.rotationSingleStep());
@@ -649,7 +656,6 @@ void ConfigDialog::applyToStyle()
     s.setBinaryMasking(m_binaryMasking->isChecked());
     s.setCrosshair(m_crosshair->isChecked());
     s.setShowDocksAtStartup(m_showDocksAtStartup->isChecked());
-    s.setShowOverviewMap(m_showOverviewMap->isChecked());
     s.setCursorSize(m_cursorSize->value());
     { QColor c(m_cursorFillColor->text());   if (c.isValid()) s.setCursorFillColor(c); }
     { QColor c(m_cursorBorderColor->text()); if (c.isValid()) s.setCursorBorderColor(c); }
@@ -662,6 +668,7 @@ void ConfigDialog::applyToStyle()
     s.setGpuCatmullRom(m_gpuCatmullRom->isChecked());
     s.setLiveWarp(m_liveWarp->isChecked());
     s.setNoSelfIntersection(m_noSelfIntersection->isChecked());
+    s.setCageGridWidth(m_cageGridWidth->value());
     s.setCageGridCols(m_cageGridCols->value());
     s.setSquareCageQuads(m_squareCageQuads->isChecked());
     s.setControlPointRadius(m_cpRadius->value());
@@ -690,6 +697,7 @@ void ConfigDialog::applyToStyle()
     s.setLamaModelPath(m_lamaModelPath->text().trimmed());
 
     // ImageLayer
+    s.setLayerBoundingBoxWidth(m_boundingBoxWidth->value());
     s.setAllowIntegerMoveOnly(m_integerMoveOnly->isChecked());
     s.setLayerOverlayOpacity(m_overlayOpacity->value());
     s.setRotationSingleStep(m_rotationStep->value());
