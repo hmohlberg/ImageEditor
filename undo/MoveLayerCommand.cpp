@@ -26,8 +26,9 @@
 #include <QDebug>
 
 // -------------- Constructor --------------
-MoveLayerCommand::MoveLayerCommand( LayerItem* layer, const QPointF& oldPos, const QPointF& newPos, const int idx, QUndoCommand* parent )
-        : AbstractCommand(parent), m_layer(layer), m_oldPos(oldPos), m_newPos(newPos), m_layerId(idx)
+MoveLayerCommand::MoveLayerCommand( LayerItem* layer, const QPointF& oldPos, const QPointF& newPos, const int idx,
+                                    LayerItem::OperationMode reportedMode, QUndoCommand* parent )
+        : AbstractCommand(parent), m_layer(layer), m_oldPos(oldPos), m_newPos(newPos), m_layerId(idx), m_reportedMode(reportedMode)
 {
     setText(QString("Move Layer %1").arg(idx));
     QByteArray moveLayerSvg = 
@@ -50,7 +51,8 @@ void MoveLayerCommand::printMessage( bool isUndo )
    } else {
     IMainSystem::instance()->showMessage(QString("Moved layer %1 from position (%2:%3) to position (%4:%5)").arg(m_layerId).
                                arg(qRound(m_oldPos.x())).arg(qRound(m_oldPos.y())).arg(qRound(m_newPos.x())).arg(qRound(m_newPos.y())));
-    IMainSystem::instance()->updateLayerOperationParameter(" MoveLayerCommand::printMessage",QString("Layer %1").arg(m_layerId),LayerItem::OperationMode::Translate,qRound(m_newPos.x()),qRound(m_newPos.y()));
+    if ( m_reportedMode == LayerItem::OperationMode::Translate )
+        IMainSystem::instance()->updateLayerOperationParameter(" MoveLayerCommand::printMessage",QString("Layer %1").arg(m_layerId),m_reportedMode,qRound(m_newPos.x()),qRound(m_newPos.y()));
    }
   }
 }
@@ -64,6 +66,8 @@ bool MoveLayerCommand::mergeWith( const QUndoCommand* other )
         return false;
     auto* cmd = static_cast<const MoveLayerCommand*>(other);
     if ( cmd->m_layer != m_layer )
+        return false;
+    if ( cmd->m_reportedMode != m_reportedMode )
         return false;
     m_newPos = cmd->m_newPos;
     printMessage();

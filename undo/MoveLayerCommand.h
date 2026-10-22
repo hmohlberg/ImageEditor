@@ -28,9 +28,11 @@ class MoveLayerCommand : public AbstractCommand
 
 public:
 
-    MoveLayerCommand( LayerItem* layer, const QPointF& oldPos, const QPointF& newPos, const int idx=0, QUndoCommand* parent = nullptr );
+    MoveLayerCommand( LayerItem* layer, const QPointF& oldPos, const QPointF& newPos, const int idx=0,
+                      LayerItem::OperationMode reportedMode = LayerItem::OperationMode::Translate,
+                      QUndoCommand* parent = nullptr );
     
-    AbstractCommand* clone() const override { return new MoveLayerCommand(m_layer,m_oldPos,m_newPos,m_layerId); }
+    AbstractCommand* clone() const override { return new MoveLayerCommand(m_layer,m_oldPos,m_newPos,m_layerId,m_reportedMode); }
     
     QString type() const override { return "MoveLayer"; }
     LayerItem* layer() const override { return m_layer; }
@@ -50,8 +52,9 @@ private:
 
     int m_layerId;
     LayerItem* m_layer;
-    
+
     QPointF m_oldPos;
     QPointF m_newPos;
+    LayerItem::OperationMode m_reportedMode = LayerItem::OperationMode::Translate;
     
 };

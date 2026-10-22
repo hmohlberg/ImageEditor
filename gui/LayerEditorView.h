@@ -94,7 +94,7 @@ private:
     bool   m_erasing          = false;
     bool   m_pickerActive     = false;
     bool   m_negate           = false;
-    int    m_eraserSize       = 2;
+    int    m_eraserSize       = 20;
     int    m_threshold        = 255;
     QPoint m_layerOrigin;
     QPointF m_lastEraserPos;

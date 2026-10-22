@@ -143,7 +143,7 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
     // setup 
     setMouseTracking(true);
     setRenderHint(QPainter::Antialiasing);
-    setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
+    setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
     setDragMode(QGraphicsView::NoDrag);
     grabGesture(Qt::PinchGesture);
     m_undoStack = new QUndoStack(this);
@@ -1171,8 +1171,8 @@ void ImageView::mousePressEvent( QMouseEvent* event )
   qCDebug(logEditor) << "ImageView::mousePressEvent(): operationMode =" << mainWindow->getOperationMode() << ", polygonEnabled =" << m_polygonEnabled;
   {
     if ( !scene() )
-        return;     
-        
+        return;
+
     if ( event->button() != Qt::LeftButton && event->button() != Qt::RightButton ) {
         QGraphicsView::mousePressEvent(event);
         return;
@@ -1348,6 +1348,11 @@ void ImageView::mousePressEvent( QMouseEvent* event )
                          && layer->beginPivotDragIfHit(scenePos) ) {
                         m_pivotDragLayer  = layer;
                         m_pivotDragActive = true;
+                    } else if ( !(event->modifiers() & Qt::AltModifier)
+                                && layer->beginPivotTranslateIfHit(scenePos) ) {
+                        m_pivotTranslateLayer  = layer;
+                        m_pivotTranslateActive = true;
+                        layer->setPivotHovered(false);
                     }
                     // Always accept when near pivot to prevent clearSelection().
                     // Qt's itemsAtPosition dispatch can miss the extended pivot area.
@@ -1474,6 +1479,13 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
         return;
     }
 
+    // --- Pivot translate (drag pivot without Alt to move layer) ---
+    if ( m_pivotTranslateActive && m_pivotTranslateLayer && (event->buttons() & Qt::LeftButton) ) {
+        m_pivotTranslateLayer->updatePivotTranslateTo(scenePos);
+        event->accept();
+        return;
+    }
+
     // --- Painting ---
     if ( m_painting && m_paintToolEnabled && m_paintLayer ) {
         QPoint localPos = m_paintLayer->mapFromScene(scenePos).toPoint();
@@ -1557,7 +1569,27 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
     // --- Letzte Mausposition merken ---
     m_lastMousePos = event->pos();
     viewport()->update();
-    
+
+    // --- Pivot hover: turn pivot marker yellow when cursor is near it ---
+    if ( !(event->buttons() & Qt::LeftButton) ) {
+        LayerItem* rotLayer = nullptr;
+        for ( QGraphicsItem* gi : scene()->items() ) {
+            LayerItem* l = dynamic_cast<LayerItem*>(gi);
+            if ( l && l->getType() != LayerItem::MainImage && l->isSelected()
+                 && l->operationMode() == LayerItem::OperationMode::Rotate ) {
+                rotLayer = l;
+                break;
+            }
+        }
+        if ( rotLayer ) {
+            const QPointF ip = rotLayer->mapFromScene(scenePos);
+            rotLayer->setPivotHovered(QLineF(ip, rotLayer->pivot()).length() <= 12.0);
+        } else if ( m_pivotHoveredLayer ) {
+            m_pivotHoveredLayer->setPivotHovered(false);
+        }
+        m_pivotHoveredLayer = rotLayer;
+    }
+
     // >>>
     QGraphicsView::mouseMoveEvent(event);
     
@@ -1570,8 +1602,7 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
   {
     if ( !scene() )
       return;
-      
-    if ( m_panning == false ) {    
+    if ( m_panning == false ) {
      // --- Cage warp beenden ---
      LayerItem *selectedCageLayer = m_selectedCageLayer != nullptr ? m_selectedCageLayer : getSelectedItem(true);
      if ( event->button() == Qt::LeftButton && selectedCageLayer != nullptr ) {
@@ -1713,6 +1744,15 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
         m_pivotDragLayer->finishPivotDrag();
         m_pivotDragLayer  = nullptr;
         m_pivotDragActive = false;
+        event->accept();
+        return;
+    }
+
+    // --- Pivot translate release ---
+    if ( m_pivotTranslateActive && m_pivotTranslateLayer && event->button() == Qt::LeftButton ) {
+        m_pivotTranslateLayer->finishPivotTranslate();
+        m_pivotTranslateLayer  = nullptr;
+        m_pivotTranslateActive = false;
         event->accept();
         return;
     }
@@ -3502,9 +3542,11 @@ void ImageView::updatePolygonLayer()
     }
 
     // 3. Restore the source pixels that were removed by the old cut.
-    //    Work from the current live image (all subsequent commands already applied
-    //    to the cut layer's scene transform, not to the source layer pixels).
-    QImage restoredSrc = srcLayer->image().copy();
+    //    Use originalImage() (raw, pre-LUT) so that the restored and rebuilt images
+    //    stay in raw space; applyDisplayAdjustments() will apply the colormap once
+    //    at the end. Using image() (LUT-applied) here would corrupt m_originalImage
+    //    with double-mapped values when a colormap is active.
+    QImage restoredSrc = srcLayer->originalImage().copy();
     const QImage& oldBackup = lassoCmd->backup();
     const QRect&  oldBounds = lassoCmd->rect();
     for ( int y = 0; y < oldBackup.height(); ++y ) {
@@ -3588,12 +3630,16 @@ void ImageView::updatePolygonLayer()
     int savedIdx = m_undoStack->index();
     m_undoStack->setIndex(lassoCmdIdx + 1);   // undo MoveLayer, TransformLayer, …
 
-    srcLayer->setImage(newSrcImage);
-    srcLayer->updatePixmap();
+    // Store raw pixels in m_originalImage so applyDisplayAdjustments() can derive
+    // the correct LUT-applied display values. Do NOT use setImage() here — that would
+    // bypass the LUT and leave m_originalImage stale, causing the next
+    // applyDisplayAdjustments() call to overwrite the update with old values.
+    srcLayer->setOriginalImage(newSrcImage);
     srcLayer->update();
 
     // Update the cut layer image without touching position — subsequent commands
     // will re-apply positions / transforms when setIndex(savedIdx) redoes them.
+    // newCutImage is now raw (built from originalImage()), so setOriginalImage is correct.
     cutLayer->setOriginalImage(newCutImage);
     cutLayer->setImage(newCutImage);
     cutLayer->updatePixmap();
@@ -3630,6 +3676,10 @@ void ImageView::updatePolygonLayer()
     // Re-advance the stack: this redoes MoveLayer, TransformLayer, … on the new
     // image content, restoring correct positions and re-baking any image transform.
     m_undoStack->setIndex(savedIdx);
+
+    // Apply the current colormap/brightness/contrast to all layers now that
+    // m_originalImage has been updated with raw pixel data.
+    applyDisplayAdjustments();
 
     // Force a full scene repaint so changes become visible immediately.
     if ( m_scene ) m_scene->update();

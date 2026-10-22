@@ -177,9 +177,13 @@ class LayerItem : public QGraphicsPixmapItem
     void setPivot(const QPointF& scenePos) { prepareGeometryChange(); m_pivot = scenePos; m_hasPivot = true; update(); }
     void resetPivot() { prepareGeometryChange(); m_hasPivot = false; m_pivot = {}; m_pivotSelected = false; m_pivotDragging = false; update(); }
     bool hasPivot() const { return m_hasPivot; }
+    void setPivotHovered(bool h) { if ( m_pivotHovered != h ) { m_pivotHovered = h; update(); } }
     bool beginPivotDragIfHit(const QPointF& scenePos);
     void updatePivotTo(const QPointF& scenePos);
     void finishPivotDrag();
+    bool beginPivotTranslateIfHit(const QPointF& scenePos);
+    void updatePivotTranslateTo(const QPointF& scenePos);
+    void finishPivotTranslate();
     void setImageRect( const QRectF& rect );
     /**
      * @brief Applies an additional transform to the layer.
@@ -300,6 +304,8 @@ class LayerItem : public QGraphicsPixmapItem
     void mousePressEvent( QGraphicsSceneMouseEvent* ) override;
     void mouseMoveEvent(QGraphicsSceneMouseEvent*) override;
     void mouseReleaseEvent( QGraphicsSceneMouseEvent* ) override;
+    void hoverMoveEvent( QGraphicsSceneHoverEvent* event ) override;
+    void hoverLeaveEvent( QGraphicsSceneHoverEvent* event ) override;
     void mouseDoubleClickEvent( QGraphicsSceneMouseEvent* ) override;
     
     QImage         m_image;
@@ -322,11 +328,14 @@ class LayerItem : public QGraphicsPixmapItem
     QPoint m_rotationPressScreenPos;
 
     QPointF m_pivot;               // scene coordinates
-    bool    m_hasPivot        = false;
-    bool    m_pivotSelected   = false;
-    bool    m_pivotDragging   = false;
-    bool    m_pivotWasSet     = false; // m_hasPivot value at drag start (for SetPivotCommand)
-    QPointF m_pivotAtDragStart;        // scene coordinates at drag start
+    bool    m_hasPivot           = false;
+    bool    m_pivotSelected      = false;
+    bool    m_pivotDragging      = false;
+    bool    m_pivotTranslating   = false;
+    bool    m_pivotHovered       = false;
+    bool    m_pivotWasSet        = false; // m_hasPivot at drag start (for SetPivotCommand)
+    QPointF m_pivotAtDragStart;          // scene coordinates at drag start
+    QPointF m_lastPivotTransScenePos;    // last scene pos during pivot-translate drag
     
     OperationMode m_operationMode = LayerItem::Translate;
     OperationMode m_polygonOperationMode = LayerItem::AddPoint;

@@ -207,6 +207,86 @@ void LayerItem::finishPivotDrag()
     setSelected(true);
 }
 
+bool LayerItem::beginPivotTranslateIfHit(const QPointF& scenePos)
+{
+    if ( m_operationMode != OperationMode::Rotate || !isSelected() )
+        return false;
+    const QPointF itemPos = mapFromScene(scenePos);
+    if ( QLineF(itemPos, pivot()).length() > 12.0 )
+        return false;
+    m_startPos               = pos();
+    m_pivotAtDragStart       = pivotScene();
+    m_pivotWasSet            = m_hasPivot;
+    m_lastPivotTransScenePos = scenePos;
+    m_pivotTranslating       = true;
+    m_pivotHovered           = false;
+    m_mouseOperationActive   = true;
+    update();
+    return true;
+}
+
+void LayerItem::updatePivotTranslateTo(const QPointF& scenePos)
+{
+    const QPointF delta = scenePos - m_lastPivotTransScenePos;
+    m_lastPivotTransScenePos = scenePos;
+    setPos(pos() + delta);
+    if ( m_hasPivot )
+        m_pivot += delta;
+    update();
+}
+
+void LayerItem::finishPivotTranslate()
+{
+    m_pivotTranslating     = false;
+    m_mouseOperationActive = false;
+    update();
+    if ( !m_undoStack )
+        return;
+    const QPointF newPos = EditorStyle::instance().allowIntegerMoveOnly()
+                           ? QPointF(qRound(pos().x()), qRound(pos().y())) : pos();
+    if ( EditorStyle::instance().allowIntegerMoveOnly() )
+        setPos(newPos);
+    const bool moved = (newPos - m_startPos).manhattanLength() > 0.5;
+    if ( !moved )
+        return;
+    const QString cmdText = QString("Rotate Layer %1 (pivot move)").arg(id());
+    if ( m_pivotWasSet ) {
+        m_undoStack->beginMacro(cmdText);
+        m_undoStack->push(new MoveLayerCommand(this, m_startPos, newPos, id(), OperationMode::Rotate));
+        m_undoStack->push(new SetPivotCommand(this, m_pivotAtDragStart, m_pivot, m_pivotWasSet));
+        m_undoStack->endMacro();
+    } else {
+        auto* cmd = new MoveLayerCommand(this, m_startPos, newPos, id(), OperationMode::Rotate);
+        cmd->setText(cmdText);
+        m_undoStack->push(cmd);
+    }
+    setSelected(true);
+}
+
+void LayerItem::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
+{
+    if ( m_operationMode == OperationMode::Rotate && isSelected() ) {
+        const bool near = QLineF(event->pos(), pivot()).length() <= 12.0;
+        if ( near != m_pivotHovered ) {
+            m_pivotHovered = near;
+            update();
+        }
+    } else if ( m_pivotHovered ) {
+        m_pivotHovered = false;
+        update();
+    }
+    QGraphicsPixmapItem::hoverMoveEvent(event);
+}
+
+void LayerItem::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
+{
+    if ( m_pivotHovered ) {
+        m_pivotHovered = false;
+        update();
+    }
+    QGraphicsPixmapItem::hoverLeaveEvent(event);
+}
+
 // per default moveable layer item
 // NOTE: QGraphicsItem::ItemIsSelectable expands the size of the QGraphicsPixmapItem by +1+1 !
 void LayerItem::init() 
@@ -217,6 +297,7 @@ void LayerItem::init()
              QGraphicsItem::ItemIsFocusable);
   setTransformationMode(EditorStyle::instance().transformationMode()); // for on screen visualization
   setAcceptedMouseButtons(Qt::LeftButton);
+  setAcceptHoverEvents(true);
   setShapeMode(QGraphicsPixmapItem::BoundingRectShape);
   // setShapeMode(QGraphicsPixmapItem::MaskShape); // the better choice but complex
   
@@ -764,7 +845,7 @@ void LayerItem::paint( QPainter* painter, const QStyleOptionGraphicsItem* option
       const QPointF cVp = painter->worldTransform().map(mapFromScene(pivSc));
       painter->save();
       painter->resetTransform();
-      QPen crossPen(m_pivotSelected ? Qt::yellow : Qt::red, 1.5);
+      QPen crossPen(m_pivotSelected || m_pivotHovered || m_pivotTranslating ? Qt::yellow : Qt::red, 1.5);
       painter->setPen(crossPen);
       painter->setBrush(Qt::NoBrush);
       painter->drawLine(cVp + QPointF(-arm, 0), cVp + QPointF(arm, 0));
@@ -1634,6 +1715,16 @@ void LayerItem::mousePressEvent( QGraphicsSceneMouseEvent* event )
             m_startPos          = pos();
             event->accept();
             update();
+          } else if ( !altHeld && QLineF(clickItemPos, pivot()).length() <= 12.0 ) {
+            // Drag on pivot without Alt → translate the layer
+            m_startPos               = pos();
+            m_pivotAtDragStart       = pivotScene();
+            m_pivotWasSet            = m_hasPivot;
+            m_lastPivotTransScenePos = event->scenePos();
+            m_pivotTranslating       = true;
+            m_mouseOperationActive   = true;
+            event->accept();
+            update();
           } else {
             m_pivotDragging    = false;
             m_pivotSelected    = false;
@@ -1700,7 +1791,16 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
          }
        }
       } else if ( m_operationMode == OperationMode::Rotate ) {
-       if ( m_pivotDragging ) {
+       if ( m_pivotTranslating ) {
+         const QPointF scenePos = event->scenePos();
+         const QPointF delta    = scenePos - m_lastPivotTransScenePos;
+         m_lastPivotTransScenePos = scenePos;
+         setPos(pos() + delta);
+         if ( m_hasPivot )
+             m_pivot += delta;
+         update();
+         event->accept();
+       } else if ( m_pivotDragging ) {
          prepareGeometryChange();
          m_pivot    = mapToScene(event->pos());   // store in scene coords
          m_hasPivot = true;
@@ -1713,10 +1813,14 @@ void LayerItem::mouseMoveEvent( QGraphicsSceneMouseEvent* event )
            // held at press time (which takes an early-return path in mousePressEvent).
            if ( ImageView* view = getParentImageView() )
                view->setSuppressIndexChangedAdjustments(true);
-           QPointF delta = QPointF(event->screenPos()) - QPointF(m_rotationPressScreenPos);
-           double angleDelta = m_startLayerRotation + delta.x() * EditorStyle::instance().rotationSingleStep() / 10.0 - m_currentRotation;
-           setRotationAngle(angleDelta);
-           parent->updateLayerOperationParameter("LayerItem::mouseMoveEvent",m_name,LayerItem::OperationMode::Rotate,m_currentRotation);
+           QPointF screenDelta = QPointF(event->screenPos()) - QPointF(m_rotationPressScreenPos);
+           double previewAngle = m_startLayerRotation + screenDelta.x() * EditorStyle::instance().rotationSingleStep() / 10.0;
+           // Visual-only preview using Qt's built-in item rotation — no pixel resampling.
+           // The real setImageTransform() bake happens once on mouse release.
+           QPointF origin = m_hasPivot ? mapFromScene(m_pivot) : boundingRect().center();
+           setTransformOriginPoint(origin);
+           setRotation(previewAngle - m_startLayerRotation);
+           parent->updateLayerOperationParameter("LayerItem::mouseMoveEvent",m_name,LayerItem::OperationMode::Rotate,previewAngle);
            event->accept();
          }
        }
@@ -1769,6 +1873,14 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
             if ( moves.size() > 1 ) m_undoStack->endMacro();
         }
     } else if ( m_operationMode == OperationMode::Rotate ) {
+        if ( m_pivotTranslating ) {
+            finishPivotTranslate();
+            // Skip base-class release to prevent spurious clearSelection().
+            if ( ImageView* view = getParentImageView() )
+                view->setSuppressIndexChangedAdjustments(false);
+            setSelected(true);
+            return;
+        }
         const bool pivotWasDragging = m_pivotDragging;
         if ( m_pivotDragging ) {
             const QPointF newPivotScene = m_pivot;   // scene coords
@@ -1780,7 +1892,16 @@ void LayerItem::mouseReleaseEvent( QGraphicsSceneMouseEvent* event )
                 m_undoStack->push(new SetPivotCommand(this, m_pivotAtDragStart, newPivotScene, m_pivotWasSet));
             }
         } else {
-            // End of rotation drag: re-enable adjustments and apply once with full quality.
+            // Clear the visual-only preview transform set during the drag.
+            setRotation(0.0);
+            setTransformOriginPoint({0.0, 0.0});
+            // Bake the final rotation once with full-quality resampling.
+            QPointF screenDelta = QPointF(event->screenPos()) - QPointF(m_rotationPressScreenPos);
+            double finalAngle = m_startLayerRotation + screenDelta.x() * EditorStyle::instance().rotationSingleStep() / 10.0;
+            double angleDelta = finalAngle - m_currentRotation;
+            if ( qAbs(angleDelta) > 1e-6 )
+                setRotationAngle(angleDelta);
+            // Re-enable adjustments and apply once with full quality.
             if ( ImageView* view = getParentImageView() ) {
                 view->setSuppressIndexChangedAdjustments(false);
                 view->applyDisplayAdjustments();
