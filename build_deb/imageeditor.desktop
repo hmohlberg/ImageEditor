@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=ImageEditor
-Comment=Qt6-based image processing tool
-Exec=/usr/local/bin/ImageEditor
-Icon=imageeditor
-Terminal=false
-Type=Application
-Categories=Graphics;Science;

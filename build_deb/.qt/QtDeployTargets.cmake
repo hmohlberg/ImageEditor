@@ -1,2 +1,0 @@
-set(__QT_DEPLOY_TARGET_ImageEditor_FILE /localStore/JuBrain/software/ImageEditor/build_deb/ImageEditor)
-set(__QT_DEPLOY_TARGET_ImageEditor_TYPE EXECUTABLE)
