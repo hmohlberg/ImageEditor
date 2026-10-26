@@ -28,7 +28,7 @@
 #include "../util/GeometryUtils.h"
 #include "../undo/PerspectiveWarpCommand.h"
 
-PerspectiveOverlay::PerspectiveOverlay( LayerItem* layer, QUndoStack* undoStack )
+PerspectiveOverlay::PerspectiveOverlay( LayerItem* layer, GuardedUndoStack* undoStack )
     : m_layer(layer), m_undoStack(undoStack)
 {
   qCDebug(logEditor) << "PerspectiveOverlay::PerspectiveOverlay(): Processing...";

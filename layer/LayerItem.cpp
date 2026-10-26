@@ -416,7 +416,7 @@ void LayerItem::setFileInfo( const QString &filePath )
   }
 }
 
-void LayerItem::setUndoStack( QUndoStack* stack ) {
+void LayerItem::setUndoStack( GuardedUndoStack* stack ) {
   m_undoStack = stack; 
 }
 
@@ -1047,11 +1047,11 @@ void LayerItem::enableCage( int cols, int rows )
   qCDebug(logEditor) << "LayerItem::enableCage(): cols =" << cols << ", rows =" << rows 
                   << ", initialized =" << m_cageMesh.isInitialized() << ", enabled =" << m_cageEnabled;
   {
-    if ( m_cageMesh.isInitialized() ) return;
     int ncols = cols == -1 ? m_cageMesh.cols() : cols;
     int nrows = rows == -1 ? m_cageMesh.rows() : rows;
+    if ( m_cageMesh.isInitialized() && m_cageMesh.cols() == ncols && m_cageMesh.rows() == nrows ) return;
     m_cageMesh.create(boundingRect(), ncols, nrows);
-    if ( !m_cageMesh.isInitialized() ) m_cageMesh.setImage(m_image);
+    m_cageMesh.setImage(m_image);
     m_cageEnabled = true;     
     if ( !scene() )
       return;
@@ -1074,6 +1074,7 @@ void LayerItem::enableCage( int cols, int rows )
       h->setRect(dx, dy, 2*m_cageMesh.getRadius(), 2*m_cageMesh.getRadius() );
       m_handles << h;
     }
+    m_cageOverlay->update();
   }
 }
 
@@ -1239,6 +1240,7 @@ int LayerItem::changeNumberOfActiveCagePoints( int step )
        h->setRect(dx, dy, 2*m_cageMesh.getRadius(), 2*m_cageMesh.getRadius() );
        m_handles << h;
       }
+      if ( m_cageOverlay ) m_cageOverlay->update();
       // Grid resize never shifts the layer position, so posBefore == posAfter == pos().
       cageEditStack()->push(new CageEditCommand(this,
           ptsBefore, origBefore, colsBefore, rowsBefore, pos(),

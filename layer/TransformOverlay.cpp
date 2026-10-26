@@ -29,7 +29,7 @@
 #include "../undo/TransformLayerCommand.h"
 
 // --------------------- Constructor ---------------------
-TransformOverlay::TransformOverlay( LayerItem* layer, QUndoStack* undoStack )
+TransformOverlay::TransformOverlay( LayerItem* layer, GuardedUndoStack* undoStack )
     : m_layer(layer)
     , m_undoStack(undoStack)
 {

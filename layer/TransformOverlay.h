@@ -22,6 +22,7 @@
 #include <QGraphicsRectItem>
 #include <QPointer>
 #include <QUndoStack>
+#include "../undo/GuardedUndoStack.h"
 #include <QMap>
 
 class LayerItem;
@@ -47,7 +48,7 @@ class TransformOverlay : public QObject, public QGraphicsItem
 
  public:
  
-    TransformOverlay( LayerItem* layer, QUndoStack* undoStack );
+    TransformOverlay( LayerItem* layer, GuardedUndoStack* undoStack );
 
     QRectF boundingRect() const override;
     void paint( QPainter*, const QStyleOptionGraphicsItem*, QWidget* ) override;
@@ -75,7 +76,7 @@ class TransformOverlay : public QObject, public QGraphicsItem
  private:
  
     LayerItem* m_layer = nullptr;
-    QUndoStack* m_undoStack = nullptr;
+    GuardedUndoStack* m_undoStack = nullptr;
     
     TransformLayerCommand* m_transformCommand = nullptr;
 

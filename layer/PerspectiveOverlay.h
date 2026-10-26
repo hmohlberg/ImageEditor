@@ -21,6 +21,7 @@
 #include <QPointer>
 #include <QMap>
 #include <QUndoStack>
+#include "../undo/GuardedUndoStack.h"
 
 class LayerItem;
 class TransformHandleItem;
@@ -37,7 +38,7 @@ class PerspectiveOverlay : public QObject, public QGraphicsItem
 
  public:
  
-    PerspectiveOverlay( LayerItem* layer, QUndoStack* undoStack );
+    PerspectiveOverlay( LayerItem* layer, GuardedUndoStack* undoStack );
 
     QRectF boundingRect() const override;
     void paint( QPainter*, const QStyleOptionGraphicsItem*, QWidget* ) override;
@@ -64,7 +65,7 @@ class PerspectiveOverlay : public QObject, public QGraphicsItem
     bool m_dragging = false;
  
     LayerItem* m_layer;
-    QUndoStack* m_undoStack = nullptr;
+    GuardedUndoStack* m_undoStack = nullptr;
     
     PerspectiveWarpCommand* m_warpCommand = nullptr;
 

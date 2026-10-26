@@ -18,6 +18,10 @@
 #include "ImageView.h"
 #include "MainWindow.h"
 #include <QApplication>
+#ifdef Q_OS_LINUX
+#  include <QOpenGLWidget>
+#  include <QSurfaceFormat>
+#endif
 
 #include "../core/Config.h"
 #include "../layer/LayerItem.h"
@@ -26,6 +30,7 @@
 #include "../layer/EditablePolygonItem.h"
 #include "../layer/TransformOverlay.h"
 #include "../undo/EditablePolygonCommand.h"
+#include "../undo/GuardedUndoStack.h"
 #include "../undo/PaintCommand.h"
 #include "../undo/CageWarpCommand.h"
 #include "../undo/CageEditCommand.h"
@@ -144,9 +149,20 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
     setMouseTracking(true);
     setRenderHint(QPainter::Antialiasing);
     setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
+#ifdef Q_OS_LINUX
+    {
+        QSurfaceFormat fmt;
+        fmt.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
+        auto* gl = new QOpenGLWidget();
+        gl->setFormat(fmt);
+        setViewport(gl);
+        setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
+    }
+#endif
     setDragMode(QGraphicsView::NoDrag);
     grabGesture(Qt::PinchGesture);
-    m_undoStack = new QUndoStack(this);
+    m_undoStack = new GuardedUndoStack(this);
+    m_undoStack->setDialogParent(this);
     connect(m_undoStack, &QUndoStack::cleanChanged, this, [this](bool isClean){
       setWindowModified(!isClean);
       setWindowTitle(QString("Mein Editor[*]"));
@@ -2147,6 +2163,7 @@ void ImageView::initCageWarpForLayer( LayerItem *layerItem )
       // this one actually makes the control points visible.
       m_selectedCageLayer->setCageVisible( LayerItem::OperationMode::CageWarp, true );
       m_cageBefore = layerItem->cageMesh().points();
+      viewport()->update();
     } else {
       m_selectedCageLayer = nullptr;
       m_cageBefore.clear();
@@ -3090,9 +3107,11 @@ void ImageView::setIncreaseNumberOfCageControlPoints()
      auto* command = m_selectedLayer->getCageWarpCommand();
      if ( command ) {
        int n = m_selectedLayer->changeNumberOfActiveCagePoints(+1);
-       if (n != 0)
+       if (n != 0) {
          m_selectedLayer->getCageWarpCommand()->setNumberOfRowsAndColumns(
              m_selectedLayer->cageMesh().cols(), m_selectedLayer->cageMesh().rows());
+         viewport()->update();
+       }
      } else {
       qCritical() << "ImageView::setIncreaseNumberOfCageControlPoints(): No CageWarpCommand available!";
      }
@@ -3110,6 +3129,7 @@ void ImageView::setDecreaseNumberOfCageControlPoints()
       m_selectedLayer->getCageWarpCommand()->setNumberOfRowsAndColumns(
           m_selectedLayer->cageMesh().cols(), m_selectedLayer->cageMesh().rows());
       m_selectedLayer->applyCageWarp("ImageView::3");
+      viewport()->update();
     }
    }
 }
@@ -3123,6 +3143,7 @@ void ImageView::setNumberOfCageControlPoints( int nControlPoints )
       if ( layer && layer->getType() != LayerItem::MainImage ) {
         if ( layer->hasActiveCage() ) {
          layer->setNumberOfActiveCagePoints(nControlPoints);
+         viewport()->update();
          return;
         }
       }
@@ -3230,7 +3251,31 @@ void ImageView::setPolygonIndex( quint8 index, bool doUpdate )
       }
       emit polygonHasLayer(hasLayer);
     }
-    // end test
+
+    // Navigate the undo stack to the EditablePolygonCommand for this polygon so
+    // that the image state (layer positions etc.) matches the polygon's position,
+    // exactly as history-view selection does.  Guard against the re-entrant call
+    // that indexChanged triggers via activePolygon() → setCurrentIndex().
+    if (!m_navigatingPolygonStack) {
+      int targetStackIndex = -1;
+      for (int i = 0; i < m_undoStack->count(); ++i) {
+        const auto* cmd = dynamic_cast<const EditablePolygonCommand*>(m_undoStack->command(i));
+        if (cmd && cmd->name() == polyName)
+          targetStackIndex = i;  // keep last match
+      }
+      if (targetStackIndex >= 0) {
+        m_navigatingPolygonStack = true;
+        m_undoStack->setIndex(targetStackIndex + 1);
+        m_navigatingPolygonStack = false;
+        // Selecting an existing polygon disables "Create new polygon": the user
+        // cannot draw a new polygon while viewing a mid-history state.
+        // Intermediate indexChanged handlers may have changed button states, so
+        // re-apply mode -2 unconditionally after navigation completes.
+        MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
+        if (mainWindow)
+          mainWindow->setPolygonOperationMode(-2);
+      }
+    }
   }
 }
 
@@ -3627,7 +3672,6 @@ void ImageView::updatePolygonLayer()
     // so those commands re-execute on the new image content.  This is the only
     // way to correctly re-apply baked image transforms (TransformLayerCommand
     // calls setImageTransform which re-bakes the rotation/scale from m_originalImage).
-    int savedIdx = m_undoStack->index();
     m_undoStack->setIndex(lassoCmdIdx + 1);   // undo MoveLayer, TransformLayer, …
 
     // Store raw pixels in m_originalImage so applyDisplayAdjustments() can derive
@@ -3638,12 +3682,16 @@ void ImageView::updatePolygonLayer()
     srcLayer->update();
 
     // Update the cut layer image without touching position — subsequent commands
-    // will re-apply positions / transforms when setIndex(savedIdx) redoes them.
+    // will re-apply positions / transforms when setIndex(count()) redoes them.
     // newCutImage is now raw (built from originalImage()), so setOriginalImage is correct.
     cutLayer->setOriginalImage(newCutImage);
     cutLayer->setImage(newCutImage);
     cutLayer->updatePixmap();
     cutLayer->update();
+    // If a CageWarpCommand for this layer sits above lassoCmdIdx in the stack,
+    // its cage mesh still holds the old source image.  Clear it so that the
+    // upcoming setIndex(count()) redo picks up the new pixels instead of the stale cache.
+    cutLayer->cageMesh().clearImage();
 
     // Update the stored backup so that undoing the LassoCutCommand later
     // correctly restores the new cut content.
@@ -3675,7 +3723,9 @@ void ImageView::updatePolygonLayer()
 
     // Re-advance the stack: this redoes MoveLayer, TransformLayer, … on the new
     // image content, restoring correct positions and re-baking any image transform.
-    m_undoStack->setIndex(savedIdx);
+    // Always go to the end of the stack so any operations that were undone by a
+    // combobox polygon selection are also re-applied.
+    m_undoStack->setIndex(m_undoStack->count());
 
     // Apply the current colormap/brightness/contrast to all layers now that
     // m_originalImage has been updated with raw pixel data.

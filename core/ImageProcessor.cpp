@@ -275,14 +275,14 @@ ImageProcessor::ImageProcessor( const QImage& image ) : m_image(image)
   qDebug() << "ImageProcessor::ImageProcessor(): Processing...";
   { 
    m_skipMainImage = true;
-   m_undoStack = new QUndoStack();
+   m_undoStack = new GuardedUndoStack();
    buildMainImageLayer();
   }
 }
 
 ImageProcessor::ImageProcessor()
 {
-  m_undoStack = new QUndoStack();
+  m_undoStack = new GuardedUndoStack();
 }
 
 // ----------------------- Methods -----------------------

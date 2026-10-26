@@ -1,5 +1,6 @@
 # Build output
 build/
+build_deb/
 doxygen_build/
 
 # Qt / CMake

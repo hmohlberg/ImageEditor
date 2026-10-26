@@ -1846,9 +1846,6 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
         }
     }
 
-    // --- 6. set clean flag in undo stack ---
-    m_imageView->undoStack()->setClean();
-
     // Re-enable updates: apply the final pixmap to every layer once, then repaint.
     for (auto* item : m_imageView->getScene()->items()) {
         if (auto* li = dynamic_cast<LayerItem*>(item)) {
@@ -1859,6 +1856,16 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
     m_imageView->setUpdatesEnabled(true);
     m_imageView->applyDisplayAdjustments();
     m_imageView->viewport()->update();
+
+    // --- 6. set clean flag in undo stack ---
+    // Called after all synchronous post-load operations so any signals they emit
+    // are already processed. The deferred call catches any QTimer::singleShot(0)
+    // operations that were queued before loadProject() was invoked (e.g., openBigTiff).
+    m_imageView->undoStack()->setClean();
+    QTimer::singleShot(0, this, [this]{
+        if (m_imageView && m_imageView->undoStack())
+            m_imageView->undoStack()->setClean();
+    });
 
     return true;
   }

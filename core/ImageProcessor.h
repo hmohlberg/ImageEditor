@@ -22,6 +22,7 @@
 #include <QPixmap>
 #include <QJsonDocument>
 #include <QUndoStack>
+#include "../undo/GuardedUndoStack.h"
 
 // --- ---
 class AbstractCommand;
@@ -61,7 +62,7 @@ class ImageProcessor {
     
     QString m_intermediateBase = "";
     
-    QUndoStack* m_undoStack = nullptr;
+    GuardedUndoStack* m_undoStack = nullptr;
     
     QList<LayerItem*> m_layers;
     

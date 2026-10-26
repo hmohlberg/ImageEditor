@@ -185,6 +185,7 @@ set(SOURCES
     undo/InvertLayerCommand.cpp
     undo/MirrorLayerCommand.cpp
     undo/EditablePolygonCommand.cpp
+    undo/GuardedUndoStack.cpp
     undo/TransformLayerCommand.cpp
     undo/UpdatePolygonLayerCommand.cpp
     undo/PerspectiveWarpCommand.cpp
@@ -241,6 +242,7 @@ set(HEADERS
     undo/TransformLayerCommand.h
     undo/PerspectiveWarpCommand.h
     undo/EditablePolygonCommand.h
+    undo/GuardedUndoStack.h
     undo/PolygonMovePointCommand.h
     undo/PolygonInsertPointCommand.h
     undo/PolygonDeletePointCommand.h

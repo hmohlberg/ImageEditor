@@ -26,6 +26,7 @@
 #include <QColor>
 #include <QPainterPath>
 #include <QUndoStack>
+#include "../undo/GuardedUndoStack.h"
 #include <QPolygon>
 #include <QHash>
 
@@ -107,7 +108,7 @@ class ImageView : public QGraphicsView
     int getActivePolygonCmdStackIndex() const;
     QImage& getImage() { return m_image; };
     QGraphicsScene* getScene() const { return m_scene; }
-    QUndoStack* undoStack() const { return m_undoStack; }
+    GuardedUndoStack* undoStack() const { return m_undoStack; }
     QVector<Layer*>& layers() { return m_layers; }
     QColor maskLabelColor( int label ) const {
       if ( !m_maskItem ) return Qt::transparent;
@@ -253,7 +254,7 @@ class ImageView : public QGraphicsView
     PerspectiveOverlay* m_perspectiveOverlay = nullptr;
 
     QWidget* m_parent = nullptr;
-    QUndoStack* m_undoStack = nullptr;
+    GuardedUndoStack* m_undoStack = nullptr;
     QGraphicsScene* m_scene = nullptr;
     QImage m_image;
 
@@ -272,6 +273,7 @@ class ImageView : public QGraphicsView
     bool m_polygonEnabled = false;
     bool m_maskEraser = false;
     bool m_suppressIndexChangedAdjustments = false;
+    bool m_navigatingPolygonStack = false;
     
     quint8 m_currentMaskLabel = 1;
     InpaintParams m_inpaintParams;

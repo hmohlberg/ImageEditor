@@ -19,6 +19,7 @@
 
 #include <QGraphicsPixmapItem>
 #include <QUndoStack>
+#include "../undo/GuardedUndoStack.h"
 #include <QTransform>
 #include <QJsonArray>
 #include <QImage>
@@ -218,7 +219,7 @@ class LayerItem : public QGraphicsPixmapItem
     bool isCageWarp() const { return m_operationMode == OperationMode::CageWarp ? true : false; }
 
     /// @brief Returns the undo stack for layer-level operations (transform, paint, etc.).
-    QUndoStack* undoStack() const { return m_undoStack; }
+    GuardedUndoStack* undoStack() const { return m_undoStack; }
     QWidget* parent() const { return m_parent; }
     /// @brief Returns the ImageView that contains this layer, or nullptr.
     ImageView* getParentImageView();
@@ -235,7 +236,7 @@ class LayerItem : public QGraphicsPixmapItem
     int     cageSnapRows() const { return m_cageSnapRows; }
     QPointF cageSnapPos()  const { return m_cageSnapPos; }
     void setParent( QWidget *parent ) { m_parent = parent; }
-    void setUndoStack( QUndoStack* stack );
+    void setUndoStack( GuardedUndoStack* stack );
     QPointF dragStartPos() const { return m_startPos; }
     void resetDragStartPos() { m_startPos = pos(); }
     void setIndex( const int index ) { m_index = index; }
@@ -395,6 +396,6 @@ class LayerItem : public QGraphicsPixmapItem
     QTransform m_totalTransform;
 	
     QWidget* m_parent = nullptr;
-    QUndoStack* m_undoStack = nullptr;
+    GuardedUndoStack* m_undoStack = nullptr;
 	
 };

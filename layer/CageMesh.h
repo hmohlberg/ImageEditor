@@ -88,9 +88,12 @@ class CageMesh
     void setNeedUpdate( bool needUpdate = true ) { m_needUpdate = needUpdate; }
     bool needUpdate() const { return m_needUpdate; }
     void setIsInitialized() { m_isInitialized = true; }
-    bool isInitialized( bool forced = false ) const { 
-      return forced ? ( !m_image.isNull() && m_isInitialized ) : m_isInitialized; 
+    bool isInitialized( bool forced = false ) const {
+      return forced ? ( !m_image.isNull() && m_isInitialized ) : m_isInitialized;
     }
+    // Clear the cached source image so the next applyCageWarp() re-initialises
+    // it from the layer's current pixel data (needed after updatePolygonLayer()).
+    void clearImage() { m_image = QImage(); }
     
     void printself();
     
