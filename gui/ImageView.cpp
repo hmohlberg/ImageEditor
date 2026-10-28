@@ -1013,6 +1013,43 @@ void ImageView::enablePipette( bool enabled ) {
 // ------------------------     Key Event tools      ------------------------
 // ------------------------ ------------------------ ------------------------
 
+void ImageView::selectNextLayer()
+{
+    MainWindow* mainWindow = dynamic_cast<MainWindow*>(m_parent);
+    if ( !mainWindow ) return;
+
+    int isSelected = -1;
+    int i = 0;
+    QVector<LayerItem*> layers;
+    for ( auto* item : m_scene->items() ) {
+        auto* layer = dynamic_cast<LayerItem*>(item);
+        if ( layer && !layer->name().startsWith("Main") && layer->isVisible() ) {
+            layers.push_back(layer);
+            if ( layer->isSelected() ) isSelected = i;
+            ++i;
+        }
+    }
+    if ( layers.isEmpty() ) return;
+
+    m_oldVisibleLayerItemNum = -1;
+    const int index = (layers.size() > 1)
+        ? (isSelected == -1 ? 0 : (isSelected + 1) % layers.size())
+        : 0;
+
+    LayerItem* selectedLayer = layers[index];
+    selectedLayer->setIsSelected(3, true);
+    setOnlyCageVisible(selectedLayer->id());
+
+    QRegularExpression re("\\d+$");
+    QRegularExpressionMatch match = re.match(selectedLayer->name());
+    if ( match.hasMatch() ) {
+        mainWindow->setSelectedLayer(4, QString("Layer %1").arg(match.captured(0).toInt()));
+        IMainSystem::instance()->showMessage(
+            QString("Selected layer %1 with geometry %2")
+                .arg(selectedLayer->name(), GeometryUtils::getGeometryString(selectedLayer)));
+    }
+}
+
 void ImageView::keyPressEvent( QKeyEvent* event )
 {
   qCDebug(logEditor) << "ImageView::keyPressEvent(): key =" << event->key();
@@ -1022,39 +1059,7 @@ void ImageView::keyPressEvent( QKeyEvent* event )
       MainWindow::MainOperationMode opMode = mainWindow->getOperationMode();
       // general
       if ( event->key() == Qt::Key_Tab ) {
-         int isSelected = -1;
-         int i = 0;
-         QVector<LayerItem*> layers;
-         for ( auto* item : m_scene->items() ) {
-           auto* layer = dynamic_cast<LayerItem*>(item);
-           if ( layer ) {
-            if ( !layer->name().startsWith("Main") && layer->isVisible() ) {
-              layers.push_back(layer);
-              if ( layer->isSelected() ) {
-               isSelected = i;
-              }
-              i += 1;
-            }
-           }
-         }
-         if ( layers.length() != 0 ) {
-          m_oldVisibleLayerItemNum = -1;
-          int index = 0;
-          if ( layers.length() > 1 ) {
-           index = isSelected == -1 ? 0 : (isSelected+1)%layers.length();
-          }
-          QRegularExpression re("\\d+$"); 
-          LayerItem *selectedLayer = layers[index];
-          selectedLayer->setIsSelected(3,true);
-          setOnlyCageVisible(selectedLayer->id());
-          QRegularExpressionMatch match = re.match(selectedLayer->name());
-          if ( match.hasMatch() ) {
-            QString numberStr = match.captured(0);
-            mainWindow->setSelectedLayer(4,QString("Layer %1").arg(numberStr.toInt()));
-            QString geometryString = GeometryUtils::getGeometryString(selectedLayer);
-            IMainSystem::instance()->showMessage(QString("Selected layer %1 with geometry %2").arg(selectedLayer->name()).arg(geometryString));
-          }
-         }
+         selectNextLayer();
          return;
       } else if ( event->key() == Qt::Key_Plus ) {
        scaleScene(+1);
@@ -1341,6 +1346,10 @@ void ImageView::mousePressEvent( QMouseEvent* event )
       if ( m_polygonEnabled && event->button() == Qt::LeftButton ) {
          if ( m_activePolygon != nullptr ) {
            m_activePolygon->addPoint(scenePos);
+           if ( m_activePolygon->pointCount() == 1 ) {
+             if ( MainWindow *mw = dynamic_cast<MainWindow*>(m_parent) )
+               mw->setPolygonActionText(tr("End polygon drawing"));
+           }
            return;
          }
       }
@@ -3324,9 +3333,13 @@ void ImageView::deletePolygon(const QString& name)
     }
 
     // Clone the ENTIRE stack (applied + redo-future), excluding only this polygon's commands.
-    // We need both halves so commands the user had Ctrl+Z'd past are not permanently lost.
-    const int currentIndex = m_undoStack->index();  // number of currently applied commands
-    const int totalCount   = m_undoStack->count();  // applied + redo-future
+    // Navigate to the fully-applied state first: setPolygonIndex may have navigated the stack
+    // backward (to show the polygon in context), making later commands appear as "redo-future"
+    // even though the user never Ctrl+Z'd them.  Applying all commands here ensures newIndex
+    // counts every non-polygon command as applied, so the image is correct after deletion.
+    const int totalCount = m_undoStack->count();  // applied + redo-future
+    m_undoStack->setIndex(totalCount);             // apply all commands
+    const int currentIndex = m_undoStack->index(); // = totalCount (all applied)
 
     std::vector<std::unique_ptr<AbstractCommand>> commandsToReplay;
     int newIndex = 0;  // how many non-polygon commands sit in the applied range
@@ -3750,12 +3763,16 @@ void ImageView::finishPolygonDrawing( LayerItem* layer )
 {
   qCDebug(logEditor) << "ImageView::finishPolygonDrawing(): polygonIndex =" << m_polygonIndex << ", nEditablePolygons =" << m_editablePolygons.size();
   {
-    if ( !m_activePolygon || m_activePolygon->pointCount() < 3 )
+    if ( !m_activePolygon || m_activePolygon->pointCount() < 3 ) {
+        if ( MainWindow *mw = dynamic_cast<MainWindow*>(m_parent) )
+            mw->setPolygonActionText(tr("Create new polygon"));
         return;
+    }
     QColor color = QColor(255,0,0);
     MainWindow *mainWindow = dynamic_cast<MainWindow*>(m_parent);
     if ( mainWindow != nullptr ) {
       mainWindow->setPolygonOperationMode(-2);
+      mainWindow->setPolygonActionText(tr("Create new polygon layer"));
       mainWindow->setMainOperationMode(MainWindow::MainOperationMode::CreatePolygon);
       int index = mainWindow->activePolygon(m_activePolygon->name());
       if ( index >= 0 ) {

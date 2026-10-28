@@ -75,7 +75,8 @@ class ImageView : public QGraphicsView
     ~ImageView() override { m_scene = nullptr; }
 
     void clearSelection();
-    void clearLayers(); 
+    void clearLayers();
+    void selectNextLayer();
     void createLassoLayer();
     void createPolygonLayer();
     void deletePolygon(const QString& name);

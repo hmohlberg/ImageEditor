@@ -29,6 +29,7 @@
 #include <QPixmap>
 
 #include "core/version.h"
+#include "core/build_number.h"
 
 #include <tiffvers.h>
 #ifdef HASHDF5
@@ -81,7 +82,7 @@ QWidget* AboutDialog::buildAboutTab()
     outer->addWidget(nameLabel);
 
     const QString ver   = APP_VERSION;
-    const QString build = QString("%1 %2").arg(__DATE__, __TIME__);
+    const QString build = APP_BUILD_STRING;
     auto* verLabel = new QLabel(
         QString("<center>Version %1&nbsp;&nbsp;·&nbsp;&nbsp;Build %2</center>")
             .arg(ver, build));

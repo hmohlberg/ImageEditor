@@ -1,0 +1,5 @@
+#pragma once
+
+#define APP_BUILD_NUMBER @BUILD_NUMBER@
+#define APP_BUILD_HASH   "@BUILD_HASH@"
+#define APP_BUILD_STRING "@BUILD_STRING@"

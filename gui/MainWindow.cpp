@@ -115,6 +115,9 @@ static void alphaBleedImage( QImage& img )
 #include <QPainter>
 #include <QComboBox>
 #include <QSpinBox>
+#include <QAbstractSpinBox>
+#include <QAbstractItemView>
+#include <QKeyEvent>
 #include <QSlider>
 #include <QPushButton>
 #include <QDockWidget>
@@ -531,6 +534,23 @@ QString MainWindow::mainOperationModeName( int mode )
 // ---------------------- Catch events ----------------------
 bool MainWindow::eventFilter( QObject *obj, QEvent *event )
 {
+  // Route Tab key directly to ImageView for layer cycling, unless the focused
+  // widget is a text-editing control that legitimately needs the Tab key.
+  if ( event->type() == QEvent::KeyPress ) {
+    auto* ke = static_cast<QKeyEvent*>(event);
+    if ( ke->key() == Qt::Key_Tab && m_imageView ) {
+      QWidget* fw = QApplication::focusWidget();
+      const bool editingWidget =
+          qobject_cast<QLineEdit*>(fw) != nullptr
+       || qobject_cast<QAbstractSpinBox*>(fw) != nullptr
+       || (qobject_cast<QComboBox*>(fw) && qobject_cast<QComboBox*>(fw)->isEditable())
+       || qobject_cast<QAbstractItemView*>(fw) != nullptr;
+      if ( !editingWidget ) {
+        m_imageView->selectNextLayer();
+        return true;
+      }
+    }
+  }
   if ( obj == m_polygonToolbar && event->type() == QEvent::Show ) {
     if ( m_imageView != nullptr ) {
       int polygon_index = m_imageView->getNextFreePolygonIndex();
@@ -1043,6 +1063,12 @@ void MainWindow::updateImageDependentActions()
     };
     for ( QAction* action : imageActions )
         if ( action ) action->setEnabled(hasImage);
+    // If the polygon button is in "Update" mode, keep it disabled until actual
+    // changes exist — don't let the blanket setEnabled(true) above override it.
+    if ( m_polygonAction
+         && m_polygonAction->text() == tr("Update polygon layer")
+         && hasImage )
+        m_polygonAction->setEnabled(false);
     // Disable the entire paint toolbar so Color, Size and Hardness widgets
     // (which are not QActions and cannot be reached individually) are grayed out.
     if ( m_editToolbar ) m_editToolbar->setEnabled(hasImage);
@@ -3206,16 +3232,13 @@ void MainWindow::createActions()
     connect(m_lassoAction, &QAction::toggled, this, &MainWindow::updateButtonState);
 
     m_polygonAction = new QAction("Create new polygon", this);
-    m_polygonAction->setCheckable(true);
     m_polygonAction->setToolTip(
-        "<b>Create new polygon</b><br>"
-        "Start placing vertices to build a new polygon. Click to add each point; "
-        "press Escape to close and finish the shape.");
-    connect(m_polygonAction, &QAction::toggled, m_imageView, &ImageView::setPolygonEnabled);
-    connect(m_polygonAction, &QAction::toggled, this, &MainWindow::updatePolygonEnabledState);
-    connect(m_polygonAction, &QAction::toggled, this, [this](bool on){
-        if ( on ) showMessage(tr("To draw a closed polygon click to place points. Press Escape to finish the shape."));
-    });
+        "<b>Create new polygon / Create new polygon layer</b><br>"
+        "When idle: start placing vertices to build a new polygon. Click to add each point; "
+        "press Escape to close and finish the shape.<br>"
+        "After drawing: cut the region enclosed by the polygon out of the base image and "
+        "place it on a new layer.");
+    connect(m_polygonAction, &QAction::triggered, this, &MainWindow::onPolygonActionTriggered);
     
     // mask image actions
     m_createMaskImageAction = new QAction("Create new class", this);
@@ -4308,6 +4331,9 @@ void MainWindow::createToolbars()
     // ============================================================
     m_polygonToolbar = addToolBar(tr("Polygon"));
     m_polygonToolbar->installEventFilter(this);
+    // App-level filter so Tab always reaches ImageView::keyPressEvent for layer
+    // cycling, regardless of which widget currently holds keyboard focus.
+    qApp->installEventFilter(this);
     m_polygonToolbar->setVisible(false);
     
     // --- Polygon selection stuff ---
@@ -4389,22 +4415,29 @@ void MainWindow::createToolbars()
     connect(polygonRedoAction, &QAction::triggered, m_imageView, &ImageView::redoPolygonOperation);
     m_polygonToolbar->addAction(polygonRedoAction);
 
-    m_polygonCreateLayerAction = new QAction(tr("Create new polygon layer"), this);
-    m_polygonCreateLayerAction->setToolTip(
-        "<b>Create new polygon layer</b><br>"
-        "Cut the region enclosed by the current polygon out of the base image and place it "
-        "on a new layer. The button switches to \"Update polygon layer\" once a layer exists.");
-    connect(m_polygonCreateLayerAction, &QAction::triggered, m_imageView, &ImageView::createPolygonLayer);
     connect(m_imageView, &ImageView::polygonHasLayer, this, [this](bool hasLayer){
-        m_polygonCreateLayerAction->setText(
-            hasLayer ? tr("Update polygon layer") : tr("Create new polygon layer"));
-        if ( !hasLayer )
-            m_polygonCreateLayerAction->setEnabled(true);
+        if ( m_polygonAction ) {
+            if ( hasLayer ) {
+                m_polygonAction->setText(tr("Update polygon layer"));
+                m_polygonAction->setEnabled(false); // enabled only when changes exist (polygonNeedsUpdate)
+            } else {
+                // Only update text when already in layer mode — not during initial reset
+                const QString cur = m_polygonAction->text();
+                if ( cur == tr("Update polygon layer") || cur == tr("Create new polygon layer") )
+                    m_polygonAction->setText(tr("Create new polygon layer"));
+                m_polygonAction->setEnabled(true);
+            }
+        }
         if ( hasLayer )
             extendPolygonComboBox();
     });
     connect(m_imageView, &ImageView::polygonNeedsUpdate, this, [this](bool needsUpdate){
-        m_polygonCreateLayerAction->setEnabled(needsUpdate);
+        if ( m_polygonAction ) {
+            const QString text = m_polygonAction->text();
+            const bool isLayerMode = (text == tr("Create new polygon layer") || text == tr("Update polygon layer"));
+            if ( isLayerMode )
+                m_polygonAction->setEnabled(needsUpdate);
+        }
         if ( needsUpdate ) {
             const int cutLayerId = m_imageView->getActiveCutLayerId();
             // Collect rows (stack index + 1) of every command that represents the current
@@ -4430,7 +4463,6 @@ void MainWindow::createToolbars()
         }
         if ( m_undoView ) m_undoView->viewport()->update();
     });
-    m_polygonToolbar->addAction(m_polygonCreateLayerAction);
 
     updateImageDependentActions();
   }
@@ -4735,11 +4767,12 @@ void MainWindow::setPolygonOperationMode( int mode )
   qCDebug(logEditor) << "MainWindow::setPolygonOperationMode(): mode =" << mode;
   {
     if ( mode == -1 ) {
-     m_polygonCreateLayerAction->setEnabled(false);
+     m_polygonAction->setText(tr("Create new polygon"));
      m_polygonAction->setEnabled(true);
     } else if ( mode == -2 ) {
-     m_polygonCreateLayerAction->setEnabled(true);
-     m_polygonAction->setEnabled(false);
+     // In "Update polygon layer" mode, enabling is deferred to polygonNeedsUpdate(true).
+     if ( m_polygonAction->text() != tr("Update polygon layer") )
+         m_polygonAction->setEnabled(true);
     } else if ( mode == -3 ) {
      if ( m_polygonOperationItem ) m_polygonOperationItem->setEnabled(false);
     } else if ( mode == -4 ) {
@@ -4748,6 +4781,26 @@ void MainWindow::setPolygonOperationMode( int mode )
      m_polygonOperationItem->setCurrentIndex(mode-10);
     }
   }
+}
+
+void MainWindow::setPolygonActionText( const QString& text )
+{
+    if ( m_polygonAction )
+        m_polygonAction->setText(text);
+}
+
+void MainWindow::onPolygonActionTriggered()
+{
+    if ( !m_polygonAction || !m_imageView ) return;
+    const QString text = m_polygonAction->text();
+    if ( text == tr("Create new polygon") ) {
+        m_imageView->setPolygonEnabled(true);
+        showMessage(tr("To draw a closed polygon click to place points. Press Escape to finish the shape."));
+    } else if ( text == tr("End polygon drawing") ) {
+        m_imageView->setPolygonEnabled(false);
+    } else {
+        m_imageView->createPolygonLayer();
+    }
 }
 
 void MainWindow::setMainOperationMode( MainOperationMode mode )

@@ -71,6 +71,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     int activePolygon( const QString& polygonName );
     void setLayerOperationMode( int mode, bool updateMode = true );
     void setPolygonOperationMode( int mode );
+    void setPolygonActionText( const QString& text );
     void setSelectedLayer( int caller, const QString &name, bool forcedEnabled = false );
     
     // --- override methods ---
@@ -126,6 +127,7 @@ class MainWindow : public QMainWindow, public IMainSystem
     void updateButtonState();
     void updateControlButtonState();
     void updatePolygonEnabledState( bool isToggled );
+    void onPolygonActionTriggered();
 
  private:
 

@@ -58,6 +58,7 @@
 
 #include "gui/MainWindow.h"
 #include "core/version.h"
+#include "core/build_number.h"
 
 #include <tiffvers.h>
 #ifdef HASHDF5
@@ -518,7 +519,8 @@ static void printAuthors()
 static void printBuildInfo()
 {
     const QString localVer = APP_VERSION;
-    std::cout << "ImageEditor " << localVer.toStdString() << std::endl;
+    std::cout << "ImageEditor " << localVer.toStdString()
+              << " (build " << APP_BUILD_STRING << ")" << std::endl;
     std::cout << "  Qt:              " << QT_VERSION_STR << std::endl;
 #ifdef TIFFLIB_VERSION_STR_MAJ_MIN_MIC
     std::cout << "  BigTIFF support: yes (libtiff " << TIFFLIB_VERSION_STR_MAJ_MIN_MIC << ")" << std::endl;
@@ -671,10 +673,23 @@ static void printGpuInfo()
     const GpuInfo info = GpuInfo::query();
     if ( !info.available ) {
         std::cout << "  GPU:             not available (no OpenGL context)" << std::endl;
-        return;
+    } else {
+        std::cout << "  GPU:             " << info.renderer.toStdString()
+                  << " (" << info.type.toStdString() << ")" << std::endl;
+        std::cout << "  GPU vendor:      " << info.vendor.toStdString() << std::endl;
+        std::cout << "  OpenGL version:  " << info.version.toStdString() << std::endl;
     }
-    std::cout << "  GPU:             " << info.terminalSummary().toStdString() << std::endl;
-    std::cout << "  GPU driver:      " << info.version.toStdString() << std::endl;
+#ifdef Q_OS_LINUX
+    std::cout << "  Display render:  "
+              << ( info.available ? "OpenGL (QOpenGLWidget viewport)"
+                                  : "software (OpenGL unavailable, fallback to QPainter)" )
+              << std::endl;
+#else
+    std::cout << "  Display render:  software (QPainter; OpenGL viewport on Linux only)" << std::endl;
+#endif
+    std::cout << "  Cage warp GPU:   "
+              << ( Config::gpuCageWarpProcessing ? "enabled" : "disabled" )
+              << std::endl;
 }
 
 static void printAbout( int argc, char* argv[] )

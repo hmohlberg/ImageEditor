@@ -67,6 +67,26 @@ configure_file(
     "${CMAKE_BINARY_DIR}/core/version.h"
 )
 include_directories("${CMAKE_BINARY_DIR}")
+
+# Build-number header:
+#   add_custom_command(OUTPUT) — runs during make (before compilation) whenever
+#     build_number.txt or GenerateBuildNumber.cmake changes, or the header is missing.
+#   POST_BUILD — increments the local counter after a successful link.
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/core")
+set(_build_number_h "${CMAKE_BINARY_DIR}/core/build_number.h")
+add_custom_command(
+    OUTPUT  "${_build_number_h}"
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DBINARY_DIR=${CMAKE_BINARY_DIR}
+        -DMODE=init
+        -P "${CMAKE_SOURCE_DIR}/cmake/GenerateBuildNumber.cmake"
+    DEPENDS "${CMAKE_SOURCE_DIR}/build_number.txt"
+            "${CMAKE_SOURCE_DIR}/cmake/GenerateBuildNumber.cmake"
+    COMMENT "Generating build_number.h"
+    VERBATIM
+)
+add_custom_target(GenerateBuildNumber DEPENDS "${_build_number_h}")
 option(WITH_TIFF "Enable BigTIFF support via libtiff" ON)
 option(WITH_HDF5 "Enable HDF5 support" ON)
 option(BUILD_MACOS_BUNDLE "Build macOS .app bundle for distribution (requires icons/AppIcon.icns)" OFF)
@@ -263,6 +283,18 @@ qt_standard_project_setup()
 qt_add_executable(${PROJECT_NAME}
    ${SOURCES}
    resources.qrc
+)
+
+add_dependencies(${PROJECT_NAME} GenerateBuildNumber)
+
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DBINARY_DIR=${CMAKE_BINARY_DIR}
+        -DMODE=post_build
+        -P "${CMAKE_SOURCE_DIR}/cmake/GenerateBuildNumber.cmake"
+    COMMENT "Updating build number after link"
+    VERBATIM
 )
 
 if(APPLE AND BUILD_MACOS_BUNDLE)
