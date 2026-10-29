@@ -43,6 +43,7 @@
 #include "../undo/MoveLayerCommand.h"
 #include "../undo/TransformLayerCommand.h"
 
+#include <algorithm>
 #include "../util/GeometryUtils.h"
 #include "../util/QUndoSortDialog.h"
 #include "../util/QImageUtils.h"
@@ -883,7 +884,12 @@ void ImageView::setSelectedLayer( int caller, const QString &name )
 {
   qCDebug(logEditor) << "ImageView::setSelectedLayer(" << caller << "): name =" << name;
   {
-    if ( m_selectedLayer == nullptr || !m_selectedLayer->name().endsWith(name) ) {
+    // Guard: m_selectedLayer may be null (cleared by clearLayers) or stale after an
+    // image reload — only call name() when the pointer is known to be in m_layers.
+    const bool selectedIsKnown = m_selectedLayer &&
+        std::any_of(m_layers.begin(), m_layers.end(),
+                    [this](const Layer* l){ return l && l->m_item == m_selectedLayer; });
+    if ( !selectedIsKnown || !m_selectedLayer->name().endsWith(name) ) {
       clearLayerColorEffects();
     }
     clearLayerSelection();
@@ -2279,6 +2285,19 @@ LayerItem* ImageView::baseLayer()
 
 void ImageView::clearLayers()
 {
+    // Null all raw LayerItem pointers before freeing the objects so that any
+    // slot or signal triggered during or after deletion (e.g. indexChanged →
+    // setSelectedLayer) cannot dereference a freed pointer.
+    m_selectedLayer       = nullptr;
+    m_selectedCageLayer   = nullptr;
+    m_paintLayer          = nullptr;
+    m_pivotDragLayer      = nullptr;
+    m_pivotTranslateLayer = nullptr;
+    m_pivotHoveredLayer   = nullptr;
+    m_activePolygonItem   = nullptr;
+    m_maskItem            = nullptr;
+    m_selectedLayers.clear();
+
     qDeleteAll(m_layers);
     m_layers.clear();
 }
