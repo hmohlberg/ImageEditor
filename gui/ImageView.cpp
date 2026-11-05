@@ -189,12 +189,13 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
         }
         setLayerOperationMode(LayerItem::OperationMode::Translate);
       }
+      const QUndoCommand* justFinishedCommand = ( currentIndex > 0 )
+          ? m_undoStack->command(currentIndex - 1) : nullptr;
       if ( currentIndex == 0 ) {
         if ( auto *ms = IMainSystem::instance() ) {
           IMainSystem::instance()->showMessage(QString("Initial state"));
         }
       } else if ( currentIndex > 0 ) {
-        const QUndoCommand* justFinishedCommand = m_undoStack->command(currentIndex - 1);
         if ( justFinishedCommand != nullptr ) {
           qCDebug(logEditor) << "Just finished command :" << justFinishedCommand->text() << ", currentIndex =" << currentIndex;
           if ( currentIndex > 1 ) {
@@ -323,7 +324,13 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
       // indexChanged with index 0 while the scene is already being torn down).
       // Also skip during bulk project loading (setUpdatesEnabled(false) is set then)
       // to avoid O(N × layers × pixels) LUT passes — loadProject() calls it once at the end.
-      if ( m_scene && !m_scene->items().isEmpty() && updatesEnabled() && !m_suppressIndexChangedAdjustments )
+      // Move and pivot commands only change position/pivot, never pixel data, so
+      // the full LUT + interpolation pass is unnecessary and expensive on weak hardware.
+      const bool pixelContentUnchanged = justFinishedCommand && (
+          justFinishedCommand->text().startsWith("Move Layer") ||
+          justFinishedCommand->text().startsWith("Set Rotation Pivot") );
+      if ( m_scene && !m_scene->items().isEmpty() && updatesEnabled()
+           && !m_suppressIndexChangedAdjustments && !pixelContentUnchanged )
           applyDisplayAdjustments();
       m_lastIndex = currentIndex;
     });
@@ -1473,11 +1480,15 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
     QPointF scenePos = mapToScene(event->pos());
     m_cursorPos = scenePos;
 
+    if ( m_crosshairVisible && m_mouseInCanvas )
+        viewport()->update();
+
     emit cursorPositionChanged(int(scenePos.x()), int(scenePos.y()));
     emit scaleChanged(transform().m11());
 
-    // --- Cursor-Farbe unter Maus ---
+    // --- Cursor-Farbe unter Maus (nur wenn keine Maustaste gedrückt ist) ---
     bool colorFound = false;
+    if ( !(event->buttons() & Qt::LeftButton) && !(event->buttons() & Qt::RightButton) ) {
     auto itemsUnderCursor = scene()->items(scenePos);
     for ( auto* item : itemsUnderCursor ) {
         auto* layer = dynamic_cast<LayerItem*>(item);
@@ -1492,6 +1503,7 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
     }
     if ( !colorFound )
         emit cursorColorChanged(Qt::transparent);
+    } // end no-button guard
 
     // --- Shift-Pan: nur wenn Shift gedr?ckt & linke Maustaste ---
     // std::cout << "shift-pan: processing: shift=" << (event->modifiers() & Qt::ShiftModifier) << "..." << std::endl;
@@ -1599,7 +1611,6 @@ void ImageView::mouseMoveEvent( QMouseEvent* event )
     
     // --- Letzte Mausposition merken ---
     m_lastMousePos = event->pos();
-    viewport()->update();
 
     // --- Pivot hover: turn pivot marker yellow when cursor is near it ---
     if ( !(event->buttons() & Qt::LeftButton) ) {
