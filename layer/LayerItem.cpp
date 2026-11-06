@@ -954,20 +954,46 @@ QImage LayerItem::applyCageWarp( const QString &caller )
     if ( ptIdx >= 0 && dcols > 0 && drows > 0 ) {
       const int drow = ptIdx / dcols;
       const int dcol = ptIdx % dcols;
+      // Determine which quads are geometrically affected by this point.
+      // The full warp image is always recomputed, but only these quads have
+      // changed pixel content relative to the previous state.
+      //
+      // Bilinear (CPU TriangleWarp + GPU bilinear): displacement inside a cell
+      // depends only on its 4 corner nodes → only the ≤4 directly adjacent quads.
+      //
+      // Catmull-Rom (GPU path): uses a 4×4 stencil (baseX-1..baseX+2, baseY-1..baseY+2).
+      // A quad at (r,c) is in the stencil of point (pr,pc) when
+      //   pc-2 ≤ c ≤ pc+1  AND  pr-2 ≤ r ≤ pr+1  → up to a 3×3 block of quads.
+      const bool catmullRom = (Config::gpuCageWarpProcessing || EditorStyle::instance().useGPU())
+                              && EditorStyle::instance().gpuCatmullRom();
       QString quads;
-      if (drow < drows-1 && dcol < dcols-1) quads += QString("(%1,%2) ").arg(drow  ).arg(dcol  );
-      if (drow < drows-1 && dcol > 0)       quads += QString("(%1,%2) ").arg(drow  ).arg(dcol-1);
-      if (drow > 0       && dcol > 0)       quads += QString("(%1,%2) ").arg(drow-1).arg(dcol-1);
-      if (drow > 0       && dcol < dcols-1) quads += QString("(%1,%2) ").arg(drow-1).arg(dcol  );
-      qDebug().noquote() << QString("applyCageWarp: point %1 grid(%2,%3) in %4x%5 grid  updated quads (row,col): %6")
-                                .arg(ptIdx).arg(drow).arg(dcol).arg(dcols).arg(drows).arg(quads.trimmed());
+      if ( catmullRom ) {
+        const int rMin = qMax(0,       drow - 2);
+        const int rMax = qMin(drows-2, drow + 1);
+        const int cMin = qMax(0,       dcol - 2);
+        const int cMax = qMin(dcols-2, dcol + 1);
+        for (int r = rMin; r <= rMax; ++r)
+          for (int c = cMin; c <= cMax; ++c)
+            quads += QString("(%1,%2) ").arg(r).arg(c);
+      } else {
+        // Bilinear: 4 directly adjacent quads
+        if (drow < drows-1 && dcol < dcols-1) quads += QString("(%1,%2) ").arg(drow  ).arg(dcol  );
+        if (drow < drows-1 && dcol > 0)       quads += QString("(%1,%2) ").arg(drow  ).arg(dcol-1);
+        if (drow > 0       && dcol > 0)       quads += QString("(%1,%2) ").arg(drow-1).arg(dcol-1);
+        if (drow > 0       && dcol < dcols-1) quads += QString("(%1,%2) ").arg(drow-1).arg(dcol  );
+      }
+      qDebug().noquote() << QString("applyCageWarp: point %1 grid(%2,%3) in %4x%5 grid  "
+                                    "affected quads [%6] (row,col): %7")
+                                .arg(ptIdx).arg(drow).arg(dcol).arg(dcols).arg(drows)
+                                .arg(catmullRom ? "CatmullRom" : "Bilinear")
+                                .arg(quads.trimmed());
     }
   }
   {
     // Fast path: use a pre-computed warped image cached from JSON (avoids recomputing on project load).
     // In batch mode (m_nogui) the layer image comes from the batch input, so the cache from a
     // previous GUI session would have the wrong pixel values — always recompute there.
-    if (!m_pendingCacheImage.isNull() && !m_nogui) {
+    if ( !m_pendingCacheImage.isNull() && !m_nogui ) {
       QImage cached = m_pendingCacheImage;
       m_pendingCacheImage = QImage();
       m_cageMesh.setActiveCagePointId(-1);
@@ -993,37 +1019,71 @@ QImage LayerItem::applyCageWarp( const QString &caller )
       if  ( m_cageWarpRenderer == nullptr ) {
         m_cageWarpRenderer = new CageWarpRenderer();
         m_cageWarpRenderer->setSourceImage(m_cageMesh.image());
+        // Fix output rect to the layer image bounds so partial updates stay size-consistent.
+        const QSize imgSize = m_cageMesh.image().size();
+        m_cageWarpRenderer->setFixedOutputRect(QRectF(0, 0, imgSize.width(), imgSize.height()));
       }
       m_cageWarpRenderer->setGridSize(m_cageMesh.cols(), m_cageMesh.rows());
       CageWarpRenderer::WarpOptions options;
-      options.cageInterpolation = EditorStyle::instance().gpuCatmullRom()
+      const bool catmullRomMode = EditorStyle::instance().gpuCatmullRom();
+      options.cageInterpolation = catmullRomMode
           ? CageWarpRenderer::CageInterpolation::CatmullRom
           : CageWarpRenderer::CageInterpolation::Bilinear;
       options.inverseMapping = CageWarpRenderer::InverseMapping::Newton;
       options.inverseIterations = 10;
-      QImage warped = m_cageWarpRenderer->warp(m_cageMesh.points(),nullptr,options);
+
+      // Build dirty-quad list for partial rendering.
+      // ptIdx was captured in the debug-output section above (activeCagePointId()).
+      const int ptIdxForPartial = m_cageMesh.activeCagePointId();
+      QVector<int> dirtyQuadIndices;
+      if ( ptIdxForPartial >= 0 ) {
+        const int dcols = m_cageMesh.cols();
+        const int drows = m_cageMesh.rows();
+        const int drow  = ptIdxForPartial / dcols;
+        const int dcol  = ptIdxForPartial % dcols;
+        if ( catmullRomMode ) {
+          for (int r = qMax(0, drow - 2); r <= qMin(drows - 2, drow + 1); ++r)
+            for (int c = qMax(0, dcol - 2); c <= qMin(dcols - 2, dcol + 1); ++c)
+              dirtyQuadIndices.append(r * dcols + c);
+        } else {
+          if (drow < drows-1 && dcol < dcols-1) dirtyQuadIndices.append( drow    * dcols + dcol    );
+          if (drow < drows-1 && dcol > 0)       dirtyQuadIndices.append( drow    * dcols + dcol - 1);
+          if (drow > 0       && dcol > 0)       dirtyQuadIndices.append((drow-1) * dcols + dcol - 1);
+          if (drow > 0       && dcol < dcols-1) dirtyQuadIndices.append((drow-1) * dcols + dcol    );
+        }
+      }
+
+      // Try partial warp (falls back automatically to null when preconditions fail).
+      QImage warped = m_cageWarpRenderer->warpPartial(
+          m_cageMesh.points(), dirtyQuadIndices,
+          m_partialWarpBase, m_partialWarpPrevPoints,
+          nullptr, options);
+
+      if ( warped.isNull() ) {
+        // Fall back to full warp (first commit, no base yet, or partial precondition failed).
+        warped = m_cageWarpRenderer->warp(m_cageMesh.points(), nullptr, options);
+      }
 
       // The GPU inverse-field warp processes the entire output bounding box, which can
       // produce opaque output in areas that are transparent in the source (alpha=0).
       // Apply a CPU alpha mask using the cage mesh forward mapping — same approach as
       // TriangleWarp — to restore correct transparency.
-      if (!warped.isNull()) {
+      if ( !warped.isNull() ) {
         warped = warped.convertToFormat(QImage::Format_ARGB32);
         const QImage srcA = m_cageMesh.image().convertToFormat(QImage::Format_ARGB32);
         const QVector<QPointF>& pts = m_cageMesh.points();
         const int gcols = m_cageMesh.cols();
         const int grows = m_cageMesh.rows();
-        if (!srcA.isNull() && pts.size() == gcols * grows && gcols >= 2 && grows >= 2) {
+        if ( !srcA.isNull() && pts.size() == gcols * grows && gcols >= 2 && grows >= 2 ) {
           // Compute output origin = bounding box min of all warped cage points
           double minX = pts[0].x(), minY = pts[0].y();
           for (const QPointF& p : pts) { minX = qMin(minX, p.x()); minY = qMin(minY, p.y()); }
           const QPointF origin(std::floor(minX), std::floor(minY));
           const double srcW = srcA.width(), srcH = srcA.height();
-
           // Build alpha mask by scanning each cage cell in output (target) space
           QVector<bool> alphaMask(warped.width() * warped.height(), false);
-          for (int cy = 0; cy + 1 < grows; ++cy) {
-            for (int cx = 0; cx + 1 < gcols; ++cx) {
+          for ( int cy = 0; cy + 1 < grows; ++cy ) {
+            for ( int cx = 0; cx + 1 < gcols; ++cx ) {
               const QVector<QPointF> dstQuad = {
                 pts[ cy      * gcols + cx    ] - origin,
                 pts[ cy      * gcols + cx + 1] - origin,
@@ -1041,7 +1101,7 @@ QImage LayerItem::applyCageWarp( const QString &caller )
               const int yMax = qMin(warped.height()-1, int(bbox.bottom()) + 1);
               const int xMin = qMax(0,                 int(bbox.left()));
               const int xMax = qMin(warped.width()-1,  int(bbox.right())  + 1);
-              for (int py = yMin; py <= yMax; ++py) {
+              for ( int py = yMin; py <= yMax; ++py ) {
                 QPointF start(-1, -1);
                 for (int px = xMin; px <= xMax; ++px) {
                   const QPointF p(px, py);
@@ -1050,25 +1110,30 @@ QImage LayerItem::applyCageWarp( const QString &caller )
                   const QPointF srcP = GeometryUtils::barycentric(p, dstQuad, srcQuad, &cnt, start);
                   const int sx = qBound(0, int(srcP.x()), srcA.width()  - 1);
                   const int sy = qBound(0, int(srcP.y()), srcA.height() - 1);
-                  if (qAlpha(srcA.pixel(sx, sy)) > 0)
+                  if ( qAlpha(srcA.pixel(sx, sy)) > 0 )
                     alphaMask[py * warped.width() + px] = true;
                 }
               }
             }
           }
+          
           // Zero out pixels not covered by the alpha mask
-          for (int py = 0; py < warped.height(); ++py) {
+          for ( int py = 0; py < warped.height(); ++py ) {
+            int pyww = py * warped.width();
             QRgb* row = reinterpret_cast<QRgb*>(warped.scanLine(py));
-            for (int px = 0; px < warped.width(); ++px) {
-              if (!alphaMask[py * warped.width() + px])
+            for ( int px = 0; px < warped.width(); ++px ) {
+              if ( !alphaMask[pyww + px] )
                 row[px] = qRgba(0, 0, 0, 0);
             }
           }
         }
       }
+      // Update partial warp state so the NEXT commit can do a partial update.
+      m_partialWarpBase       = warped;
+      m_partialWarpPrevPoints = m_cageMesh.points();
 
       setOffset(QPointF(0, 0));   // reset pixmap offset accumulated during drag normalization
-      if (!m_suppressPixmapUpdate) {
+      if ( !m_suppressPixmapUpdate ) {
         setPixmap(QPixmap::fromImage(warped));
         if (m_redOverlay) setRedOverlay(true);  // rebuild overlay from new pixmap
       }
@@ -1084,7 +1149,7 @@ QImage LayerItem::applyCageWarp( const QString &caller )
        m_cageMesh.setOffset(0,0);   // CLAUDE reset after each drawing
        if ( !warped.image.isNull() ) {
         setOffset(QPointF(0, 0));   // reset pixmap offset accumulated during drag normalization
-        if (!m_suppressPixmapUpdate) {
+        if ( !m_suppressPixmapUpdate ) {
           setPixmap(QPixmap::fromImage(warped.image));
           if (m_redOverlay) setRedOverlay(true);  // rebuild overlay from new pixmap
         }
@@ -1113,6 +1178,9 @@ void LayerItem::enableCage( int cols, int rows )
     const bool firstInit = !m_cageMesh.isInitialized();
     m_cageMesh.create(boundingRect(), ncols, nrows);
     m_cageMesh.setImage(m_image);
+    // Grid changed → partial warp state from old grid is incompatible; discard it.
+    m_partialWarpBase = QImage();
+    m_partialWarpPrevPoints.clear();
     // On first activation: save the uniform grid and the pre-warp image so Reset can fully undo all warps.
     if (firstInit && m_cageInitialImage.isNull()) {
         m_cageInitialImage   = m_originalImage;
@@ -1121,6 +1189,9 @@ void LayerItem::enableCage( int cols, int rows )
         m_cageInitialCols    = ncols;
         m_cageInitialRows    = nrows;
         m_cageInitialPos     = pos();
+        // Seed partial warp: the "previous full result" before any warp is the original image.
+        m_partialWarpBase       = m_originalImage;
+        m_partialWarpPrevPoints = m_cageMesh.originalPoints();
     }
     m_cageEnabled = true;     
     if ( !scene() )
@@ -1426,6 +1497,9 @@ void LayerItem::resetCageToPixmap()
         m_cageMesh.setImage(m_cageInitialImage);
         if (!m_suppressPixmapUpdate)
             setPixmap(QPixmap::fromImage(m_cageInitialImage));
+        // Reset partial warp base to the pre-warp state.
+        m_partialWarpBase       = m_cageInitialImage;
+        m_partialWarpPrevPoints = m_cageInitialPts;
     }
     if ( m_cageInitialCols > 0 ) {
         // Restore the cage to the uniform grid saved at enableCage() time.

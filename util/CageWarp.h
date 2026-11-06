@@ -249,6 +249,43 @@ class CageWarpRenderer
         return warpInverseFieldCurrent(warpedGridPoints, outputOrigin, options);
     }
 
+    // Partial warp: re-renders only the region covered by dirtyQuadIndices,
+    // compositing with baseImage (the previous full-warp result) for all other pixels.
+    // dirtyQuadIndices: flat quad index = row * gridColumns + col.
+    // prevPoints: cage points that produced baseImage (determines the stale dirty region).
+    // Falls back to full warp when preconditions are not met (returns QImage() on error).
+    QImage warpPartial(
+        const QVector<QPointF>& warpedGridPoints,
+        const QVector<int>&     dirtyQuadIndices,
+        const QImage&           baseImage,
+        const QVector<QPointF>& prevPoints,
+        QPointF*                outputOrigin = nullptr,
+        const WarpOptions&      options = WarpOptions()
+    ) {
+        // Preconditions for partial update
+        if (!m_hasFixedOutputRect || dirtyQuadIndices.isEmpty()
+            || baseImage.isNull()
+            || prevPoints.size() != warpedGridPoints.size()
+            || warpedGridPoints.size() != m_gridColumns * m_gridRows)
+            return QImage();
+
+        if (!initialize() || !m_imageTexture || m_gridColumns < 2 || m_gridRows < 2 || !m_cageTexture)
+            return QImage();
+
+        ScopedCurrent current(*this);
+        if (!current) return QImage();
+
+        // Dirty rect = union of prev and current quad-corner positions + margin for subdivisions
+        QRectF dirtyRect = computeDirtyRect(warpedGridPoints, prevPoints, dirtyQuadIndices);
+        if (!dirtyRect.isValid()) return QImage();
+        const double margin = double(std::max(1, std::min(options.meshSubdivisions, 64))) * 2.0 + 4.0;
+        dirtyRect.adjust(-margin, -margin, margin, margin);
+
+        if (options.backend == WarpBackend::RasterizedMesh)
+            return warpPartialRasterizedMeshCurrent(warpedGridPoints, dirtyRect, baseImage, outputOrigin, options);
+        return warpPartialInverseFieldCurrent(warpedGridPoints, dirtyRect, baseImage, outputOrigin, options);
+    }
+
   private:
   
     class ScopedCurrent {
@@ -906,6 +943,231 @@ class CageWarpRenderer
         QOpenGLFramebufferObjectFormat format;
         format.setInternalTextureFormat(GL_RGBA8);
         m_fbo = std::make_unique<QOpenGLFramebufferObject>(width, height, format);
+    }
+
+    // -------------------------------------------------------------------------
+    // Partial-warp helpers
+    // -------------------------------------------------------------------------
+
+    // Bounding rect of the specified quad-corner points (from both cage states).
+    // dirtyQuadIndices: flat index row*m_gridColumns+col for each dirty quad.
+    QRectF computeDirtyRect(
+        const QVector<QPointF>& pts1,
+        const QVector<QPointF>& pts2,
+        const QVector<int>&     dirtyQuadIndices
+    ) const
+    {
+        double minX = std::numeric_limits<double>::max();
+        double minY = std::numeric_limits<double>::max();
+        double maxX = -std::numeric_limits<double>::max();
+        double maxY = -std::numeric_limits<double>::max();
+        const QVector<QPointF>* psets[2] = { &pts1, &pts2 };
+        for (const QVector<QPointF>* pts : psets) {
+            for (int qi : dirtyQuadIndices) {
+                const int r = qi / m_gridColumns;
+                const int c = qi % m_gridColumns;
+                for (int dr = 0; dr <= 1; ++dr) {
+                    for (int dc = 0; dc <= 1; ++dc) {
+                        const int pi = (r + dr) * m_gridColumns + (c + dc);
+                        if (pi >= 0 && pi < pts->size()) {
+                            minX = std::min(minX, (*pts)[pi].x());
+                            minY = std::min(minY, (*pts)[pi].y());
+                            maxX = std::max(maxX, (*pts)[pi].x());
+                            maxY = std::max(maxY, (*pts)[pi].y());
+                        }
+                    }
+                }
+            }
+        }
+        if (minX > maxX) return QRectF();
+        return QRectF(QPointF(minX, minY), QPointF(maxX, maxY));
+    }
+
+    // Upload baseImage into the FBO's colour-attachment texture.
+    // MUST be called BEFORE m_fbo is bound to avoid a GL feedback loop.
+    void uploadBaseImageToFbo(const QImage& baseImage, int outW, int outH)
+    {
+        QImage img = baseImage.convertToFormat(QImage::Format_RGBA8888);
+        if (img.width() != outW || img.height() != outH)
+            img = img.scaled(outW, outH);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+        img = img.flipped(Qt::Vertical);
+#else
+        img = img.mirrored(false, true);
+#endif
+        m_gl->glBindTexture(GL_TEXTURE_2D, m_fbo->texture());
+        m_gl->glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, outW, outH,
+                              GL_RGBA, GL_UNSIGNED_BYTE, img.constBits());
+        m_gl->glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    // Shared scissor-rect computation (image → GL y-flip).
+    struct ScissorRect { int x, y, w, h; bool valid; };
+    ScissorRect imageRectToScissor(const QRectF& imageRect, int outX, int outY,
+                                    int outW, int outH) const
+    {
+        const QRectF clipped = imageRect.intersected(QRectF(outX, outY, outW, outH));
+        if (!clipped.isValid()) return {0,0,0,0,false};
+        const int sX = int(std::floor(clipped.left()   - outX));
+        const int sY = int(std::floor(clipped.top()    - outY));
+        const int sW = std::max(1, int(std::ceil(clipped.right()   - outX)) - sX);
+        const int sH = std::max(1, int(std::ceil(clipped.bottom()  - outY)) - sY);
+        const int glX = qMax(0, sX);
+        const int glW = qMin(outW - glX, sW);
+        const int glY = qMax(0, outH - sY - sH);  // y-flip: GL origin at bottom
+        const int glH = qMin(outH - glY, sH);
+        return {glX, glY, glW, glH, glW > 0 && glH > 0};
+    }
+
+    // Partial rasterized-mesh warp: upload base, scissor-clear dirty rect, render full mesh.
+    // Fragments outside the scissor rect keep the base image pixel (no recompute).
+    QImage warpPartialRasterizedMeshCurrent(
+        const QVector<QPointF>& warpedGridPoints,
+        const QRectF&           dirtyRect,
+        const QImage&           baseImage,
+        QPointF*                outputOrigin,
+        const WarpOptions&      options)
+    {
+        int outX, outY, outW, outH;
+        outputRectToInts(m_fixedOutputRect, outX, outY, outW, outH);
+        if (outputOrigin) *outputOrigin = QPointF(outX, outY);
+
+        ensureFbo(outW, outH);
+        if (!m_fbo || !m_fbo->isValid()) return QImage();
+
+        const ScissorRect sc = imageRectToScissor(dirtyRect, outX, outY, outW, outH);
+        if (!sc.valid) return baseImage;
+
+        // Load base into FBO texture before binding the FBO (avoid feedback loop).
+        uploadBaseImageToFbo(baseImage, outW, outH);
+
+        const MeshBuild mesh = buildRasterizedMesh(warpedGridPoints, options);
+
+        GLint oldFbo = 0, oldVp[4] = {}, oldSc[4] = {};
+        const GLboolean scissorWas = m_gl->glIsEnabled(GL_SCISSOR_TEST);
+        const GLboolean depthWas   = m_gl->glIsEnabled(GL_DEPTH_TEST);
+        const GLboolean cullWas    = m_gl->glIsEnabled(GL_CULL_FACE);
+        const GLboolean blendWas   = m_gl->glIsEnabled(GL_BLEND);
+        m_gl->glGetIntegerv(GL_FRAMEBUFFER_BINDING, &oldFbo);
+        m_gl->glGetIntegerv(GL_VIEWPORT, oldVp);
+        if (scissorWas) m_gl->glGetIntegerv(GL_SCISSOR_BOX, oldSc);
+
+        m_fbo->bind();
+        m_gl->glViewport(0, 0, outW, outH);
+        m_gl->glDisable(GL_DEPTH_TEST);
+        m_gl->glDisable(GL_CULL_FACE);
+        m_gl->glDisable(GL_BLEND);
+        m_gl->glEnable(GL_SCISSOR_TEST);
+        m_gl->glScissor(sc.x, sc.y, sc.w, sc.h);
+        m_gl->glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        m_gl->glClear(GL_COLOR_BUFFER_BIT);  // clears only inside scissor rect
+
+        m_meshProgram->bind();
+        m_meshProgram->setUniformValue("uImage", 0);
+        m_meshProgram->setUniformValue("uOutputSize",   float(outW), float(outH));
+        m_meshProgram->setUniformValue("uOutputOrigin", float(outX), float(outY));
+        m_imageTexture->bind(0);
+        m_meshVao.bind();
+        m_meshVbo.bind();
+        m_meshVbo.allocate(mesh.vertices.data(), int(mesh.vertices.size() * sizeof(MeshVertex)));
+        m_meshIbo.bind();
+        m_meshIbo.allocate(mesh.indices.data(), int(mesh.indices.size() * sizeof(GLuint)));
+        m_meshProgram->enableAttributeArray(0);
+        m_meshProgram->enableAttributeArray(1);
+        m_meshProgram->setAttributeBuffer(0, GL_FLOAT, int(offsetof(MeshVertex, targetX)), 2, sizeof(MeshVertex));
+        m_meshProgram->setAttributeBuffer(1, GL_FLOAT, int(offsetof(MeshVertex, sourceU)), 2, sizeof(MeshVertex));
+        m_gl->glDrawElements(GL_TRIANGLES, GLsizei(mesh.indices.size()), GL_UNSIGNED_INT, nullptr);
+        m_meshProgram->disableAttributeArray(0);
+        m_meshProgram->disableAttributeArray(1);
+        m_meshIbo.release();
+        m_meshVbo.release();
+        m_meshVao.release();
+        m_imageTexture->release();
+        m_meshProgram->release();
+
+        QImage result = m_fbo->toImage();
+
+        m_gl->glBindFramebuffer(GL_FRAMEBUFFER, GLuint(oldFbo));
+        m_gl->glViewport(oldVp[0], oldVp[1], oldVp[2], oldVp[3]);
+        if (scissorWas) { m_gl->glEnable(GL_SCISSOR_TEST);  m_gl->glScissor(oldSc[0],oldSc[1],oldSc[2],oldSc[3]); }
+        else              m_gl->glDisable(GL_SCISSOR_TEST);
+        if (depthWas) m_gl->glEnable(GL_DEPTH_TEST); else m_gl->glDisable(GL_DEPTH_TEST);
+        if (cullWas)  m_gl->glEnable(GL_CULL_FACE);  else m_gl->glDisable(GL_CULL_FACE);
+        if (blendWas) m_gl->glEnable(GL_BLEND);       else m_gl->glDisable(GL_BLEND);
+        return result;
+    }
+
+    // Partial inverse-field warp: same scissor approach; the full-screen shader naturally
+    // computes correct output for each fragment, scissor limits it to the dirty rect.
+    QImage warpPartialInverseFieldCurrent(
+        const QVector<QPointF>& warpedGridPoints,
+        const QRectF&           dirtyRect,
+        const QImage&           baseImage,
+        QPointF*                outputOrigin,
+        const WarpOptions&      options)
+    {
+        updateCageTexture(warpedGridPoints);
+
+        int outX, outY, outW, outH;
+        outputRectToInts(m_fixedOutputRect, outX, outY, outW, outH);
+        if (outputOrigin) *outputOrigin = QPointF(outX, outY);
+
+        ensureFbo(outW, outH);
+        if (!m_fbo || !m_fbo->isValid()) return QImage();
+
+        const ScissorRect sc = imageRectToScissor(dirtyRect, outX, outY, outW, outH);
+        if (!sc.valid) return baseImage;
+
+        uploadBaseImageToFbo(baseImage, outW, outH);
+
+        GLint oldFbo = 0, oldVp[4] = {}, oldSc[4] = {};
+        const GLboolean scissorWas = m_gl->glIsEnabled(GL_SCISSOR_TEST);
+        const GLboolean depthWas   = m_gl->glIsEnabled(GL_DEPTH_TEST);
+        const GLboolean cullWas    = m_gl->glIsEnabled(GL_CULL_FACE);
+        const GLboolean blendWas   = m_gl->glIsEnabled(GL_BLEND);
+        m_gl->glGetIntegerv(GL_FRAMEBUFFER_BINDING, &oldFbo);
+        m_gl->glGetIntegerv(GL_VIEWPORT, oldVp);
+        if (scissorWas) m_gl->glGetIntegerv(GL_SCISSOR_BOX, oldSc);
+
+        m_fbo->bind();
+        m_gl->glViewport(0, 0, outW, outH);
+        m_gl->glDisable(GL_DEPTH_TEST);
+        m_gl->glDisable(GL_CULL_FACE);
+        m_gl->glDisable(GL_BLEND);
+        m_gl->glEnable(GL_SCISSOR_TEST);
+        m_gl->glScissor(sc.x, sc.y, sc.w, sc.h);
+        m_gl->glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        m_gl->glClear(GL_COLOR_BUFFER_BIT);
+
+        m_fullscreenVao.bind();
+        m_inverseProgram->bind();
+        m_inverseProgram->setUniformValue("uImage", 0);
+        m_inverseProgram->setUniformValue("uCage",  1);
+        m_inverseProgram->setUniformValue("uImageSize",        float(m_sourceSize.width()), float(m_sourceSize.height()));
+        m_inverseProgram->setUniformValue("uOutputSize",       float(outW), float(outH));
+        m_inverseProgram->setUniformValue("uOutputOrigin",     float(outX), float(outY));
+        m_inverseProgram->setUniformValue("uGridSize",         float(m_gridColumns), float(m_gridRows));
+        m_inverseProgram->setUniformValue("uCageInterpolation",int(options.cageInterpolation));
+        m_inverseProgram->setUniformValue("uInverseMapping",   int(options.inverseMapping));
+        m_inverseProgram->setUniformValue("uInverseIterations",std::max(1, std::min(options.inverseIterations, 32)));
+        m_imageTexture->bind(0);
+        m_cageTexture->bind(1);
+        m_gl->glDrawArrays(GL_TRIANGLES, 0, 3);
+        m_cageTexture->release();
+        m_imageTexture->release();
+        m_inverseProgram->release();
+        m_fullscreenVao.release();
+
+        QImage result = m_fbo->toImage();
+
+        m_gl->glBindFramebuffer(GL_FRAMEBUFFER, GLuint(oldFbo));
+        m_gl->glViewport(oldVp[0], oldVp[1], oldVp[2], oldVp[3]);
+        if (scissorWas) { m_gl->glEnable(GL_SCISSOR_TEST);  m_gl->glScissor(oldSc[0],oldSc[1],oldSc[2],oldSc[3]); }
+        else              m_gl->glDisable(GL_SCISSOR_TEST);
+        if (depthWas) m_gl->glEnable(GL_DEPTH_TEST); else m_gl->glDisable(GL_DEPTH_TEST);
+        if (cullWas)  m_gl->glEnable(GL_CULL_FACE);  else m_gl->glDisable(GL_CULL_FACE);
+        if (blendWas) m_gl->glEnable(GL_BLEND);       else m_gl->glDisable(GL_BLEND);
+        return result;
     }
 
     QImage warpInverseFieldCurrent( const QVector<QPointF>& warpedGridPoints, QPointF* outputOrigin, const WarpOptions& options ) {

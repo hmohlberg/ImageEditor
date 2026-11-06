@@ -369,6 +369,11 @@ class LayerItem : public QGraphicsPixmapItem
     QPointF          m_cageInitialPos;
     QImage           m_cageInitialImage;   // pre-warp original; restored by Reset
 
+    // Partial warp state: previous full-warp result + cage points that produced it.
+    // The GPU renderer re-renders only the dirty region and composites with this base.
+    QImage           m_partialWarpBase;
+    QVector<QPointF> m_partialWarpPrevPoints;
+
     Layer* m_layer = nullptr;
 	
     bool m_nogui = false; 
