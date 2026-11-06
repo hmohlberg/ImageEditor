@@ -24,6 +24,7 @@
 #include <QGraphicsScene>
 #include <QImage>
 #include <QPainter>
+#include <QDebug>
 #include <iostream>
 
 // ---------------------- Constructor ----------------------
@@ -139,10 +140,12 @@ void LassoCutCommand::redo()
                     orig.setPixelColor(m_bounds.x()+x, m_bounds.y()+y, m_origBgColor);
             }
         }
-        // Re-derive m_image for cut region from updated m_originalImage via current LUT.
+        // Re-derive m_image from the updated m_originalImage via the current LUT.
+        // Use applyLutWithTransform for the full image so that an active LUT applied
+        // between the original push and a history jump is correctly propagated to all
+        // pixels (not just the selection bounds), and updatePixmap() runs in full.
         if ( !m_originalLayer->activeLut().isEmpty() ) {
-            m_originalLayer->applyActiveLutToRegion(m_bounds);
-            m_originalLayer->updateImageRegion(m_bounds);
+            m_originalLayer->applyLutWithTransform(m_originalLayer->activeLut());
         } else {
             QImage tempImage = m_originalLayer->image();
             QColor color = Config::isWhiteBackgroundImage ? Qt::white : Qt::black;

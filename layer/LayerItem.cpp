@@ -49,6 +49,20 @@
 #include <QBuffer>
 #include <iostream>
 
+// QImage::flipped(Qt::Orientations) was added in Qt 6.13.
+// On older Qt use mirrored(bool h, bool v) which is identical.
+// QImage::flipped(Qt::Orientations) was introduced in Qt 6.9 as a replacement
+// for the then-deprecated mirrored(bool, bool). On Qt < 6.9 mirrored() is the
+// correct (non-deprecated) API, so the version guard is exactly 6.9.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+#  define QIMAGE_FLIP(img, dirs) (img).flipped(dirs)
+#else
+static inline QImage qImageFlip(const QImage& img, Qt::Orientations dirs) {
+    return img.mirrored(dirs & Qt::Horizontal, dirs & Qt::Vertical);
+}
+#  define QIMAGE_FLIP(img, dirs) qImageFlip(img, dirs)
+#endif
+
 // ------------------------ LayerItem ------------------------
 LayerItem::LayerItem( const QString& name, const QPixmap& pixmap, QGraphicsItem* parent ) : QGraphicsPixmapItem(pixmap,parent)
 { 
@@ -552,7 +566,21 @@ void LayerItem::applyLutWithTransform( const QVector<QRgb>& lut )
         // pivot-based position correction AFTER setImageTransform() that we must not
         // overwrite.  The output dimensions are identical to the current m_image
         // (same transform, same source size), so the existing pos() remains correct.
-        if ( !m_nogui && EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::System ) {
+        //
+        // Fast path: a pure axis-aligned flip (|m11|=1, |m22|=1, no shear/projection)
+        // is equivalent to QImage::mirrored() — far cheaper than a QPainter resample.
+        const bool isPureFlip = qFuzzyIsNull(m_totalTransform.m12())
+            && qFuzzyIsNull(m_totalTransform.m21())
+            && qFuzzyIsNull(m_totalTransform.m13())
+            && qFuzzyIsNull(m_totalTransform.m23())
+            && qFuzzyCompare(qAbs(m_totalTransform.m11()), 1.0)
+            && qFuzzyCompare(qAbs(m_totalTransform.m22()), 1.0);
+        if ( isPureFlip ) {
+            Qt::Orientations dirs;
+            if ( m_totalTransform.m11() < 0 ) dirs |= Qt::Horizontal;
+            if ( m_totalTransform.m22() < 0 ) dirs |= Qt::Vertical;
+            m_image = QIMAGE_FLIP(lutApplied, dirs);
+        } else if ( !m_nogui && EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::System ) {
             m_image = Interpolation::transformWithHighQuality(lutApplied, m_totalTransform);
         } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Bicubic ) {
             m_image = Interpolation::transformBicubic(lutApplied, m_totalTransform);
@@ -712,8 +740,24 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
       m_totalTransform *= transform;
       m_totalTransform.translate(-imageCenter.x(), -imageCenter.y());
     }
+    // Fast path for pure pixel flip (horizontal/vertical mirror).
+    // When m_totalTransform is a pure axis-aligned flip (|m11|=1, |m22|=1, no shear or
+    // projection), QImage::mirrored() gives the same result as transformWithHighQuality
+    // but is orders of magnitude faster — no QPainter, no resampling, just a memcpy.
+    const bool isPureFlip = m_originalImage.format() == QImage::Format_ARGB32
+        && qFuzzyIsNull(m_totalTransform.m12())
+        && qFuzzyIsNull(m_totalTransform.m21())
+        && qFuzzyIsNull(m_totalTransform.m13())
+        && qFuzzyIsNull(m_totalTransform.m23())
+        && qFuzzyCompare(qAbs(m_totalTransform.m11()), 1.0)
+        && qFuzzyCompare(qAbs(m_totalTransform.m22()), 1.0);
     // the interpolation step (Qt only supports nearest neighbor und linear interpolation)
-    if ( !m_nogui && EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::System ) {
+    if ( isPureFlip ) {
+      Qt::Orientations dirs;
+      if ( m_totalTransform.m11() < 0 ) dirs |= Qt::Horizontal;
+      if ( m_totalTransform.m22() < 0 ) dirs |= Qt::Vertical;
+      m_image = QIMAGE_FLIP(m_originalImage, dirs);
+    } else if ( !m_nogui && EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::System ) {
       // !!! only in gui mode !!!
       m_image = Interpolation::transformWithHighQuality(m_originalImage, m_totalTransform);
     } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Bicubic ) {
@@ -903,6 +947,22 @@ QImage LayerItem::applyCageWarp( const QString &caller )
   qCDebug(logEditor) << "LayerItem::applyCageWarp(" << caller << "): name =" << name() << ", meshActive =" << m_cageMesh.isActive()
         << ", activeCagePointId =" << m_cageMesh.activeCagePointId()
         << ", cageEnabled =" << m_cageEnabled << ", cageEditing =" << m_cageEditing << ", intialized =" << m_cageMesh.isInitialized();
+  if ( caller.startsWith("ImageView") ) {
+    const int ptIdx = m_cageMesh.activeCagePointId();
+    const int dcols  = m_cageMesh.cols();
+    const int drows  = m_cageMesh.rows();
+    if ( ptIdx >= 0 && dcols > 0 && drows > 0 ) {
+      const int drow = ptIdx / dcols;
+      const int dcol = ptIdx % dcols;
+      QString quads;
+      if (drow < drows-1 && dcol < dcols-1) quads += QString("(%1,%2) ").arg(drow  ).arg(dcol  );
+      if (drow < drows-1 && dcol > 0)       quads += QString("(%1,%2) ").arg(drow  ).arg(dcol-1);
+      if (drow > 0       && dcol > 0)       quads += QString("(%1,%2) ").arg(drow-1).arg(dcol-1);
+      if (drow > 0       && dcol < dcols-1) quads += QString("(%1,%2) ").arg(drow-1).arg(dcol  );
+      qDebug().noquote() << QString("applyCageWarp: point %1 grid(%2,%3) in %4x%5 grid  updated quads (row,col): %6")
+                                .arg(ptIdx).arg(drow).arg(dcol).arg(dcols).arg(drows).arg(quads.trimmed());
+    }
+  }
   {
     // Fast path: use a pre-computed warped image cached from JSON (avoids recomputing on project load).
     // In batch mode (m_nogui) the layer image comes from the batch input, so the cache from a
@@ -1050,8 +1110,18 @@ void LayerItem::enableCage( int cols, int rows )
     int ncols = cols == -1 ? m_cageMesh.cols() : cols;
     int nrows = rows == -1 ? m_cageMesh.rows() : rows;
     if ( m_cageMesh.isInitialized() && m_cageMesh.cols() == ncols && m_cageMesh.rows() == nrows ) return;
+    const bool firstInit = !m_cageMesh.isInitialized();
     m_cageMesh.create(boundingRect(), ncols, nrows);
     m_cageMesh.setImage(m_image);
+    // On first activation: save the uniform grid and the pre-warp image so Reset can fully undo all warps.
+    if (firstInit && m_cageInitialImage.isNull()) {
+        m_cageInitialImage   = m_originalImage;
+        m_cageInitialPts     = m_cageMesh.points();
+        m_cageInitialOrigPts = m_cageMesh.originalPoints();
+        m_cageInitialCols    = ncols;
+        m_cageInitialRows    = nrows;
+        m_cageInitialPos     = pos();
+    }
     m_cageEnabled = true;     
     if ( !scene() )
       return;
@@ -1349,8 +1419,16 @@ void LayerItem::resetCageToPixmap()
 {
   qCDebug(logEditor) << "LayerItem::resetCageToPixmap(): size =" << m_handles.size();
   {
+    // Restore the original pre-warp image so applyCageWarp warps the right pixels.
+    if (!m_cageInitialImage.isNull()) {
+        setOriginalImage(m_cageInitialImage, ImageType::Original);
+        m_image = m_cageInitialImage;
+        m_cageMesh.setImage(m_cageInitialImage);
+        if (!m_suppressPixmapUpdate)
+            setPixmap(QPixmap::fromImage(m_cageInitialImage));
+    }
     if ( m_cageInitialCols > 0 ) {
-        // Restore the cage to the state before the first edit in this session.
+        // Restore the cage to the uniform grid saved at enableCage() time.
         // This reverses all point moves AND all grid resizes in one step.
         restoreCageState(m_cageInitialPts, m_cageInitialOrigPts,
                          m_cageInitialCols, m_cageInitialRows, m_cageInitialPos);

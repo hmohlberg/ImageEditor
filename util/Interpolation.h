@@ -20,6 +20,14 @@
 #include <QPainter>
 #include <cmath>
 #include <algorithm>
+#ifdef __APPLE__
+#  include "MetalTransform.h"
+#else
+#  include "GlslTransform.h"
+#endif
+#ifdef _OPENMP
+#  include <omp.h>
+#endif
 
 namespace Interpolation
 {
@@ -69,6 +77,21 @@ namespace Interpolation
   // for gui only
   QImage transformWithHighQuality(const QImage &originalImg, const QTransform &matrix)
   {
+#ifdef __APPLE__
+    // GPU path: Metal Performance Shaders Lanczos (pure positive scale only).
+    // Falls back to QPainter for rotation/shear.
+    {
+      QImage result = MetalTransform::transformWithMPS(originalImg, matrix);
+      if (!result.isNull()) return result;
+    }
+#else
+    // GPU path: QPainter on QOpenGLFramebufferObject (OpenGL, GL_LINEAR bilinear).
+    // Only handles pure positive scale; falls back to QPainter for rotation/shear.
+    {
+      QImage result = GlslTransform::transformWithGL(originalImg, matrix);
+      if (!result.isNull()) return result;
+    }
+#endif
     QRectF transformedRect = matrix.mapRect(QRectF(originalImg.rect()));
     QImage transformedImg(transformedRect.size().toSize(), QImage::Format_ARGB32_Premultiplied);
     transformedImg.fill(Qt::transparent);
@@ -82,7 +105,7 @@ namespace Interpolation
     return transformedImg;
   }
   
-  // universal High-Quality Non-GUI transformations
+  // universal High-Quality Non-GUI transformations (CPU bicubic fallback)
   inline float bicubicKernel( float x ) {
     x = std::abs(x);
     if (x <= 1.0f) return (1.5f * x - 2.5f) * x * x + 1.0f;
@@ -91,6 +114,14 @@ namespace Interpolation
   }
 
   QImage transformBicubic( const QImage &src, const QTransform &matrix ) {
+#ifdef __APPLE__
+    // SIMD-accelerated path via vImage (Accelerate framework, Lanczos-5 quality).
+    // Handles arbitrary affine transforms, faster than the hand-written bicubic.
+    {
+      QImage result = MetalTransform::transformWithVImage(src, matrix);
+      if (!result.isNull()) return result;
+    }
+#endif
     bool invertible;
     QTransform invMatrix = matrix.inverted(&invertible);
     if ( !invertible ) return QImage();
@@ -109,6 +140,11 @@ namespace Interpolation
     const float offsetX = (float)destRect.left();
     const float offsetY = (float)destRect.top();
 
+    // On non-Apple platforms, parallelise over rows with OpenMP when available.
+    // On Apple, the vImage fast path above already handles this efficiently.
+#if !defined(__APPLE__) && defined(_OPENMP)
+    #pragma omp parallel for schedule(dynamic, 8)
+#endif
     for ( int dy = 0; dy < destHeight; ++dy ) {
         QRgb* destLine = reinterpret_cast<QRgb*>(dest.scanLine(dy));
         for ( int dx = 0; dx < destWidth; ++dx ) {

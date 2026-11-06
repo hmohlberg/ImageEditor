@@ -2722,11 +2722,20 @@ void MainWindow::setSelectedLayer( int caller, const QString &name, bool forcedE
     // the same way a layers-panel click does.
     bool ok = false;
     const int layerNum = name.section(' ', 1, 1).toInt(&ok);
-    if ( ok && layerNum > 0 )
-      updateHistoryHighlight(layerNum);
-    else {
-      m_undoViewDelegate->setHighlightedRows({});
-      m_undoView->viewport()->update();
+    if ( ok && layerNum > 0 ) {
+      const int undoCount = m_imageView ? m_imageView->undoStack()->count() : 0;
+      if ( layerNum != m_lastHighlightedLayer || undoCount != m_lastHighlightUndoCount ) {
+        m_lastHighlightedLayer  = layerNum;
+        m_lastHighlightUndoCount = undoCount;
+        updateHistoryHighlight(layerNum);
+      }
+    } else {
+      if ( m_lastHighlightedLayer != -1 ) {
+        m_lastHighlightedLayer   = -1;
+        m_lastHighlightUndoCount = -1;
+        m_undoViewDelegate->setHighlightedRows({});
+        m_undoView->viewport()->update();
+      }
     }
   }
 }

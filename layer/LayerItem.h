@@ -367,6 +367,7 @@ class LayerItem : public QGraphicsPixmapItem
     int              m_cageInitialCols     = 0;
     int              m_cageInitialRows     = 0;
     QPointF          m_cageInitialPos;
+    QImage           m_cageInitialImage;   // pre-warp original; restored by Reset
 
     Layer* m_layer = nullptr;
 	

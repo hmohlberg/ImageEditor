@@ -164,6 +164,21 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
     grabGesture(Qt::PinchGesture);
     m_undoStack = new GuardedUndoStack(this);
     m_undoStack->setDialogParent(this);
+    // Deferred applyDisplayAdjustments: fires once after all synchronous indexChanged
+    // signals settle, so history jumps don't corrupt display via intermediate applyDA calls.
+    m_applyDATimer = new QTimer(this);
+    m_applyDATimer->setSingleShot(true);
+    m_applyDATimer->setInterval(0);
+    connect(m_applyDATimer, &QTimer::timeout, this, [this]() {
+        // Re-enable repaints suppressed in indexChanged before we update the display,
+        // so the LUT-applied result is the first frame the viewport actually paints.
+        viewport()->setUpdatesEnabled(true);
+        if ( m_pendingApplyDA && m_scene && !m_scene->items().isEmpty() && updatesEnabled()
+             && !m_suppressIndexChangedAdjustments ) {
+            applyDisplayAdjustments();
+        }
+        m_pendingApplyDA = false;
+    });
     connect(m_undoStack, &QUndoStack::cleanChanged, this, [this](bool isClean){
       setWindowModified(!isClean);
       setWindowTitle(QString("Mein Editor[*]"));
@@ -326,12 +341,33 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
       // to avoid O(N × layers × pixels) LUT passes — loadProject() calls it once at the end.
       // Move and pivot commands only change position/pivot, never pixel data, so
       // the full LUT + interpolation pass is unnecessary and expensive on weak hardware.
-      const bool pixelContentUnchanged = justFinishedCommand && (
-          justFinishedCommand->text().startsWith("Move Layer") ||
-          justFinishedCommand->text().startsWith("Set Rotation Pivot") );
-      if ( m_scene && !m_scene->items().isEmpty() && updatesEnabled()
-           && !m_suppressIndexChangedAdjustments && !pixelContentUnchanged )
-          applyDisplayAdjustments();
+      //
+      // pixelContentUnchanged must reflect the STEP that was just taken, not the
+      // command now sitting at the top of the applied stack.
+      //   Redo path: justFinishedCommand == command just redone  (correct as-is)
+      //   Undo path: justFinishedCommand == new stack-top (the prev command), but
+      //              the step taken was an undo of command(currentIndex)
+      {
+        const bool isUndo = (currentIndex < m_lastIndex);
+        const QUndoCommand* actionCmd = isUndo
+            ? m_undoStack->command(currentIndex)   // command just undone
+            : justFinishedCommand;                 // command just redone
+        const bool pixelContentUnchanged = actionCmd && (
+            actionCmd->text().startsWith("Move Layer") ||
+            actionCmd->text().startsWith("Set Rotation Pivot") );
+        // Schedule applyDisplayAdjustments via zero-interval timer so that during a
+        // history jump (multiple synchronous indexChanged signals), only one applyDA
+        // call runs after all undo/redo steps settle — preventing intermediate states
+        // from corrupting the final display (the original history-jump bug).
+        // Disable viewport repaints until the timer fires so the raw (un-LUT'd) image
+        // is never shown between a command's pixel restore and the LUT pass.
+        if ( m_scene && !m_scene->items().isEmpty() && updatesEnabled()
+             && !m_suppressIndexChangedAdjustments && !pixelContentUnchanged ) {
+            m_pendingApplyDA = true;
+            viewport()->setUpdatesEnabled(false);
+            m_applyDATimer->start(0);
+        }
+      }
       m_lastIndex = currentIndex;
     });
    /**
@@ -3120,6 +3156,7 @@ void ImageView::setCageWarpReset()
   {
     if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() ) return;
     m_selectedLayer->resetCageToPixmap();
+    applyDisplayAdjustments();
   }
 }
 

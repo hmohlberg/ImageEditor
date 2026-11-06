@@ -25,6 +25,7 @@
 #include <QVector>
 #include <QColor>
 #include <QPainterPath>
+#include <QTimer>
 #include <QUndoStack>
 #include "../undo/GuardedUndoStack.h"
 #include <QPolygon>
@@ -288,7 +289,9 @@ class ImageView : public QGraphicsView
     int m_maskBrushRadius = 5;
     int m_lassoFeatherRadius = 0;
     int m_lastIndex = 0;
-    
+    bool m_pendingApplyDA = false;
+    QTimer* m_applyDATimer = nullptr;
+
     QPointF m_cursorPos;
     QPoint m_lastMousePos;
     QPoint m_lastMaskScenePos;

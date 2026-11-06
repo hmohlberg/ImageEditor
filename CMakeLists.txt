@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(ImageEditor VERSION 1.0.2 LANGUAGES CXX)
+if(APPLE)
+    project(ImageEditor VERSION 1.0.2 LANGUAGES CXX OBJCXX)
+else()
+    project(ImageEditor VERSION 1.0.2 LANGUAGES CXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -224,6 +228,11 @@ set(SOURCES
     util/Inpainting.cpp
     util/LaMaInpainting.cpp
 )
+if(APPLE)
+    list(APPEND SOURCES util/MetalTransform.mm)
+else()
+    list(APPEND SOURCES util/GlslTransform.cpp)
+endif()
 
 set(HEADERS
     core/ImageLoader.h
@@ -318,6 +327,24 @@ if(APPLE AND BUILD_MACOS_BUNDLE)
 endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets Qt6::Svg Qt6::Network Qt6::Concurrent)
+if(APPLE)
+    # Metal Performance Shaders (GPU-accelerated transforms) + Accelerate (vImage SIMD)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        "-framework Metal"
+        "-framework MetalPerformanceShaders"
+        "-framework Accelerate"
+    )
+else()
+    # OpenMP: parallel bicubic rows on Linux / Windows (optional)
+    find_package(OpenMP QUIET COMPONENTS CXX)
+    if(OpenMP_CXX_FOUND)
+        target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE)
+        message(STATUS "OpenMP found — parallel bicubic enabled")
+    else()
+        message(STATUS "OpenMP not found — bicubic runs single-threaded")
+    endif()
+endif()
 if(ITK_FOUND)
     include(${ITK_USE_FILE})
     target_include_directories(ImageEditor PRIVATE ${ITK_INCLUDE_DIRS})

@@ -261,6 +261,8 @@ class MainWindow : public QMainWindow, public IMainSystem
     QList<FileListEntry> m_fileList;
     QString m_currentDisplayName;
     int     m_lastOpenTabIndex = 0;
+    int     m_lastHighlightedLayer = -1;
+    int     m_lastHighlightUndoCount = -1;
 
     bool m_updatingLayerList = false;
     bool m_saveImageDataInProjectFile = false;
