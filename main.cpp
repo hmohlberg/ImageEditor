@@ -80,6 +80,7 @@ bool Config::skipValidation = false;
 bool Config::isWhiteBackgroundImage = true;
 bool Config::gpuCageWarpProcessing = false;
 bool Config::concatenate = false;
+bool Config::noOpenGL = false;
 
 Q_LOGGING_CATEGORY(logEditor, "editor.graphics")
 
@@ -322,6 +323,9 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(debugOption);
   QCommandLineOption verboseOption("verbose", "Enable verbose output to stdout.");
   parser.addOption(verboseOption);
+  QCommandLineOption noOpenGLOption("no-opengl", "Disable all OpenGL acceleration (GPU cage warp, GL scale, GL viewport). "
+      "Use in virtual environments or when the canvas appears blank.");
+  parser.addOption(noOpenGLOption);
   parser.process(*app);
   
   // --- history ---
@@ -489,6 +493,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   obj["force"] = parser.isSet(forceOption);
   obj["debug"] = parser.isSet(debugOption);
   obj["verbose"] = parser.isSet(verboseOption);
+  obj["noOpenGL"] = parser.isSet(noOpenGLOption);
   obj["showDocks"] = parser.isSet(docksOption);
   obj["scaleFactor"] = parser.isSet(scaleOption)
                        ? parser.value(scaleOption).toInt() : 20;
@@ -759,6 +764,10 @@ int main( int argc, char *argv[] )
      if ( QString(argv[i]) == "--debug" ) {
        qputenv("QT_LOGGING_RULES", "editor.graphics.debug=true");
      }
+     if ( QString(argv[i]) == "--no-opengl" ) {
+       Config::noOpenGL = true;
+       qputenv("IMAGEEDITOR_NO_OPENGL", "1");
+     }
      if ( QString(argv[i]) == "--batch" || QString(argv[i]) == "--output" || QString(argv[i]) == "--save-json" || QString(argv[i]) == "--save-intermediate" ) batchProcessing = true;
      if ( QString(argv[i]) == "--gui" ) guiProcessing = true;
     }
@@ -959,6 +968,12 @@ int main( int argc, char *argv[] )
     QJsonObject parsedOptions = parser(app,argc);
     // --- create new history entry ---
     saveCurrentCall(argc, argv);
+    // --- no-opengl flag (also set early in argv loop above) ---
+    if ( parsedOptions.value("noOpenGL").toBool() ) {
+      Config::noOpenGL = true;
+      Config::gpuCageWarpProcessing = false;
+      EditorStyle::instance().setUseGPU(false);
+    }
     // --- load config file ---
     QString configPath = parsedOptions.value("configPath").toString("");
     if ( !configPath.isEmpty() ) {

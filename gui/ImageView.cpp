@@ -18,10 +18,6 @@
 #include "ImageView.h"
 #include "MainWindow.h"
 #include <QApplication>
-#ifdef Q_OS_LINUX
-#  include <QOpenGLWidget>
-#  include <QSurfaceFormat>
-#endif
 
 #include "../core/Config.h"
 #include "../layer/LayerItem.h"
@@ -150,16 +146,6 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
     setMouseTracking(true);
     setRenderHint(QPainter::Antialiasing);
     setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
-#ifdef Q_OS_LINUX
-    {
-        QSurfaceFormat fmt;
-        fmt.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
-        auto* gl = new QOpenGLWidget();
-        gl->setFormat(fmt);
-        setViewport(gl);
-        setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
-    }
-#endif
     setDragMode(QGraphicsView::NoDrag);
     grabGesture(Qt::PinchGesture);
     m_undoStack = new GuardedUndoStack(this);
@@ -2245,9 +2231,12 @@ void ImageView::initCageWarpForLayer( LayerItem *layerItem )
        m_undoStack->resetClean();
      }
      if ( m_selectedCageLayer ) {
+        m_selectedCageLayer->resetPixmap();  // strip LUT from m_image so cage warps raw pixels (matches ImageView::1 path)
         QImage warpedResult = m_selectedCageLayer->applyCageWarp("ImageView::2");
-        if( !warpedResult.isNull() )
+        if( !warpedResult.isNull() ) {
           m_selectedCageLayer->setOriginalImage(warpedResult, LayerItem::ImageType::Warped);
+          applyDisplayAdjustments();  // re-apply LUT to the newly initialised warp result
+        }
      }
      m_cageBefore.clear();
     } else {

@@ -155,6 +155,7 @@ class CageWarpRenderer
             return false;
 
         m_sourceSize = image.size();
+        m_cachedFboPoints.clear();
 
         m_imageTexture.reset();
         m_imageTexture = std::make_unique<QOpenGLTexture>(QOpenGLTexture::Target2D);
@@ -243,10 +244,12 @@ class CageWarpRenderer
         if (!current)
             return QImage();
 
-        if (options.backend == WarpBackend::RasterizedMesh)
-            return warpRasterizedMeshCurrent(warpedGridPoints, outputOrigin, options);
-
-        return warpInverseFieldCurrent(warpedGridPoints, outputOrigin, options);
+        QImage result = (options.backend == WarpBackend::RasterizedMesh)
+            ? warpRasterizedMeshCurrent(warpedGridPoints, outputOrigin, options)
+            : warpInverseFieldCurrent(warpedGridPoints, outputOrigin, options);
+        if (!result.isNull())
+            m_cachedFboPoints = warpedGridPoints;
+        return result;
     }
 
     // Partial warp: re-renders only the region covered by dirtyQuadIndices,
@@ -281,9 +284,17 @@ class CageWarpRenderer
         const double margin = double(std::max(1, std::min(options.meshSubdivisions, 64))) * 2.0 + 4.0;
         dirtyRect.adjust(-margin, -margin, margin, margin);
 
-        if (options.backend == WarpBackend::RasterizedMesh)
-            return warpPartialRasterizedMeshCurrent(warpedGridPoints, dirtyRect, baseImage, outputOrigin, options);
-        return warpPartialInverseFieldCurrent(warpedGridPoints, dirtyRect, baseImage, outputOrigin, options);
+        // Skip uploadBaseImageToFbo() when the FBO already holds the result for prevPoints
+        // (produced by the previous warp call) — avoids a full-image convert+flip+upload
+        // on every drag/release event.
+        const bool fboIsCurrent = (m_cachedFboPoints == prevPoints) && !m_cachedFboPoints.isEmpty();
+
+        QImage result = (options.backend == WarpBackend::RasterizedMesh)
+            ? warpPartialRasterizedMeshCurrent(warpedGridPoints, dirtyRect, baseImage, outputOrigin, options, fboIsCurrent)
+            : warpPartialInverseFieldCurrent(warpedGridPoints, dirtyRect, baseImage, outputOrigin, options, fboIsCurrent);
+        if (!result.isNull())
+            m_cachedFboPoints = warpedGridPoints;
+        return result;
     }
 
   private:
@@ -943,6 +954,7 @@ class CageWarpRenderer
         QOpenGLFramebufferObjectFormat format;
         format.setInternalTextureFormat(GL_RGBA8);
         m_fbo = std::make_unique<QOpenGLFramebufferObject>(width, height, format);
+        m_cachedFboPoints.clear();
     }
 
     // -------------------------------------------------------------------------
@@ -1026,7 +1038,8 @@ class CageWarpRenderer
         const QRectF&           dirtyRect,
         const QImage&           baseImage,
         QPointF*                outputOrigin,
-        const WarpOptions&      options)
+        const WarpOptions&      options,
+        bool                    fboIsCurrent = false)
     {
         int outX, outY, outW, outH;
         outputRectToInts(m_fixedOutputRect, outX, outY, outW, outH);
@@ -1039,7 +1052,9 @@ class CageWarpRenderer
         if (!sc.valid) return baseImage;
 
         // Load base into FBO texture before binding the FBO (avoid feedback loop).
-        uploadBaseImageToFbo(baseImage, outW, outH);
+        // Skip when FBO already holds the right content from the previous warp step.
+        if (!fboIsCurrent)
+            uploadBaseImageToFbo(baseImage, outW, outH);
 
         const MeshBuild mesh = buildRasterizedMesh(warpedGridPoints, options);
 
@@ -1104,7 +1119,8 @@ class CageWarpRenderer
         const QRectF&           dirtyRect,
         const QImage&           baseImage,
         QPointF*                outputOrigin,
-        const WarpOptions&      options)
+        const WarpOptions&      options,
+        bool                    fboIsCurrent = false)
     {
         updateCageTexture(warpedGridPoints);
 
@@ -1118,7 +1134,8 @@ class CageWarpRenderer
         const ScissorRect sc = imageRectToScissor(dirtyRect, outX, outY, outW, outH);
         if (!sc.valid) return baseImage;
 
-        uploadBaseImageToFbo(baseImage, outW, outH);
+        if (!fboIsCurrent)
+            uploadBaseImageToFbo(baseImage, outW, outH);
 
         GLint oldFbo = 0, oldVp[4] = {}, oldSc[4] = {};
         const GLboolean scissorWas = m_gl->glIsEnabled(GL_SCISSOR_TEST);
@@ -1404,5 +1421,10 @@ class CageWarpRenderer
 
     bool m_hasFixedOutputRect = false;
     QRectF m_fixedOutputRect;
-    
+
+    // Points that produced the current FBO content.
+    // When warpPartial() is called with prevPoints == m_cachedFboPoints,
+    // the FBO already holds the right base image — uploadBaseImageToFbo() is skipped.
+    QVector<QPointF> m_cachedFboPoints;
+
 };

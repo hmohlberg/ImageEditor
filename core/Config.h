@@ -52,6 +52,7 @@
     static bool isWhiteBackgroundImage;
     static bool gpuCageWarpProcessing;
     static bool concatenate;
+    static bool noOpenGL;
     
  };
  
