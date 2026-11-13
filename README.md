@@ -261,6 +261,7 @@ brew install onnxruntime
 
 #### Windows with WSL and Debian
 
+* WSL requires virtualization support from the hardware which is typically configured in the BIOS at boot time. To check if virtualization is enabled on you machine go to the Task-Manager → Leistung/Performance → CPU → lower screen area
 * Create a directory where ImageEditor should be installed, open the Powershell there (Open the folder → Right-click → Open in terminal) and enter `wsl --install Debian`
 * Wait for Download and Installation to finish — at the end you will be asked to create a username and password.
 * After picking a user and password combination the Linux environment will autostart. Now run the following commands:
