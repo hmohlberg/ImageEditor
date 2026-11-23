@@ -16,44 +16,21 @@
 */
 
 #include "CageEditCommand.h"
-#include "../layer/LayerItem.h"
-
-CageEditCommand::CageEditCommand( LayerItem*              layer,
-                                  const QVector<QPointF>& ptsBefore,
-                                  const QVector<QPointF>& origBefore,
-                                  int                     colsBefore,
-                                  int                     rowsBefore,
-                                  const QPointF&          posBefore,
-                                  const QVector<QPointF>& ptsAfter,
-                                  const QVector<QPointF>& origAfter,
-                                  int                     colsAfter,
-                                  int                     rowsAfter,
-                                  const QPointF&          posAfter,
-                                  const QString&          text,
-                                  QUndoCommand*           parent )
-    : QUndoCommand(text, parent)
-    , m_layer(layer)
-    , m_ptsBefore(ptsBefore)
-    , m_origBefore(origBefore)
-    , m_colsBefore(colsBefore)
-    , m_rowsBefore(rowsBefore)
-    , m_posBefore(posBefore)
-    , m_ptsAfter(ptsAfter)
-    , m_origAfter(origAfter)
-    , m_colsAfter(colsAfter)
-    , m_rowsAfter(rowsAfter)
-    , m_posAfter(posAfter)
+CageEditCommand::CageEditCommand(LayerItem* layer, const LayerItem::CageState& before,
+                                 const LayerItem::CageState& after, const QString& text,
+                                 QUndoCommand* parent)
+    : QUndoCommand(text, parent), m_layer(layer), m_before(before), m_after(after)
 {}
 
 void CageEditCommand::undo()
 {
     if ( m_layer )
-        m_layer->restoreCageState(m_ptsBefore, m_origBefore, m_colsBefore, m_rowsBefore, m_posBefore);
+        m_layer->restoreCageState(m_before);
 }
 
 void CageEditCommand::redo()
 {
     if ( m_firstRedo ) { m_firstRedo = false; return; }
     if ( m_layer )
-        m_layer->restoreCageState(m_ptsAfter, m_origAfter, m_colsAfter, m_rowsAfter, m_posAfter);
+        m_layer->restoreCageState(m_after);
 }

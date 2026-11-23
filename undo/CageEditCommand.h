@@ -18,10 +18,7 @@
 #pragma once
 
 #include <QUndoCommand>
-#include <QVector>
-#include <QPointF>
-
-class LayerItem;
+#include "../layer/LayerItem.h"
 
 // Lightweight cage-editing undo/redo entry: captures the complete cage mesh
 // state (current points, original points, cols, rows) before and after one
@@ -31,34 +28,16 @@ class LayerItem;
 class CageEditCommand : public QUndoCommand
 {
 public:
-    CageEditCommand( LayerItem*                  layer,
-                     const QVector<QPointF>&     ptsBefore,
-                     const QVector<QPointF>&     origBefore,
-                     int                         colsBefore,
-                     int                         rowsBefore,
-                     const QPointF&              posBefore,
-                     const QVector<QPointF>&     ptsAfter,
-                     const QVector<QPointF>&     origAfter,
-                     int                         colsAfter,
-                     int                         rowsAfter,
-                     const QPointF&              posAfter,
-                     const QString&              text,
-                     QUndoCommand*               parent = nullptr );
+    CageEditCommand(LayerItem* layer, const LayerItem::CageState& before,
+                    const LayerItem::CageState& after, const QString& text,
+                    QUndoCommand* parent = nullptr);
 
     void undo() override;
     void redo() override;
 
 private:
-    bool              m_firstRedo = true;
-    LayerItem*        m_layer;
-    QVector<QPointF>  m_ptsBefore;
-    QVector<QPointF>  m_origBefore;
-    int               m_colsBefore;
-    int               m_rowsBefore;
-    QPointF           m_posBefore;
-    QVector<QPointF>  m_ptsAfter;
-    QVector<QPointF>  m_origAfter;
-    int               m_colsAfter;
-    int               m_rowsAfter;
-    QPointF           m_posAfter;
+    bool m_firstRedo = true;
+    LayerItem* m_layer;
+    LayerItem::CageState m_before;
+    LayerItem::CageState m_after;
 };

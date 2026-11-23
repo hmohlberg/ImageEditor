@@ -46,6 +46,10 @@
 
 #include "../util/GpuInfo.h"
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 AboutDialog::AboutDialog( QWidget* parent )
     : QDialog(parent)
 {
@@ -119,6 +123,12 @@ QWidget* AboutDialog::buildAboutTab()
         libInfo += libRow(tr("SSL:"), sslVer.isEmpty() ? tr("not available") : sslVer);
     }
     libInfo += libRow(tr("GPU:"), GpuInfo::query().htmlSummary());
+#ifdef _OPENMP
+    libInfo += libRow(tr("OpenMP:"), tr("%1 threads available")
+        .arg(omp_get_max_threads()));
+#else
+    libInfo += libRow(tr("OpenMP:"), tr("not available"));
+#endif
     libInfo += "</table></center>";
     auto* libLabel = new QLabel(libInfo);
     libLabel->setTextFormat(Qt::RichText);
@@ -189,7 +199,7 @@ QWidget* AboutDialog::buildShortcutsTab()
     };
 
     // Platform-specific modifier key labels
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     const QString kCtrl  = "⌘";
     const QString kAlt   = "⌥";
     const QString kShift = "⇧";

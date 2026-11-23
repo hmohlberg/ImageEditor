@@ -106,6 +106,8 @@
       m_gpuCatmullRom = settings.value("Cage/gpuCatmullRom", true).toBool();
       // Live warp during drag (GPU only, experimental)
       m_liveWarp = settings.value("Cage/liveWarp", false).toBool();
+      // Piecewise perspective warp per cage quad (faster than TriangleWarp for CPU)
+      m_quadPerspectiveWarp = settings.value("Cage/quadPerspectiveWarp", true).toBool();
       // Prevent self-intersection of cage quad edges
       m_noSelfIntersection = settings.value("Cage/noSelfIntersection", true).toBool();
       m_cageGridCols   = settings.value("Cage/gridCols",    3).toInt();
@@ -225,6 +227,7 @@
     bool useGPU() const { return m_usegpu; }
     bool gpuCatmullRom() const { return m_gpuCatmullRom; }
     bool liveWarp() const { return m_liveWarp; }
+    bool quadPerspectiveWarp() const { return m_quadPerspectiveWarp; }
     bool noSelfIntersection() const { return m_noSelfIntersection; }
     int  cageGridCols() const { return m_cageGridCols; }
     bool squareCageQuads() const { return m_squareCageQuads; }
@@ -259,6 +262,7 @@
     void setUseGPU(bool v) { m_usegpu = v; }
     void setGpuCatmullRom(bool v) { m_gpuCatmullRom = v; }
     void setLiveWarp(bool v) { m_liveWarp = v; }
+    void setQuadPerspectiveWarp(bool v) { m_quadPerspectiveWarp = v; }
     void setNoSelfIntersection(bool v) { m_noSelfIntersection = v; }
     void setCageGridCols(int v) { m_cageGridCols = v; }
     void setSquareCageQuads(bool v) { m_squareCageQuads = v; }
@@ -310,6 +314,7 @@
       m_usegpu            = false;
       m_gpuCatmullRom     = false;
       m_liveWarp          = false;
+      m_quadPerspectiveWarp = true;
       m_noSelfIntersection= true;
       m_cageGridCols    = 3;
       m_squareCageQuads = false;
@@ -404,6 +409,8 @@
           "Uses Catmull-Rom spline interpolation on the GPU for smoother warp results.");
       val("liveWarp",           b(m_liveWarp),
           "Updates the warp result interactively while dragging control points (requires GPU).");
+      val("quadPerspectiveWarp", b(m_quadPerspectiveWarp),
+          "Uses an edge-continuous bilinear CPU mapping instead of the legacy TriangleWarp renderer (default on).");
       val("noSelfIntersection", b(m_noSelfIntersection),
           "Prevents cage control points from crossing each other during warping.");
       val("gridCols",           n(m_cageGridCols),
@@ -539,6 +546,7 @@
           m_usegpu(false),
           m_gpuCatmullRom(false),
           m_liveWarp(false),
+          m_quadPerspectiveWarp(true),
           m_noSelfIntersection(true),
           m_cageGridCols(3),
           m_squareCageQuads(false),
@@ -594,6 +602,7 @@
     bool m_usegpu;
     bool m_gpuCatmullRom;
     bool m_liveWarp;
+    bool m_quadPerspectiveWarp;
     bool m_noSelfIntersection;
     bool m_squareCageQuads;
 

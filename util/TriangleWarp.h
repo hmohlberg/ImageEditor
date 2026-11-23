@@ -92,6 +92,7 @@ namespace TriangleWarp
     // create warped image: QImage warped = m_originalImage; // Ausgangsbild
 
     QImage warped(int(dstBounds.width()), int(dstBounds.height()), QImage::Format_ARGB32);
+    if (warped.isNull()) return { QImage(), QPointF() };
     warped.fill(Qt::transparent);  // this is QColor(0,0,0,0) = transparent black color
 
     // compute new target image (transparent background)
@@ -165,9 +166,17 @@ namespace TriangleWarp
                     saveY = 0;
                   }
 
-                  // if ( originalImage.rect().contains(srcP.toPoint()) ) {  this is rounding.
-                  if( originalImage.rect().contains( QPoint( std::floor(srcP.x()), std::floor(srcP.y()) ) ) ) {
-
+                  // Clamp source coordinates to valid range [0,W-1]×[0,H-1].
+                  // Without (W+1,H+1) source pre-scaling the cage boundary points map
+                  // to srcX = W (or srcY = H), which is valid within the srcQuad
+                  // definition but one pixel out-of-bounds for originalImage.  Rather
+                  // than leaving those destination pixels transparent (black), clamp to
+                  // the nearest edge pixel.  For extreme cage deformations where the
+                  // source coordinate is deeply negative or beyond W/H, the same
+                  // clamping applies so the result stays defined.
+                  {
+                    const int sx = qBound(0, (int)std::floor(srcP.x()), originalImage.width()-1);
+                    const int sy = qBound(0, (int)std::floor(srcP.y()), originalImage.height()-1);
 #if 1
                     // nearest neighbour. Now this is an issue too. On the original image,
                     // with no displacement, barycentric() may return a floating point with
@@ -176,7 +185,7 @@ namespace TriangleWarp
 
                     QRgb c = ( originalImage.rect().contains(srcP.toPoint()) ) ?
                              originalImage.pixel(srcP.toPoint()) :
-                             originalImage.pixel( QPoint( std::floor(srcP.x()), std::floor(srcP.y()) ) );
+                             originalImage.pixel( QPoint(sx, sy) );
                     warped.setPixel(px, py, c );
 
 #else
@@ -219,33 +228,6 @@ namespace TriangleWarp
                     // warped.setPixel(px, py, qRgba( qAlpha(c), 0, 0, qAlpha(c) ) );
 
 #endif
-                  } else {
-                    // This voxel is inside the new cage but outside the 
-                    // bounding box of the original layer. The cage after 
-                    // should map perfectly to the cage before, minus some
-                    // rounding errors. This will occur along the top row
-                    // and left column of the cage where floor() interpolation
-                    // can cause the (top/left) corner of the voxel to be
-                    // outside. Clamp the local coordinates "start" to project
-                    // onto the border of the cage.
-
-                    if ( GeometryUtils::pointInQuad(srcP, srcQuad) ) {
-                      qreal xi = ( start.x() <= -1.0 ) ? -1.0 : ( start.x() > 1.0 ? 1.0 : start.x() );
-                      qreal eta = ( start.y() <= -1.0 ) ? -1.0 : ( start.y() > 1.0 ? 1.0 : start.y() );
-                      srcP.setX( 0.25 * ( (1.0-xi)*(1.0-eta)*srcQuad[0].x() +
-                                          (1.0+xi)*(1.0-eta)*srcQuad[1].x() +
-                                          (1.0+xi)*(1.0+eta)*srcQuad[2].x() +
-                                          (1.0-xi)*(1.0+eta)*srcQuad[3].x() ) );
-                      srcP.setY( 0.25 * ( (1.0-xi)*(1.0-eta)*srcQuad[0].y() +
-                                          (1.0+xi)*(1.0-eta)*srcQuad[1].y() +
-                                          (1.0+xi)*(1.0+eta)*srcQuad[2].y() +
-                                          (1.0-xi)*(1.0+eta)*srcQuad[3].y() ) );
-
-                      if( originalImage.rect().contains( srcP.toPoint() ) ) {
-                        warped.setPixel(px, py, originalImage.pixel(srcP.toPoint()) );
-                      }
-                    }
-
                   }
                 } else {
  

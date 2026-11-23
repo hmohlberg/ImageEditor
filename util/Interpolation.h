@@ -79,9 +79,13 @@ namespace Interpolation
   {
 #ifdef __APPLE__
     // GPU path: Metal Performance Shaders Lanczos (pure positive scale only).
-    // Falls back to QPainter for rotation/shear.
     {
       QImage result = MetalTransform::transformWithMPS(originalImg, matrix);
+      if (!result.isNull()) return result;
+    }
+    // SIMD path: vImage Lanczos-5 (arbitrary affine transforms — rotation, shear, etc.)
+    {
+      QImage result = MetalTransform::transformWithVImage(originalImg, matrix);
       if (!result.isNull()) return result;
     }
 #else
@@ -125,6 +129,54 @@ namespace Interpolation
     bool invertible;
     QTransform invMatrix = matrix.inverted(&invertible);
     if ( !invertible ) return QImage();
+
+    // Grayscale8 fast path: interpolate physical index values directly (4× less bandwidth).
+    // Returns Grayscale8 so m_originalImage stays in physical-value space.
+    if (src.format() == QImage::Format_Grayscale8) {
+        const QRectF destRect = matrix.mapRect(QRectF(src.rect()));
+        const int destWidth  = (int)std::ceil(destRect.width());
+        const int destHeight = (int)std::ceil(destRect.height());
+        QImage dest(destWidth, destHeight, QImage::Format_Grayscale8);
+        dest.fill(0);
+        const float offsetX = (float)destRect.left();
+        const float offsetY = (float)destRect.top();
+        const int srcW = src.width(), srcH = src.height();
+#if !defined(__APPLE__) && defined(_OPENMP)
+        #pragma omp parallel for schedule(dynamic, 8)
+#endif
+        for ( int dy = 0; dy < destHeight; ++dy ) {
+            uint8_t* destLine = dest.scanLine(dy);
+            for ( int dx = 0; dx < destWidth; ++dx ) {
+                qreal srcXReal, srcYReal;
+                invMatrix.map((double)(dx + offsetX), (double)(dy + offsetY), &srcXReal, &srcYReal);
+                if ( srcXReal < -1.0 || srcXReal >= srcW + 1 ||
+                     srcYReal < -1.0 || srcYReal >= srcH + 1 ) continue;
+                const int ix = (int)std::floor(srcXReal);
+                const int iy = (int)std::floor(srcYReal);
+                float wx[4], wy[4];
+                for ( int k = 0; k < 4; ++k ) {
+                    wx[k] = bicubicKernel((float)srcXReal - (float)(ix + k - 1));
+                    wy[k] = bicubicKernel((float)srcYReal - (float)(iy + k - 1));
+                }
+                float v = 0, totalWeight = 0;
+                for ( int m = 0; m < 4; ++m ) {
+                    const int ky = iy + m - 1;
+                    if ( ky < 0 || ky >= srcH ) continue;
+                    const uint8_t* srcLine = src.constScanLine(ky);
+                    for ( int n = 0; n < 4; ++n ) {
+                        const int kx = ix + n - 1;
+                        if ( kx < 0 || kx >= srcW ) continue;
+                        const float w = wx[n] * wy[m];
+                        v += srcLine[kx] * w;
+                        totalWeight += w;
+                    }
+                }
+                if ( totalWeight > 0.0f )
+                    destLine[dx] = (uint8_t)std::clamp((int)(v / totalWeight), 0, 255);
+            }
+        }
+        return dest;
+    }
 
     // Ensure ARGB32 so scanLine gives QRgb* directly (no per-pixel format conversion)
     const QImage srcImg = (src.format() == QImage::Format_ARGB32)

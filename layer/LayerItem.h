@@ -120,6 +120,10 @@ class LayerItem : public QGraphicsPixmapItem
     QImage& image( int id=0 );
     /// @brief Returns the alpha mask as a Base64-encoded or raw PNG byte string.
     QString getAlphaMaskData( bool base64Encoding = true );
+    /// @brief Returns the current alpha mask (Format_Alpha8; null = fully opaque).
+    const QImage& alphaMask() const { return m_alphaMask; }
+    /// @brief Replaces the alpha mask directly (used by undo commands to restore saved state).
+    void setAlphaMask( const QImage& mask ) { m_alphaMask = mask; }
     /// @brief Stores @p originalImage as the layer's source image for reset/revert.
     void setOriginalImage( const QImage& originalImage, ImageType imageType = ImageType::Original );
     /// @brief Returns the unmodified source image (before any cage warp was applied).
@@ -157,6 +161,16 @@ class LayerItem : public QGraphicsPixmapItem
     /// @brief Restores exact transform state for undo: sets m_totalTransform directly,
     ///        regenerates m_image, and restores pos() without any scene-center adjustment.
     void restoreTransformState( const QTransform& totalTransform, const QPointF& restoredPos );
+
+    /// @brief Returns the current original-image type (Original or Warped).
+    ImageType originalImageType() const { return m_originalImageType; }
+    /// @brief Returns whether a cage warp has been baked into m_originalImage.
+    bool cageApplied() const { return m_cageApplied; }
+    /// @brief Directly restores the physical state saved before a command ran.
+    ///        Does NOT update m_image or call updatePixmap() — caller must do that
+    ///        (typically via resetImageState) before this call.
+    void restoreOriginalImageState( const QImage& origImg, const QImage& alphaMask,
+                                    ImageType imageType, bool cageApplied );
 
     void setIsSelected( int caller, bool isSelected );
     /// @brief Applies a mirror preset: 0 = none, 1 = horizontal, 2 = vertical.
@@ -226,15 +240,19 @@ class LayerItem : public QGraphicsPixmapItem
     void setCageEditing( bool isEditing ) { m_cageEditing = isEditing; }
 
     // Cage edit undo/redo (separate per-layer stack, does not close the cage session)
+    struct CageState {
+        QVector<QPointF> points;
+        QVector<QPointF> originalPoints;
+        int columns = 0;
+        int rows = 0;
+        QPointF position;
+        bool unwarped = true;
+    };
     QUndoStack* cageEditStack();
+    CageState cageState() const;
     void snapshotCageState();
-    void restoreCageState( const QVector<QPointF>& pts, const QVector<QPointF>& origPts, int cols, int rows,
-                           const QPointF& scenePos );
-    const QVector<QPointF>& cageSnapPts()     const { return m_cageSnapPts; }
-    const QVector<QPointF>& cageSnapOrigPts() const { return m_cageSnapOrigPts; }
-    int     cageSnapCols() const { return m_cageSnapCols; }
-    int     cageSnapRows() const { return m_cageSnapRows; }
-    QPointF cageSnapPos()  const { return m_cageSnapPos; }
+    const CageState& cageSnapshot() const { return m_cageSnapshot; }
+    void restoreCageState(const CageState& state);
     void setParent( QWidget *parent ) { m_parent = parent; }
     void setUndoStack( GuardedUndoStack* stack );
     QPointF dragStartPos() const { return m_startPos; }
@@ -277,12 +295,9 @@ class LayerItem : public QGraphicsPixmapItem
     void initCage( const QVector<QPointF>& pts, const QRectF& rect, int rows, int columns );
     void resetCageToPixmap();
     QVector<QPointF> cagePoints() const;
-    /// @brief Applies the current cage mesh to the image and returns the warped result.
-    QImage applyCageWarp( const QString& caller = "unknown" );
+    /// Bakes the cage into the layer and returns the uncolored result for project serialization.
+    QImage commitCageWarp(const QString& caller, const QImage& cachedPhysical = {});
     void enableCage( int cols = -1, int nrows = -1 );
-
-    /// @brief Sets a pre-computed warped image to be returned by the next applyCageWarp() call.
-    void setPendingCacheImage( const QImage& img ) { m_pendingCacheImage = img; }
     /// @brief When true, updatePixmap()/resetPixmap() skip setPixmap() — call updatePixmap() once after loading.
     void setSuppressPixmapUpdate( bool v ) { m_suppressPixmapUpdate = v; }
 
@@ -311,6 +326,7 @@ class LayerItem : public QGraphicsPixmapItem
     
     QImage         m_image;
     QImage         m_originalImage;
+    QImage         m_alphaMask;    // Format_Alpha8; null = fully opaque
     QVector<QRgb>  m_activeLut;
     ImageType m_originalImageType = ImageType::Unknown;
     
@@ -320,6 +336,11 @@ class LayerItem : public QGraphicsPixmapItem
 
     void init();
     bool isValidMouseEventOperation();
+    QImage applyCageWarp(const QString& caller, bool physical = false);
+    QImage transformForDisplay(const QImage& image, const QTransform& transform) const;
+    QImage cageWarpSource() const;
+    void updateCageDisplay();
+    void captureCageSource();
     
     int m_index = 0;
     
@@ -356,18 +377,17 @@ class LayerItem : public QGraphicsPixmapItem
     CageWarpRenderer* m_cageWarpRenderer = nullptr;
 
     QUndoStack*      m_cageEditStack       = nullptr;
-    QVector<QPointF> m_cageSnapPts;
-    QVector<QPointF> m_cageSnapOrigPts;
-    int              m_cageSnapCols        = 0;
-    int              m_cageSnapRows        = 0;
-    QPointF          m_cageSnapPos;
+    CageState m_cageSnapshot;
     // Initial cage state at start of editing session (for Reset)
     QVector<QPointF> m_cageInitialPts;
     QVector<QPointF> m_cageInitialOrigPts;
     int              m_cageInitialCols     = 0;
     int              m_cageInitialRows     = 0;
     QPointF          m_cageInitialPos;
-    QImage           m_cageInitialImage;   // pre-warp original; restored by Reset
+    QImage           m_cageInitialImage;     // pre-warp original; restored by Reset
+    QTransform       m_cageInitialTransform; // m_totalTransform at cage-enable time
+    QImage           m_cageInitialAlphaMask; // m_alphaMask at cage-enable time
+    QSize            m_cageInitialFrameSize; // pre-warp raster size after its stored transform
 
     // Partial warp state: previous full-warp result + cage points that produced it.
     // The GPU renderer re-renders only the dirty region and composites with this base.
@@ -383,7 +403,6 @@ class LayerItem : public QGraphicsPixmapItem
     bool m_cageEnabled = false;
     bool m_cageEditing = false;
     bool m_cageApplied = false;
-    QImage m_pendingCacheImage;
     bool   m_suppressPixmapUpdate = false;
     bool m_mouseOperationActive = false;
     bool m_isDeleted = false;

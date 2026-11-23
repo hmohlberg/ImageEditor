@@ -68,6 +68,15 @@ class PerspectiveWarpCommand : public AbstractCommand
     QPointF m_origPosition;
     QTransform m_origTransform;
     QTransform m_origSceneTransform;
+
+    // Physical state saved at construction: restored verbatim by undo() so that
+    // TransformLayerCommand (Rotate) sees the correct m_originalImage / m_alphaMask /
+    // m_totalTransform after this command is undone.
+    QImage     m_origOriginalImage;
+    QImage     m_origAlphaMask;
+    QTransform m_origTotalTransform;
+    int        m_origOriginalImageType = 0;  // LayerItem::ImageType stored as int
+    bool       m_origCageApplied       = false;
     
     QTransform m_warpTransform;
     QPointF m_newPosition;

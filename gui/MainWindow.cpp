@@ -4013,11 +4013,11 @@ void MainWindow::createToolbars()
         "<b>Rotation angle</b><br>"
         "Rotation of the active layer in degrees (−180° to +180°). "
         "Positive values rotate clockwise; the spinner wraps around at the limits.");
-    connect(m_rotationLayerAngleSpin, &QDoubleSpinBox::valueChanged, m_imageView, [this](double value){
+    connect(m_rotationLayerAngleSpin, &QAbstractSpinBox::editingFinished, m_imageView, [this](){
+      double value = m_rotationLayerAngleSpin->value();
       LayerItem *layer = m_imageView->getSelectedItem();
       if ( layer ) {
-        double currentAngle = layer->getRotationAngle();
-        layer->setRotationAngle(value-currentAngle);
+        m_imageView->rotateLayer(*layer, value - layer->getRotationAngle());
       } else showMessage("Rotation failed. No image layer selected.",1);
     });
     m_rotateLayerToolbar->addWidget(m_rotationLayerAngleSpin);

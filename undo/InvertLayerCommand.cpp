@@ -87,20 +87,17 @@ void InvertLayerCommand::redo()
     if ( m_silent || !m_layer ) return;
     QImage& img = m_layer->image();
     const QImage& original = m_layer->originalImage();
-    if ( original.format() != QImage::Format_ARGB32 ) {
-        qWarning() << "InvertLayerCommand(): Only supports ARGB32 format!";
+    if ( original.format() != QImage::Format_Grayscale8 ) {
+        qWarning() << "InvertLayerCommand(): Only supports Grayscale8 format!";
         return;
     }
-    img = original.copy();
-    for ( int y = 0; y < img.height(); ++y ) {
-        const QRgb* srcLine = reinterpret_cast<const QRgb*>(original.constScanLine(y));
+    img = QImage(original.size(), QImage::Format_ARGB32);
+    for ( int y = 0; y < original.height(); ++y ) {
+        const uint8_t* srcLine = original.constScanLine(y);
         QRgb* dstLine = reinterpret_cast<QRgb*>(img.scanLine(y));
-        for (int x = 0; x < img.width(); ++x) {
-            QRgb src = srcLine[x];
-            int alpha = qAlpha(src);
-            int gray = qGray(src);
-            QRgb mapped = (gray < m_lut.size()) ? m_lut[gray] : src;
-            dstLine[x] = qRgba(qRed(mapped), qGreen(mapped), qBlue(mapped), alpha);
+        for (int x = 0; x < original.width(); ++x) {
+            uint8_t gray = srcLine[x];
+            dstLine[x] = (gray < m_lut.size()) ? m_lut[gray] : qRgb(gray, gray, gray);
         }
     }
     m_layer->updatePixmap();

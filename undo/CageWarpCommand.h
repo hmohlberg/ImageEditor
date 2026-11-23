@@ -57,8 +57,19 @@ class CageWarpCommand : public AbstractCommand
       m_rows    = rows;
     }
     
+    void restoreEditState(const QPointF& pos, const QVector<QPointF>& points,
+                          int columns, int rows, const QImage& physicalImage)
+    {
+        m_newPos = pos;
+        m_after = points;
+        setNumberOfRowsAndColumns(columns, rows);
+        m_warpedImage = physicalImage;
+        m_cachedWarpedImage = QImage();
+    }
+
     void setImage( const QImage& image ) { m_warpedImage = image; }
     void setSkipApplyWarpOnRedo( bool skip ) { m_skipApplyWarpOnRedo = skip; }
+    void updateNewPos( const QPointF& pos ) { m_newPos = pos; }
     void save_image() {
       m_warpedImage.save("/tmp/imageeditor_backuppic.png");
     }
@@ -84,8 +95,9 @@ class CageWarpCommand : public AbstractCommand
     QRectF m_newSceneRect;
     bool m_initializedState = false;
     
-    QPointF m_oldPos;           // old topLeft position
-    QPointF m_newPos;           // new topLeft position
+    QPointF m_oldPos;           // geometric pos at construction (pos() without offset)
+    QPointF m_savedVisualPos;   // visual pos at construction (pos() + offset()), used in undo
+    QPointF m_newPos;           // actual final pos after applyCageWarp absorbed offset
     
     LayerItem* m_layer;
     
@@ -97,6 +109,7 @@ class CageWarpCommand : public AbstractCommand
     bool m_skipApplyWarpOnRedo = false;
 
     QImage m_originalImage;     // copy of the original image
+    QImage m_savedAlphaMask;    // alpha mask at captureInitialState() time
     QImage m_warpedImage;       // warped image
     QImage m_cachedWarpedImage; // pre-computed result loaded from JSON; cleared after first redo()
 

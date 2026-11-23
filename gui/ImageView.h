@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <QSet>
 #include <QGraphicsView>
 #include <QGraphicsScene>
 #include <QGraphicsPolygonItem>
@@ -178,6 +179,7 @@ class ImageView : public QGraphicsView
     void printself();
 
     void applyDisplayAdjustments();
+    void rotateLayer(LayerItem& layer, double angleDelta);
     void setSuppressIndexChangedAdjustments(bool v) { m_suppressIndexChangedAdjustments = v; }
 
  private:
@@ -225,6 +227,7 @@ class ImageView : public QGraphicsView
     void disableTransformMode();
     void setEnablePerspectiveWarp( LayerItem* layer );
     void disablePerspectiveWarp();
+    QVector<QRgb> displayLut() const;
 
     QList<Layer*> m_layers;
     QList<QPointer<EditablePolygon>> m_editablePolygons;
@@ -289,7 +292,8 @@ class ImageView : public QGraphicsView
     int m_maskBrushRadius = 5;
     int m_lassoFeatherRadius = 0;
     int m_lastIndex = 0;
-    bool m_pendingApplyDA = false;
+    bool m_pendingFullDisplayUpdate = false;
+    QSet<int> m_pendingRotationDisplayLayers;
     QTimer* m_applyDATimer = nullptr;
 
     QPointF m_cursorPos;

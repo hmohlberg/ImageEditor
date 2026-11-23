@@ -307,6 +307,10 @@ QWidget* ConfigDialog::buildCageTab()
         if (m_liveWarpLabel)      m_liveWarpLabel->setEnabled(checked);
     });
 
+    m_quadPerspectiveWarp = new QCheckBox;
+    row(tr("Bilinear cage warp (CPU)"), m_quadPerspectiveWarp,
+        tr("Uses an edge-continuous bilinear mapping instead of the legacy TriangleWarp renderer."));
+
     m_noSelfIntersection = new QCheckBox;
     row(tr("No self-intersection"), m_noSelfIntersection,
         tr("Prevents cage control points from crossing each other during warping."));
@@ -581,6 +585,7 @@ void ConfigDialog::loadFromStyle()
     m_gpu->setChecked(s.useGPU());
     m_gpuCatmullRom->setChecked(s.gpuCatmullRom());
     m_liveWarp->setChecked(s.liveWarp());
+    m_quadPerspectiveWarp->setChecked(s.quadPerspectiveWarp());
     {
         const bool gpuOn = m_gpu->isChecked() && m_gpu->isEnabled();
         m_gpuCatmullRom->setEnabled(gpuOn);
@@ -667,6 +672,7 @@ void ConfigDialog::applyToStyle()
     s.setUseGPU(m_gpu->isChecked());
     s.setGpuCatmullRom(m_gpuCatmullRom->isChecked());
     s.setLiveWarp(m_liveWarp->isChecked());
+    s.setQuadPerspectiveWarp(m_quadPerspectiveWarp->isChecked());
     s.setNoSelfIntersection(m_noSelfIntersection->isChecked());
     s.setCageGridWidth(m_cageGridWidth->value());
     s.setCageGridCols(m_cageGridCols->value());

@@ -40,6 +40,13 @@ PerspectiveWarpCommand::PerspectiveWarpCommand(
     m_origTransform = m_layer->transform();
     m_origSceneTransform = m_layer->sceneTransform();
     m_origImage = m_layer->image(0);
+    // Save the full physical state so undo() can restore it without corrupting
+    // m_originalImage or m_alphaMask for subsequent Rotate undo/redo steps.
+    m_origOriginalImage     = m_layer->image(1);
+    m_origAlphaMask         = m_layer->alphaMask();
+    m_origTotalTransform    = m_layer->totalTransform();
+    m_origOriginalImageType = static_cast<int>(m_layer->originalImageType());
+    m_origCageApplied       = m_layer->cageApplied();
     const QRectF r = m_layer->boundingRect();
     m_startQuad = { r.topLeft(), r.topRight(), r.bottomRight(), r.bottomLeft() };
     setAfterQuad(after);
@@ -70,6 +77,11 @@ AbstractCommand* PerspectiveWarpCommand::clone() const
     cmd->m_origPosition = m_origPosition;
     cmd->m_origTransform = m_origTransform;
     cmd->m_origSceneTransform = m_origSceneTransform;
+    cmd->m_origOriginalImage     = m_origOriginalImage;
+    cmd->m_origAlphaMask         = m_origAlphaMask;
+    cmd->m_origTotalTransform    = m_origTotalTransform;
+    cmd->m_origOriginalImageType = m_origOriginalImageType;
+    cmd->m_origCageApplied       = m_origCageApplied;
     cmd->m_warpTransform = m_warpTransform;
     cmd->m_newPosition = m_newPosition;
     cmd->m_startQuad = m_startQuad;
@@ -195,8 +207,10 @@ bool PerspectiveWarpCommand::applyWarp()
     }
 
     if ( m_afterQuad == m_beforeQuad ) {
-        m_layer->resetImageState(m_origImage, m_origPosition, m_origTransform);
-        m_layer->setOriginalImage(m_origImage,LayerItem::ImageType::Original);
+        m_layer->resetImageState(m_origImage, m_origPosition, m_origTotalTransform);
+        m_layer->restoreOriginalImageState(
+            m_origOriginalImage, m_origAlphaMask,
+            static_cast<LayerItem::ImageType>(m_origOriginalImageType), m_origCageApplied);
         return true;
     }
 
@@ -223,8 +237,16 @@ void PerspectiveWarpCommand::undo()
   qCDebug(logEditor) << "PerspectiveWarpCommand::undo(): position =" << m_origPosition;
   {
     if ( !m_layer ) return;
-    m_layer->resetImageState(m_origImage,m_origPosition,m_origTransform);
-    m_layer->setOriginalImage(m_origImage,LayerItem::ImageType::Original);
+    // Restore m_image (rotation already baked in) and m_totalTransform (rotation) so
+    // TransformLayerCommand (Rotate) finds consistent state on its own undo/redo.
+    m_layer->resetImageState(m_origImage, m_origPosition, m_origTotalTransform);
+    // Restore the pre-rotation-space physical state: m_originalImage (unrotated Grayscale8)
+    // and m_alphaMask (pre-rotation space).  Without this, m_originalImage would be set to
+    // grayscale(rotated_argb) — rotation baked in — and subsequent Rotate undo would
+    // then reapply the rotation on top, causing double rotation in the display.
+    m_layer->restoreOriginalImageState(
+        m_origOriginalImage, m_origAlphaMask,
+        static_cast<LayerItem::ImageType>(m_origOriginalImageType), m_origCageApplied);
     printMessage(true);
   }
 }

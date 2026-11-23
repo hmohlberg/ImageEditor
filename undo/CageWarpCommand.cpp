@@ -25,6 +25,10 @@
 #include "../layer/LayerItem.h"
 #include "../core/Config.h"
 
+namespace {
+constexpr int warpCacheVersion = 3;
+}
+
 // ---------------------- Constructor ----------------------
 CageWarpCommand::CageWarpCommand( LayerItem* layer,
            const QVector<QPointF>& before, const QVector<QPointF>& after, const QRectF& rect, const QPointF& newPos,
@@ -61,9 +65,17 @@ void CageWarpCommand::captureInitialState()
 {
     if ( !m_layer || m_initializedState ) return;
     m_oldPos = m_layer->pos();
-    m_oldSceneRect = m_layer->sceneBoundingRect();
+    // The item offset counter-shifts the pixmap so that the visual position (pos+offset)
+    // stays at the cage bbox origin even as normalization increments pos and decrements offset.
+    // undo() must restore to visual position (pos+offset), not the geometric pos(), so
+    // that the layer appears at the same place it was before the commit.
+    m_savedVisualPos = m_layer->pos() + m_layer->offset();
+    // m_oldSceneRect must also be in terms of the visual position so that restoreOldSceneRect()
+    // computes a zero delta when the pixmap size is unchanged after undo.
+    m_oldSceneRect = m_layer->sceneBoundingRect().translated(m_layer->offset());
     m_transform = m_layer->totalTransform();
     m_originalImage = m_layer->originalImage();
+    m_savedAlphaMask = m_layer->alphaMask();
     m_initializedState = true;
 }
 
@@ -93,6 +105,9 @@ void CageWarpCommand::pushNewWarpStep( const QPointF& pos, const QVector<QPointF
   qCDebug(logEditor) << "CageWarpCommand::pushNewWarpStep(): pos =" << pos;
   {
     m_newPos = pos;
+    // After each committed warp step, applyCageWarp clears offset to 0,
+    // so at the start of the next step visual pos == geometric pos.
+    m_savedVisualPos = pos;
     m_after = points;
     m_steps += 1;
   }
@@ -106,10 +121,14 @@ void CageWarpCommand::undo()
     if ( !m_layer ) return;
     m_layer->setCagePoints(m_before);
     m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,false,true);
-    m_layer->setTotalTransform(m_transform);
     m_layer->setOriginalImage(m_originalImage,LayerItem::ImageType::Original);
-    m_layer->setImageTransform(QTransform());
-    m_layer->setPos(m_oldPos);
+    m_layer->setAlphaMask(m_savedAlphaMask);
+    m_layer->setTotalTransform(m_transform);
+    m_layer->resetPixmap();
+    // Restore to the visual position (pos+offset at construction time).
+    // Using m_oldPos (geometric pos) would be wrong when normalization had accumulated
+    // a non-zero offset, leaving the layer shifted by Σdx after undo.
+    m_layer->setPos(m_savedVisualPos);
     restoreOldSceneRect();
     printMessage(true);
   }
@@ -123,19 +142,16 @@ void CageWarpCommand::redo()
     captureInitialState();
     m_transform = m_layer->totalTransform();
     m_originalImage = m_layer->originalImage();
+    m_savedAlphaMask = m_layer->alphaMask();
     m_layer->initCage(m_after,m_rect,m_rows,m_columns);
     m_layer->setCageVisible(LayerItem::OperationMode::CageWarp,true);
-    if (!m_cachedWarpedImage.isNull()) {
-      m_layer->setPendingCacheImage(m_cachedWarpedImage);
+    const bool hasBakedImage = !m_warpedImage.isNull() || !m_cachedWarpedImage.isNull();
+    if (!m_skipApplyWarpOnRedo && (m_before != m_after || hasBakedImage)) {
+      m_layer->cageMesh().setNeedUpdate(true);
+      m_warpedImage = m_layer->commitCageWarp("CageWarpCommand", m_cachedWarpedImage);
       m_cachedWarpedImage = QImage();
     }
-    if (!m_skipApplyWarpOnRedo) {
-      m_layer->cageMesh().setNeedUpdate(true);
-      m_warpedImage = m_layer->applyCageWarp("CageWarpCommand");
-      m_layer->setOriginalImage(m_warpedImage,m_steps == 0 ? LayerItem::ImageType::Original : LayerItem::ImageType::Warped);
-    }
-    m_layer->setTotalTransform(QTransform());
-    m_layer->resetPixmap();
+    // For identity cage: nothing changed — skip resetPixmap to preserve exact display.
     m_layer->setPos(m_newPos);
     m_newSceneRect = m_layer->sceneBoundingRect();
     printMessage();
@@ -182,13 +198,14 @@ QJsonObject CageWarpCommand::toJson() const
     topLeftObj["y"] = m_newPos.y();
     obj["topLeft_after"] = topLeftObj;
 
-    // Cache the warped result so reloading skips the expensive warp recomputation
+    // Cache the uncolored result together with the mapping version.
     if (!m_warpedImage.isNull()) {
         QByteArray ba;
         QBuffer buf(&ba);
         buf.open(QIODevice::WriteOnly);
         m_warpedImage.save(&buf, "PNG");
-        obj["warpedImageData"] = QString::fromLatin1(ba.toBase64());
+        obj["warpedPhysicalImageVersion"] = warpCacheVersion;
+        obj["warpedPhysicalImageData"] = QString::fromLatin1(ba.toBase64());
     }
 
     return obj;
@@ -264,10 +281,10 @@ CageWarpCommand* CageWarpCommand::fromJson( const QJsonObject& obj, const QList<
         cmd = new CageWarpCommand(layer, before, after, rect, newPos, rows, columns, parent);
     }
 
-    // Load cached warped image to avoid recomputing the expensive warp on load
-    if (obj.contains("warpedImageData")) {
+    // Rebuild older caches that used display colors or different coordinates.
+    if (obj["warpedPhysicalImageVersion"].toInt() == warpCacheVersion) {
         const QByteArray ba = QByteArray::fromBase64(
-            obj["warpedImageData"].toString().toLatin1());
+            obj["warpedPhysicalImageData"].toString().toLatin1());
         QImage cached;
         if (cached.loadFromData(ba, "PNG") && !cached.isNull())
             cmd->m_cachedWarpedImage = cached;

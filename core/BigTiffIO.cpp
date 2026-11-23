@@ -105,14 +105,13 @@ QImage bigTiffReadLevel(const QString& path, int scaleFactor, QString* errorOut)
     }
     TIFFClose(tif);
 
-    // Flip vertically and convert ABGR → ARGB for QImage.
-    QImage img(int(lvl.w), int(lvl.h), QImage::Format_ARGB32);
+    // Flip vertically and extract the red channel (R=G=B for grayscale TIFFs).
+    QImage img(int(lvl.w), int(lvl.h), QImage::Format_Grayscale8);
     for (int y = 0; y < (int)lvl.h; ++y) {
         const uint32_t* src = buf.data() + ((size_t)(lvl.h - 1 - y) * lvl.w);
-        QRgb*           dst = reinterpret_cast<QRgb*>(img.scanLine(y));
+        uint8_t*        dst = img.scanLine(y);
         for (int x = 0; x < (int)lvl.w; ++x)
-            dst[x] = qRgba(TIFFGetR(src[x]), TIFFGetG(src[x]),
-                           TIFFGetB(src[x]), TIFFGetA(src[x]));
+            dst[x] = TIFFGetR(src[x]);
     }
     return img;
 }

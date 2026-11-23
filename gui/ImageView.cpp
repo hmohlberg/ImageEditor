@@ -17,6 +17,7 @@
 
 #include "ImageView.h"
 #include "MainWindow.h"
+#include <QScopedValueRollback>
 #include <QApplication>
 
 #include "../core/Config.h"
@@ -156,14 +157,22 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
     m_applyDATimer->setSingleShot(true);
     m_applyDATimer->setInterval(0);
     connect(m_applyDATimer, &QTimer::timeout, this, [this]() {
-        // Re-enable repaints suppressed in indexChanged before we update the display,
-        // so the LUT-applied result is the first frame the viewport actually paints.
-        viewport()->setUpdatesEnabled(true);
-        if ( m_pendingApplyDA && m_scene && !m_scene->items().isEmpty() && updatesEnabled()
-             && !m_suppressIndexChangedAdjustments ) {
-            applyDisplayAdjustments();
+        // Apply LUT BEFORE re-enabling viewport updates so the first frame the
+        // compositor paints is always LUT-corrected, never the raw backup image.
+        if (m_scene && updatesEnabled() && !m_suppressIndexChangedAdjustments) {
+            if (m_pendingFullDisplayUpdate) {
+                applyDisplayAdjustments();
+            } else if (!m_pendingRotationDisplayLayers.isEmpty()) {
+                const QVector<QRgb> lut = displayLut();
+                for (int id : m_pendingRotationDisplayLayers) {
+                    if (auto* layer = getLayerItem(id))
+                        layer->applyLutWithTransform(lut);
+                }
+            }
         }
-        m_pendingApplyDA = false;
+        m_pendingFullDisplayUpdate = false;
+        m_pendingRotationDisplayLayers.clear();
+        viewport()->setUpdatesEnabled(true);
     });
     connect(m_undoStack, &QUndoStack::cleanChanged, this, [this](bool isClean){
       setWindowModified(!isClean);
@@ -338,18 +347,22 @@ ImageView::ImageView( QWidget* parent ) : QGraphicsView(parent),
         const QUndoCommand* actionCmd = isUndo
             ? m_undoStack->command(currentIndex)   // command just undone
             : justFinishedCommand;                 // command just redone
-        const bool pixelContentUnchanged = actionCmd && (
+        const bool singleStep = qAbs(currentIndex - m_lastIndex) <= 1;
+        const bool pixelContentUnchanged = singleStep && actionCmd && (
             actionCmd->text().startsWith("Move Layer") ||
-            actionCmd->text().startsWith("Set Rotation Pivot") );
-        // Schedule applyDisplayAdjustments via zero-interval timer so that during a
-        // history jump (multiple synchronous indexChanged signals), only one applyDA
-        // call runs after all undo/redo steps settle — preventing intermediate states
-        // from corrupting the final display (the original history-jump bug).
-        // Disable viewport repaints until the timer fires so the raw (un-LUT'd) image
-        // is never shown between a command's pixel restore and the LUT pass.
-        if ( m_scene && !m_scene->items().isEmpty() && updatesEnabled()
-             && !m_suppressIndexChangedAdjustments && !pixelContentUnchanged ) {
-            m_pendingApplyDA = true;
+            actionCmd->text().startsWith("Set Rotation Pivot"));
+        // Coalesce history changes before repainting. A jump across multiple
+        // commands can also affect layers other than the one at the stack index.
+        if (m_scene && !m_scene->items().isEmpty() && updatesEnabled()
+            && !m_suppressIndexChangedAdjustments && !pixelContentUnchanged) {
+            const auto* transform = singleStep ? dynamic_cast<const TransformLayerCommand*>(actionCmd) : nullptr;
+            if (transform && transform->trafoType() == TransformLayerCommand::Rotate && transform->layer()) {
+                if (!m_pendingFullDisplayUpdate)
+                    m_pendingRotationDisplayLayers.insert(transform->layer()->id());
+            } else {
+                m_pendingFullDisplayUpdate = true;
+                m_pendingRotationDisplayLayers.clear();
+            }
             viewport()->setUpdatesEnabled(false);
             m_applyDATimer->start(0);
         }
@@ -999,10 +1012,18 @@ void ImageView::setContrast( int contrast )
     applyDisplayAdjustments();
 }
 
-void ImageView::applyDisplayAdjustments()
+void ImageView::rotateLayer(LayerItem& layer, double angleDelta)
 {
-    if ( !m_scene ) return;
+    const QScopedValueRollback<bool> allowHistoryRefresh(m_suppressIndexChangedAdjustments, false);
+    viewport()->setUpdatesEnabled(false);
+    if (qAbs(angleDelta) > 1e-6)
+        layer.setRotationAngle(angleDelta);
+    if (!m_applyDATimer->isActive())
+        viewport()->setUpdatesEnabled(true);
+}
 
+QVector<QRgb> ImageView::displayLut() const
+{
     // Build effective LUT: brightness/contrast adjustment applied first, then colormap.
     // If no colormap has been set yet use an identity (greyscale passthrough).
     QVector<QRgb> effectiveLut(256);
@@ -1011,6 +1032,14 @@ void ImageView::applyDisplayAdjustments()
         int adjusted = qBound(0, qRound((i - 128) * factor + 128 + m_brightness), 255);
         effectiveLut[i] = m_lut.isEmpty() ? qRgb(adjusted, adjusted, adjusted) : m_lut[adjusted];
     }
+    return effectiveLut;
+}
+
+void ImageView::applyDisplayAdjustments()
+{
+    if (!m_scene)
+        return;
+    const QVector<QRgb> effectiveLut = displayLut();
 
     // Apply to all layers. applyLutWithTransform() handles the geometric transform
     // correctly so rotated/scaled layers keep their visual position.
@@ -1018,7 +1047,7 @@ void ImageView::applyDisplayAdjustments()
         auto* li = dynamic_cast<LayerItem*>(item);
         if ( !li ) continue;
         const QImage& original = li->originalImage();
-        if ( original.isNull() || original.format() != QImage::Format_ARGB32 ) continue;
+        if ( original.isNull() || original.format() != QImage::Format_Grayscale8 ) continue;
         li->applyLutWithTransform(effectiveLut);
     }
 
@@ -1680,7 +1709,7 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
            int rows = selectedCageLayer->cageMesh().rows();
            int columns = selectedCageLayer->cageMesh().cols();
            auto* warpCmd = new CageWarpCommand(selectedCageLayer, cageBefore, cageAfter,
-                                               selectedCageLayer->sceneBoundingRect(), selectedCageLayer->pos(),
+                                               selectedCageLayer->boundingRect(), selectedCageLayer->pos(),
                                                rows, columns);
            warpCmd->setSkipApplyWarpOnRedo(true);   // warp will be done below — skip redundant call in redo()
            m_suppressIndexChangedAdjustments = true;  // prevent applyDisplayAdjustments from corrupting m_image before applyCageWarp
@@ -1692,25 +1721,19 @@ void ImageView::mouseReleaseEvent( QMouseEvent* event )
            m_undoStack->resetClean();
          }
          if( selectedCageLayer ) {
-           selectedCageLayer->resetPixmap();  // strip any LUT from m_image so applyCageWarp warps the raw original
-           QImage warpedResult = selectedCageLayer->applyCageWarp("ImageView::1");
+           const QImage warpedResult = selectedCageLayer->commitCageWarp("ImageView::1");
            if( !warpedResult.isNull() ) {
-             selectedCageLayer->setOriginalImage(warpedResult, LayerItem::ImageType::Warped);
-             if ( selectedCageLayer->getCageWarpCommand() )
+             if ( selectedCageLayer->getCageWarpCommand() ) {
                selectedCageLayer->getCageWarpCommand()->setImage(warpedResult);  // store for JSON serialization
-             applyDisplayAdjustments();  // apply current LUT to the newly warped image
+               // Save the normalized cage origin for replay.
+               selectedCageLayer->getCageWarpCommand()->updateNewPos(selectedCageLayer->pos());
+             }
            }
          }
          // Push cage-edit undo entry (per-layer stack, keeps cage session open)
          selectedCageLayer->cageEditStack()->push(new CageEditCommand(
              selectedCageLayer,
-             selectedCageLayer->cageSnapPts(), selectedCageLayer->cageSnapOrigPts(),
-             selectedCageLayer->cageSnapCols(), selectedCageLayer->cageSnapRows(),
-             selectedCageLayer->cageSnapPos(),
-             cageAfter,
-             selectedCageLayer->cageMesh().originalPoints(),
-             selectedCageLayer->cageMesh().cols(), selectedCageLayer->cageMesh().rows(),
-             selectedCageLayer->pos(),
+             selectedCageLayer->cageSnapshot(), selectedCageLayer->cageState(),
              tr("Move cage point")));
         }
         m_cageBefore.clear();
@@ -2224,18 +2247,25 @@ void ImageView::initCageWarpForLayer( LayerItem *layerItem )
      if ( m_selectedCageLayer->getCageWarpCommand() == nullptr ) {
        int rows = m_selectedCageLayer->cageMesh().rows();
        int columns = m_selectedCageLayer->cageMesh().cols();
-       m_undoStack->push( new CageWarpCommand(m_selectedCageLayer, 
-              cageBefore, cageAfter,m_selectedCageLayer->sceneBoundingRect(), m_selectedCageLayer->pos(), rows, columns ) );
+       m_undoStack->push( new CageWarpCommand(m_selectedCageLayer,
+              cageBefore, cageAfter, m_selectedCageLayer->boundingRect(), m_selectedCageLayer->pos(), rows, columns ) );
      } else {
        m_selectedCageLayer->getCageWarpCommand()->pushNewWarpStep( m_selectedCageLayer->pos(), cageAfter );
        m_undoStack->resetClean();
      }
      if ( m_selectedCageLayer ) {
-        m_selectedCageLayer->resetPixmap();  // strip LUT from m_image so cage warps raw pixels (matches ImageView::1 path)
-        QImage warpedResult = m_selectedCageLayer->applyCageWarp("ImageView::2");
-        if( !warpedResult.isNull() ) {
-          m_selectedCageLayer->setOriginalImage(warpedResult, LayerItem::ImageType::Warped);
-          applyDisplayAdjustments();  // re-apply LUT to the newly initialised warp result
+        // Skip the initial warp when no control point has been moved yet.
+        // For an identity grid (points == originalPoints) the warp result equals
+        // the input image — the full resample would be a no-op but costs O(w*h).
+        const bool cageIsIdentity =
+            m_selectedCageLayer->cageMesh().points() ==
+            m_selectedCageLayer->cageMesh().originalPoints();
+        if ( !cageIsIdentity ) {
+          const QImage warpedResult = m_selectedCageLayer->commitCageWarp("ImageView::2");
+          if (!warpedResult.isNull() && m_selectedCageLayer->getCageWarpCommand()) {
+            m_selectedCageLayer->getCageWarpCommand()->setImage(warpedResult);
+            m_selectedCageLayer->getCageWarpCommand()->updateNewPos(m_selectedCageLayer->pos());
+          }
         }
      }
      m_cageBefore.clear();
@@ -3145,7 +3175,6 @@ void ImageView::setCageWarpReset()
   {
     if ( !m_selectedLayer || !m_selectedLayer->hasActiveCage() ) return;
     m_selectedLayer->resetCageToPixmap();
-    applyDisplayAdjustments();
   }
 }
 
@@ -3193,7 +3222,10 @@ void ImageView::setDecreaseNumberOfCageControlPoints()
     if (n != 0) {
       m_selectedLayer->getCageWarpCommand()->setNumberOfRowsAndColumns(
           m_selectedLayer->cageMesh().cols(), m_selectedLayer->cageMesh().rows());
-      m_selectedLayer->applyCageWarp("ImageView::3");
+      // No applyCageWarp here: the grid resize bilinearly interpolates control
+      // points so the deformation shape is preserved. The existing pixmap remains
+      // visually correct; a full warp is triggered automatically on the first
+      // point move (warpPartial falls back when prevPoints size mismatches).
       viewport()->update();
     }
    }

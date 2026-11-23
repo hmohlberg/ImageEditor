@@ -227,6 +227,7 @@ set(SOURCES
     util/GpuInfo.cpp
     util/Inpainting.cpp
     util/LaMaInpainting.cpp
+    util/CagePerspectiveWarp.cpp
 )
 if(APPLE)
     list(APPEND SOURCES util/MetalTransform.mm)
