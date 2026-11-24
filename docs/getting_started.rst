@@ -181,6 +181,132 @@ We have now defined two layers, each representing an image region that we can ed
       </video>
    </div>
 
+Example0
+~~~~~~~~
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example0.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+Example1
+~~~~~~~~
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example1a.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example1b.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+Example2
+~~~~~~~~
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example2.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+Example3
+~~~~~~~~
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example3a.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example3b.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+Example4
+~~~~~~~~
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example4.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+Example5
+~~~~~~~~
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example5.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+Example6
+~~~~~~~~
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example6.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+Example9
+~~~~~~~~
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example9.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+Example10
+~~~~~~~~
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example10.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
 
 
 
