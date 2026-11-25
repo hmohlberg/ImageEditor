@@ -181,8 +181,8 @@ We have now defined two layers, each representing an image region that we can ed
       </video>
    </div>
 
-Example0
-~~~~~~~~
+Example: Customization of user preferences using the user configuration file in ImageEditor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. raw:: html
 
@@ -193,8 +193,21 @@ Example0
       </video>
    </div>
 
-Example1
-~~~~~~~~
+Example: Mirroring an inverted layer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example2.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+Examples: Real-time live repairs of sections featuring
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Videos showing basic functionalities of ImageEditor, including strategies for defining layers, moving broken pieces, and quality control.
 
 .. raw:: html
 
@@ -214,20 +227,7 @@ Example1
       </video>
    </div>
 
-Example2
-~~~~~~~~
 
-.. raw:: html
-
-   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
-      <video width="700" controls style="display: block; margin: 0;">
-         <source src="_static/example2.webm" type="video/webm">
-         Your browser does not support HTML5 video.
-      </video>
-   </div>
-
-Example3
-~~~~~~~~
 
 .. raw:: html
 
@@ -247,44 +247,6 @@ Example3
       </video>
    </div>
 
-Example4
-~~~~~~~~
-
-.. raw:: html
-
-   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
-      <video width="700" controls style="display: block; margin: 0;">
-         <source src="_static/example4.webm" type="video/webm">
-         Your browser does not support HTML5 video.
-      </video>
-   </div>
-
-Example5
-~~~~~~~~
-
-.. raw:: html
-
-   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
-      <video width="700" controls style="display: block; margin: 0;">
-         <source src="_static/example5.webm" type="video/webm">
-         Your browser does not support HTML5 video.
-      </video>
-   </div>
-
-Example6
-~~~~~~~~
-
-.. raw:: html
-
-   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
-      <video width="700" controls style="display: block; margin: 0;">
-         <source src="_static/example6.webm" type="video/webm">
-         Your browser does not support HTML5 video.
-      </video>
-   </div>
-
-Example9
-~~~~~~~~
 
 .. raw:: html
 
@@ -295,8 +257,6 @@ Example9
       </video>
    </div>
 
-Example10
-~~~~~~~~
 
 .. raw:: html
 
@@ -308,5 +268,45 @@ Example10
    </div>
 
 
+Examples: Playback of repaired sections via Docks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example4.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example5.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example6.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
+
+.. raw:: html
+
+   <div style="text-align: left; margin: 0; padding: 0; margin-bottom: 30px;">
+      <video width="700" controls style="display: block; margin: 0;">
+         <source src="_static/example7.webm" type="video/webm">
+         Your browser does not support HTML5 video.
+      </video>
+   </div>
 
