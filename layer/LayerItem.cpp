@@ -637,7 +637,7 @@ QImage LayerItem::transformForDisplay(const QImage& image, const QTransform& tra
         return Interpolation::transformWithHighQuality(image, transform);
     if (mode == EditorStyle::InterpolationMode::Nearest)
         return image.transformed(transform, Qt::FastTransformation);
-    if (mode == EditorStyle::InterpolationMode::Bicubic || m_nogui)
+    if (mode == EditorStyle::InterpolationMode::Bicubic)
         return Interpolation::transformBicubic(image, transform);
     return image.transformed(transform, Qt::SmoothTransformation);
 }
@@ -808,22 +808,6 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
   qCDebug(logEditor) << "LayerItem::setImageTransform(): nonGUI =" << m_nogui << ", position =" << pos() << ", combine =" 
                         << combine << ", originalImageType =" << m_originalImageType;
   {
-    // *** DO NOT USE INTERNAL TRANSFORMATIONS ***
-    if ( 1 == 2 && !m_nogui && qobject_cast<QApplication*>(qApp) ) {
-      qDebug() << " + internal pixmap processing: transform_origin =" << QGraphicsPixmapItem::transformOriginPoint() << ", pos =" << QGraphicsPixmapItem::pos();
-      m_totalTransform = transform;
-      m_image = m_originalImage.transformed(m_totalTransform, Qt::SmoothTransformation);
-      prepareGeometryChange();
-      QPointF imageCenter = QRectF(m_originalImage.rect()).center();
-      QPointF sceneCenter = mapToScene(imageCenter);
-      QPointF newImageCenter(m_image.width() / 2.0, m_image.height() / 2.0);
-      setPixmap(QPixmap::fromImage(m_image));
-      setPos(sceneCenter - newImageCenter);
-      // QGraphicsPixmapItem::setTransform(transform,combine);
-      return;
-    }
-    // *** hard QImage transformation ***
-    qCDebug(logEditor) << "LayerItem::setImageTransform(): ALTERNATIVE PROCESS FOR CASE WHERE NO PIXMAP IS AVAILABLE";
     // check whether original image is-up-to-date
     if ( m_cageApplied && m_originalImageType == ImageType::Original ) {
      // qDebug() << "LayerItem::setImageTransform(): Need image update";
@@ -835,7 +819,7 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
     }
     // transform image
     prepareGeometryChange();
-    QPointF sceneCenter = qobject_cast<QApplication*>(qApp) ? mapToScene(QRectF(pixmap().rect()).center()) : mapToScene(QRectF(m_originalImage.rect()).center());
+    const QPointF sceneCenter = mapToScene(QRectF(m_image.rect()).center());
     QPointF imageCenter = QRectF(m_originalImage.rect()).center();
     if ( combine ) {
       m_totalTransform.translate(imageCenter.x(), imageCenter.y());
@@ -847,38 +831,7 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
       m_totalTransform *= transform;
       m_totalTransform.translate(-imageCenter.x(), -imageCenter.y());
     }
-    // Fast path for pure pixel flip (horizontal/vertical mirror).
-    // When m_totalTransform is a pure axis-aligned flip (|m11|=1, |m22|=1, no shear or
-    // projection), QImage::mirrored() gives the same result as transformWithHighQuality
-    // but is orders of magnitude faster — no QPainter, no resampling, just a memcpy.
-    const bool isPureFlip = (m_originalImage.format() == QImage::Format_ARGB32
-                              || m_originalImage.format() == QImage::Format_Grayscale8)
-        && qFuzzyIsNull(m_totalTransform.m12())
-        && qFuzzyIsNull(m_totalTransform.m21())
-        && qFuzzyIsNull(m_totalTransform.m13())
-        && qFuzzyIsNull(m_totalTransform.m23())
-        && qFuzzyCompare(qAbs(m_totalTransform.m11()), 1.0)
-        && qFuzzyCompare(qAbs(m_totalTransform.m22()), 1.0);
-    // the interpolation step (Qt only supports nearest neighbor und linear interpolation)
-    if ( isPureFlip ) {
-      Qt::Orientations dirs;
-      if ( m_totalTransform.m11() < 0 ) dirs |= Qt::Horizontal;
-      if ( m_totalTransform.m22() < 0 ) dirs |= Qt::Vertical;
-      m_image = QIMAGE_FLIP(m_originalImage, dirs);
-    } else if ( !m_nogui && EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::System ) {
-      // !!! only in gui mode !!!
-      m_image = Interpolation::transformWithHighQuality(m_originalImage, m_totalTransform);
-    } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Bicubic ) {
-      // this use external bicubic interpolation
-      m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
-    } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Nearest ) {
-      m_image = m_originalImage.transformed(m_totalTransform,Qt::FastTransformation);
-    } else if ( m_nogui ) {
-      m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
-    } else {
-      m_image = m_originalImage.transformed(m_totalTransform,Qt::SmoothTransformation);
-    }
-    // end
+    m_image = transformForDisplay(m_originalImage, m_totalTransform);
     QPointF newImageCenter(m_image.width() / 2.0, m_image.height() / 2.0);
     setPos(sceneCenter - newImageCenter);
     // reset transform
@@ -895,22 +848,8 @@ void LayerItem::setImageTransform( const QTransform& transform, bool combine ) {
 void LayerItem::reapplyImageTransform()
 {
   prepareGeometryChange();
-  QPointF sceneCenter = qobject_cast<QApplication*>(qApp)
-      ? mapToScene(QRectF(pixmap().rect()).center())
-      : mapToScene(QRectF(m_originalImage.rect()).center());
-  if ( m_totalTransform.isIdentity() ) {
-    m_image = m_originalImage;
-  } else if ( !m_nogui && EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::System ) {
-    m_image = Interpolation::transformWithHighQuality(m_originalImage, m_totalTransform);
-  } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Bicubic ) {
-    m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
-  } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Nearest ) {
-    m_image = m_originalImage.transformed(m_totalTransform, Qt::FastTransformation);
-  } else if ( m_nogui ) {
-    m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
-  } else {
-    m_image = m_originalImage.transformed(m_totalTransform, Qt::SmoothTransformation);
-  }
+  const QPointF sceneCenter = mapToScene(QRectF(m_image.rect()).center());
+  m_image = transformForDisplay(m_originalImage, m_totalTransform);
   QPointF newImageCenter(m_image.width() / 2.0, m_image.height() / 2.0);
   setPos(sceneCenter - newImageCenter);
   setTransform(QTransform());
@@ -921,19 +860,7 @@ void LayerItem::restoreTransformState( const QTransform& totalTransform, const Q
 {
   prepareGeometryChange();
   m_totalTransform = totalTransform;
-  if ( m_totalTransform.isIdentity() ) {
-    m_image = m_originalImage;
-  } else if ( !m_nogui && EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::System ) {
-    m_image = Interpolation::transformWithHighQuality(m_originalImage, m_totalTransform);
-  } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Bicubic ) {
-    m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
-  } else if ( EditorStyle::instance().interpolationMode() == EditorStyle::InterpolationMode::Nearest ) {
-    m_image = m_originalImage.transformed(m_totalTransform, Qt::FastTransformation);
-  } else if ( m_nogui ) {
-    m_image = Interpolation::transformBicubic(m_originalImage, m_totalTransform);
-  } else {
-    m_image = m_originalImage.transformed(m_totalTransform, Qt::SmoothTransformation);
-  }
+  m_image = transformForDisplay(m_originalImage, m_totalTransform);
   setPos(restoredPos);
   setTransform(QTransform());
   updatePixmap();
@@ -1148,7 +1075,8 @@ QImage LayerItem::applyCageWarp(const QString& caller, bool physical)
     if ( !m_cageMesh.isInitialized(true) ) {
       m_cageMesh.setImage(m_image);
     }
-    if (!Config::noOpenGL && (Config::gpuCageWarpProcessing || EditorStyle::instance().useGPU())) {
+    if (!m_nogui && !Config::noOpenGL &&
+        (Config::gpuCageWarpProcessing || EditorStyle::instance().useGPU())) {
       qCDebug(logEditor) << "LayerItem::applyCageWarp(): GPU cage warp processing...";
       const bool needsSource = !m_cageWarpRenderer || physical;
       if (!m_cageWarpRenderer)

@@ -33,6 +33,7 @@
 
 #include "../core/ImageLoader.h"
 #include "../core/ImageProcessor.h"
+#include "../core/PolygonLayerData.h"
 #include "../core/Updater.h"
 
 #include "../layer/LayerItem.h"
@@ -46,6 +47,7 @@
 #include "../undo/PerspectiveWarpCommand.h"
 #include "../undo/DeleteUndoEntryCommand.h"
 #include "../undo/LassoCutCommand.h"
+#include "../undo/EditablePolygonCommand.h"
 #include "../undo/MirrorLayerCommand.h"
 #include "../undo/MoveLayerCommand.h"
 #include "../undo/CageWarpCommand.h"
@@ -1364,7 +1366,37 @@ bool MainWindow::saveProject( const QString& filePath, const QString& name, cons
     m_saveHistory.append(entry);
 
     QUndoStack* undoStack = m_imageView->undoStack();
-    
+    const bool compact = EditorStyle::instance().compactPolygonLayers() && m_layerItem;
+    struct PolygonRecord {
+        int undoIndex;
+        const EditablePolygonCommand* command;
+    };
+    QHash<int, PolygonRecord> polygons;
+    QHash<int, const LassoCutCommand*> polygonCuts;
+    QJsonArray undoArray;
+    for (int i = 0; i < undoStack->count(); ++i) {
+        const auto* cmd = dynamic_cast<const AbstractCommand*>(undoStack->command(i));
+        if (!cmd) continue;
+        const QJsonObject json = cmd->toJson();
+        if (compact && i < undoStack->index() && !cmd->isSilent()) {
+            if (const auto* polygon = dynamic_cast<const EditablePolygonCommand*>(cmd)) {
+                if (polygon->childLayerId() > 0 && json["layerId"].toInt(-1) == 0)
+                    polygons.insert(polygon->childLayerId(), {int(undoArray.size()), polygon});
+            } else if (const auto* cut = dynamic_cast<const LassoCutCommand*>(cmd)) {
+                if (json["originalLayerId"].toInt(-1) == 0 && polygons.contains(cut->layerId()))
+                    polygonCuts.insert(cut->layerId(), cut);
+            }
+        }
+        undoArray.append(json);
+    }
+
+    QImage pristineSource;
+    if (!polygonCuts.isEmpty()) {
+        ImageLoader loader;
+        if (loader.load(m_layerItem->filename(), true))
+            pristineSource = loader.getImage();
+    }
+
     QJsonArray layerArray;
     
     // --- Main Layer ---
@@ -1404,6 +1436,42 @@ bool MainWindow::saveProject( const QString& filePath, const QString& name, cons
            layerObj["creator"] = layer->creator();
            layerArray.append(layerObj);
            continue;
+         }
+         const auto* cut = polygonCuts.value(layer->id());
+         if (cut && cut->layer() == layer->m_item && !pristineSource.isNull() &&
+             layer->creator() != "Inpainting") {
+            const auto record = polygons.value(layer->id());
+            QJsonObject polygonJson = undoArray[record.undoIndex].toObject();
+            const QPolygonF original = PolygonLayerData::pointsFromJson(polygonJson["points"].toArray());
+            const auto* model = record.command->model();
+            const QPolygonF edited = model ? model->polygon() : original;
+            const QImage& backup = cut->backup();
+            const QImage expected = backup.hasAlphaChannel() ? backup : layer->m_image;
+            const bool compareMask = !backup.hasAlphaChannel() && layer->m_binaryMask;
+            const QImage comparable = expected.convertToFormat(
+                compareMask ? QImage::Format_Grayscale8 : QImage::Format_ARGB32_Premultiplied);
+            // Check the actual cut: overlaps, feathering or mask labels may affect its pixels.
+            const auto matchesCut = [&](const QPolygonF& points) {
+                const QImage candidate = PolygonLayerData::extract(pristineSource, points, cut->rect());
+                return PolygonLayerData::samePixels(
+                    compareMask ? PolygonLayerData::binaryMask(candidate) : candidate, comparable);
+            };
+            QPolygonF points = original;
+            if (!matchesCut(points)) {
+                points = edited != original && matchesCut(edited) ? edited : QPolygonF();
+            }
+            if (!points.isEmpty()) {
+                if (points != original) {
+                    polygonJson["layerPoints"] = PolygonLayerData::pointsToJson(points);
+                    undoArray[record.undoIndex] = polygonJson;
+                }
+                layerObj["rebuildFromPolygon"] = true;
+                layerObj["binaryMask"] = EditorStyle::instance().binaryMasking();
+                layerObj["opacity"] = layer->opacity();
+                layerObj["creator"] = layer->creator();
+                layerArray.append(layerObj);
+                continue;
+            }
          }
          // Inpainting layers: embed PNG directly, always store position
          if ( layer->creator() == "Inpainting" ) {
@@ -1460,13 +1528,7 @@ bool MainWindow::saveProject( const QString& filePath, const QString& name, cons
         layerObj["creator"] = layer->creator();
         layerArray.append(layerObj);
     }
-    // --- Undo/Redo Stack ---
-    QJsonArray undoArray;
-    for ( int i = 0; i < undoStack->count(); ++i ) {
-      auto* cmd = dynamic_cast<const AbstractCommand*>(undoStack->command(i));
-      if ( !cmd ) continue;
-      undoArray.append(cmd->toJson());
-    }
+    pristineSource = QImage();
 
     // --- Write JSON to file with controlled key order (saveHistory first) ---
     QFile f(filePath);
@@ -1603,89 +1665,104 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
         m_imageView->clearLayers();
     }
 
+    QHash<int, PolygonLayerData::Cut> polygonCuts;
+    int invalidPolygonLayer = -1;
+    if (!PolygonLayerData::rebuild(root, m_layerItem ? m_layerItem->originalImage() : QImage(),
+                                   polygonCuts, invalidPolygonLayer)) {
+        showMessage(tr("Could not rebuild polygon layer %1 from the project history.").arg(invalidPolygonLayer), 1);
+        return false;
+    }
+
     // --- Parsing layers (does not contain layer positions) ---
-    // Pass 1: load all layers with image data
+    // Pass 1: load embedded or reconstructed layer images.
     int nCreatedLayers = 0;
     for ( const QJsonValue& v : layerArray ) {
       QJsonObject layerObj = v.toObject();
       int id = layerObj["id"].toInt();
       if ( id != 0 ) {
         QString name = layerObj["name"].toString();
-        if ( layerObj.contains("data") ) {
+        const auto polygonCut = polygonCuts.constFind(id);
+        if (layerObj.contains("data") || polygonCut != polygonCuts.cend()) {
          QRect rect;
          LayerItem* newLayer = nullptr;
-         QString imgBase64 = layerObj["data"].toString();
-         QByteArray ba = QByteArray::fromBase64(imgBase64.toUtf8());
          QImage mask;
-         mask.loadFromData(ba,"PNG");
          const QString creator = layerObj.value("creator").toString();
-         bool isBinaryMask = layerObj.value("binaryMask").toBool(false);
-         int x = layerObj.value("x").toInt(-1);
-         int y = layerObj.value("y").toInt(-1);
-         // fix by Claude to ensure that m_bounds is always defined correctly
-         if ( !(  x > 0 && y > 0 ) ) {
-           QJsonArray undoArray = root["undoStack"].toArray();
-           for ( const QJsonValue& v : undoArray ) {
-             QJsonObject cmdObj = v.toObject();
-             QString type = cmdObj["type"].toString();
-             if ( type == "LassoCut" || type == "LassoCutCommand" ) {
-               if( id == cmdObj["newLayerId"].toInt(-1) ) {
-                 QJsonObject r = cmdObj["rect"].toObject();
-                 x = r["x"].toInt();
-                 y = r["y"].toInt();
+         bool isBinaryMask = false;
+         if (polygonCut != polygonCuts.cend()) {
+           rect = polygonCut->bounds;
+           mask = polygonCut->image;
+           newLayer = new LayerItem(name, mask);
+         } else {
+           const QByteArray ba = QByteArray::fromBase64(layerObj["data"].toString().toUtf8());
+           mask.loadFromData(ba,"PNG");
+           isBinaryMask = layerObj.value("binaryMask").toBool(false);
+           int x = layerObj.value("x").toInt(-1);
+           int y = layerObj.value("y").toInt(-1);
+           // fix by Claude to ensure that m_bounds is always defined correctly
+           if ( !(  x > 0 && y > 0 ) ) {
+             QJsonArray undoArray = root["undoStack"].toArray();
+             for ( const QJsonValue& v : undoArray ) {
+               QJsonObject cmdObj = v.toObject();
+               QString type = cmdObj["type"].toString();
+               if ( type == "LassoCut" || type == "LassoCutCommand" ) {
+                 if( id == cmdObj["newLayerId"].toInt(-1) ) {
+                   QJsonObject r = cmdObj["rect"].toObject();
+                   x = r["x"].toInt();
+                   y = r["y"].toInt();
+                 }
                }
              }
            }
-         }
-         rect = QRect(x,y,mask.width(), mask.height());
-         // binary masking (skip for inpainting layers — they carry real pixel data)
-         if ( creator == "Inpainting" ) {
-            if ( mask.format() != QImage::Format_ARGB32 )
-                mask = mask.convertToFormat(QImage::Format_ARGB32);
-            alphaBleedImage(mask);
-            newLayer = new LayerItem(name, mask);
-            isBinaryMask = false;
-         } else if ( isBinaryMask && m_layerItem ) {
-           QImage mainImage = m_layerItem->image();
-           QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
-           subImage = subImage.convertToFormat(QImage::Format_ARGB32);
-           int backgroundPixelColor = Config::isWhiteBackgroundImage ? 255 : 0;
-           for ( int y = 0; y < subImage.height(); ++y ) {
-            QRgb *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
-            const uchar *maskData = mask.constScanLine(y);
-            for ( int x = 0; x < subImage.width(); ++x ) {
-             // if ( maskData[x] != 255 ) {
-             //  rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
-             // }
-             if (maskData[x] != 255 || (qRed(rowData[x]) == backgroundPixelColor && qGreen(rowData[x]) == backgroundPixelColor && qBlue(rowData[x]) == backgroundPixelColor)) {
-               rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
-             }
-            }
-           }
-           newLayer = new LayerItem("SubImage",subImage);
-         } else if ( EditorStyle::instance().binaryMasking() && x >= 0 && y >= 0 && m_layerItem ) {
-            if ( mask.format() != QImage::Format_ARGB32 && mask.format() != QImage::Format_ARGB32_Premultiplied ) {
-              mask = mask.convertToFormat(QImage::Format_ARGB32);
-            }
-            QImage mainImage = m_layerItem->image();
-            QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
-            subImage = subImage.convertToFormat(QImage::Format_ARGB32);
-            int backgroundPixelColor = Config::isWhiteBackgroundImage ? 255 : 0;
-            for ( int y = 0; y < subImage.height(); ++y ) {
-             auto *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
-             const auto *maskRowData = reinterpret_cast<const QRgb*>(mask.constScanLine(y));  
-             for ( int x = 0; x < subImage.width(); ++x ) {
-              // OLD: if ( qRed(rowData[x]) == backgroundPixelColor || qAlpha(maskRowData[x]) != 255 ) {
-              if ( qRed(rowData[x]) == backgroundPixelColor && qGreen(rowData[x]) == backgroundPixelColor && qBlue(rowData[x]) == backgroundPixelColor && qAlpha(maskRowData[x]) == 255 ) {
-               rowData[x] = 0; 
+           rect = QRect(x,y,mask.width(), mask.height());
+           // binary masking (skip for inpainting layers — they carry real pixel data)
+           if ( creator == "Inpainting" ) {
+              if ( mask.format() != QImage::Format_ARGB32 )
+                  mask = mask.convertToFormat(QImage::Format_ARGB32);
+              alphaBleedImage(mask);
+              newLayer = new LayerItem(name, mask);
+              isBinaryMask = false;
+           } else if ( isBinaryMask && m_layerItem ) {
+             QImage mainImage = m_layerItem->image();
+             QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
+             subImage = subImage.convertToFormat(QImage::Format_ARGB32);
+             int backgroundPixelColor = Config::isWhiteBackgroundImage ? 255 : 0;
+             for ( int y = 0; y < subImage.height(); ++y ) {
+              QRgb *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
+              const uchar *maskData = mask.constScanLine(y);
+              for ( int x = 0; x < subImage.width(); ++x ) {
+               // if ( maskData[x] != 255 ) {
+               //  rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
+               // }
+               if (maskData[x] != 255 || (qRed(rowData[x]) == backgroundPixelColor && qGreen(rowData[x]) == backgroundPixelColor && qBlue(rowData[x]) == backgroundPixelColor)) {
+                 rowData[x] = qRgba(qRed(rowData[x]), qGreen(rowData[x]), qBlue(rowData[x]), 0);
+               }
               }
              }
-            }
-            newLayer = new LayerItem("SubImage",subImage);
-            isBinaryMask = false;
-         } else {
-            newLayer = new LayerItem("MaskImage",mask);
-            isBinaryMask = false;
+             newLayer = new LayerItem("SubImage",subImage);
+           } else if ( EditorStyle::instance().binaryMasking() && x >= 0 && y >= 0 && m_layerItem ) {
+              if ( mask.format() != QImage::Format_ARGB32 && mask.format() != QImage::Format_ARGB32_Premultiplied ) {
+                mask = mask.convertToFormat(QImage::Format_ARGB32);
+              }
+              QImage mainImage = m_layerItem->image();
+              QImage subImage = mainImage.copy(x, y, mask.width(), mask.height());
+              subImage = subImage.convertToFormat(QImage::Format_ARGB32);
+              int backgroundPixelColor = Config::isWhiteBackgroundImage ? 255 : 0;
+              for ( int y = 0; y < subImage.height(); ++y ) {
+               auto *rowData = reinterpret_cast<QRgb*>(subImage.scanLine(y));
+               const auto *maskRowData = reinterpret_cast<const QRgb*>(mask.constScanLine(y));  
+               for ( int x = 0; x < subImage.width(); ++x ) {
+                // OLD: if ( qRed(rowData[x]) == backgroundPixelColor || qAlpha(maskRowData[x]) != 255 ) {
+                if ( qRed(rowData[x]) == backgroundPixelColor && qGreen(rowData[x]) == backgroundPixelColor && qBlue(rowData[x]) == backgroundPixelColor && qAlpha(maskRowData[x]) == 255 ) {
+                 rowData[x] = 0; 
+                }
+               }
+              }
+              newLayer = new LayerItem("SubImage",subImage);
+              isBinaryMask = false;
+           } else {
+              newLayer = new LayerItem("MaskImage",mask);
+              isBinaryMask = false;
+           }
          }
          newLayer->setIndex(id);
          newLayer->setParent(this);
@@ -1759,6 +1836,7 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
     QHash<int, QRectF> boundingBoxLayerMap;
     QList<EditablePolygonCommand*> editablePolygonCommands;
     EditablePolygonCommand* editablePolyCommand = nullptr;
+    QHash<int, EditablePolygonCommand*> polygonControllers;
     QJsonArray undoArray = root["undoStack"].toArray();
     for ( const QJsonValue& v : undoArray ) {
         QJsonObject cmdObj = v.toObject();
@@ -1769,10 +1847,13 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
         if ( type == "PaintStroke" || type == "PaintStrokeCommand" ) {
            cmd = PaintStrokeCommand::fromJson(cmdObj, layers);
         } else if ( type == "LassoCut" || type == "LassoCutCommand" ) {
-           cmd = LassoCutCommand::fromJson(cmdObj, layers);
-           LassoCutCommand* cutCommand = dynamic_cast<LassoCutCommand*>(cmd);
+           const int id = cmdObj["newLayerId"].toInt(-1);
+           const auto polygonCut = polygonCuts.constFind(id);
+           const QImage cutImage = polygonCut == polygonCuts.cend() ? QImage() : polygonCut->image;
+           auto* cutCommand = LassoCutCommand::fromJson(cmdObj, layers, nullptr, cutImage);
+           cmd = cutCommand;
            if ( cutCommand != nullptr ) {
-             cutCommand->setController(editablePolyCommand);
+             cutCommand->setController(polygonControllers.value(id, editablePolyCommand));
              boundingBoxLayerMap.insert(cutCommand->layerId(),cutCommand->rect());
            }
         } else if ( type == "MoveLayer" || type == "MoveLayerCommand" ) {
@@ -1791,6 +1872,8 @@ bool MainWindow::loadProject( const QString& filePath, bool skipMainImage )
            cmd = EditablePolygonCommand::fromJson(cmdObj, layers);
            editablePolyCommand = dynamic_cast<EditablePolygonCommand*>(cmd);
            if ( editablePolyCommand != nullptr ) {
+             if (editablePolyCommand->childLayerId() > 0)
+                 polygonControllers.insert(editablePolyCommand->childLayerId(), editablePolyCommand);
              int npolygons = m_imageView->pushEditablePolygon(editablePolyCommand->model());
              if ( editablePolyCommand->childLayerId() == -1 || npolygons < 0 ) {
                editablePolygonCommands.push_back(editablePolyCommand);

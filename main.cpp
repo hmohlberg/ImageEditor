@@ -30,6 +30,8 @@
 #include <QtGlobal>
 #include <QPainter>
 #include <QFile>
+#include <QSaveFile>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
@@ -302,7 +304,7 @@ static QJsonObject parser( const QCoreApplication *app, int argc ) {
   parser.addOption(alphaMaskingOption);
   QCommandLineOption skipValidationOption("skip-validation", "Skip all validation checks and force the loading of the input image.");
   parser.addOption(skipValidationOption);
-  QCommandLineOption saveJSONOption(QStringList() << "save-json", "In batch mode, save a loaded project file in the latest version.", "file");
+  QCommandLineOption saveJSONOption(QStringList() << "save-json", "In batch mode, save a loaded project in the latest version using the compact polygon setting.", "file");
   parser.addOption(saveJSONOption);
   QCommandLineOption intermediateOption(QStringList() << "save-intermediate", "In batch mode, path to output an image after each step in the history.", "file");
   parser.addOption(intermediateOption);
@@ -793,6 +795,9 @@ int main( int argc, char *argv[] )
       app->setApplicationName("ImageEditor");
       app->setApplicationVersion(APP_VERSION);
       QJsonObject parsedOptions = parser(app,argc);
+      const QString configPath = parsedOptions.value("configPath").toString();
+      if (!configPath.isEmpty())
+          EditorStyle::instance().load(configPath);
       QString imagePath = parsedOptions.value("imagePath").toString("");
       QString historyPath = parsedOptions.value("historyPath").toString("");
       const bool projectNone = parsedOptions.value("projectNone").toBool();
@@ -808,22 +813,60 @@ int main( int argc, char *argv[] )
           return 1; 
         }
         QImage image;
-        if ( !imagePath.isEmpty() ) {
-         ImageLoader loader;
-         loader.load(imagePath,true);
-         image = loader.getImage();
+        if (!imagePath.isEmpty()) {
+            ImageLoader loader;
+            if (!loader.load(imagePath, true)) {
+                printError(QString("Cannot load main image '%1'.").arg(imagePath));
+                return 1;
+            }
+            image = loader.getImage();
+            Config::isWhiteBackgroundImage = loader.hasWhiteBackground();
         }
         ImageProcessor proc(image);
-        proc.process(historyPath,forcedAlphaMasking,false);
-        QJsonDocument document = proc.document();
-        QFile file(saveJSONPath); 
-        if ( !file.open(QIODevice::WriteOnly | QIODevice::Text ) ) {
-          qWarning() << "FATAL ERROR: Could not create new JSON file" << file.errorString();
-          return 0;
+        if (!proc.process(historyPath, forcedAlphaMasking, false)) {
+            printError(QString("Cannot convert project '%1'.").arg(historyPath));
+            return 1;
         }
-        QByteArray bytes = document.toJson(QJsonDocument::Indented);
-         file.write(bytes);
-        file.close();
+        QJsonDocument document = proc.document();
+        if (!imagePath.isEmpty()) {
+            // Keep the converted project linked to the same source used during conversion.
+            QJsonObject project = document.object();
+            QJsonArray layers = project["layers"].toArray();
+            qsizetype mainIndex = 0;
+            for (; mainIndex < layers.size(); ++mainIndex) {
+                bool validId = false;
+                const int id = layers[mainIndex].toObject()["id"].toVariant().toInt(&validId);
+                if (validId && id == 0)
+                    break;
+            }
+            QJsonObject mainLayer = mainIndex < layers.size() ? layers[mainIndex].toObject()
+                : QJsonObject{{"id", "0"}, {"name", "MainImage"}};
+            const QFileInfo info(imagePath);
+            mainLayer["filename"] = info.fileName();
+            mainLayer["pathname"] = info.absolutePath();
+            mainLayer["filetime"] = info.lastModified().toString("yyyy-MM-dd HH:mm:ss");
+
+            QFile source(imagePath);
+            QCryptographicHash hash(QCryptographicHash::Md5);
+            if (!source.open(QIODevice::ReadOnly) || !hash.addData(&source)) {
+                printError(QString("Cannot checksum main image '%1'.").arg(imagePath));
+                return 1;
+            }
+            mainLayer["md5checksum"] = QString::fromLatin1(hash.result().toHex());
+            if (mainIndex < layers.size())
+                layers[mainIndex] = mainLayer;
+            else
+                layers.prepend(mainLayer);
+            project["layers"] = layers;
+            document.setObject(project);
+        }
+
+        QSaveFile file(saveJSONPath);
+        const QByteArray bytes = document.toJson(QJsonDocument::Indented);
+        if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
+            qWarning() << "Could not save converted JSON file:" << file.errorString();
+            return 1;
+        }
         qInfo() << "Saved JSON file" << saveJSONPath << ".";
         return 0;
       }

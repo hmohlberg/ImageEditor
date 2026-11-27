@@ -15,6 +15,8 @@
 *
 */
 
+#include <QBuffer>
+#include <QColorSpace>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonObject>
@@ -23,8 +25,10 @@
 #include "Config.h"
 #include "ImageProcessor.h"
 #include "ImageLoader.h"
+#include "PolygonLayerData.h"
 
 #include "../layer/LayerItem.h"
+#include "../layer/EditablePolygon.h"
 #include "../undo/AbstractCommand.h"
 #include "../undo/PaintStrokeCommand.h"
 #include "../undo/PerspectiveWarpCommand.h"
@@ -274,7 +278,7 @@ ImageProcessor::ImageProcessor( const QImage& image ) : m_image(image)
 {
   qDebug() << "ImageProcessor::ImageProcessor(): Processing...";
   { 
-   m_skipMainImage = true;
+   m_skipMainImage = !image.isNull();
    m_undoStack = new GuardedUndoStack();
    buildMainImageLayer();
   }
@@ -298,30 +302,29 @@ QImage ImageProcessor::compositeLayers() const
   }
   if ( result.isNull() ) return result;
 
-  auto sortedLayers = m_layers;
-  std::sort(sortedLayers.begin(), sortedLayers.end(), [](QGraphicsItem* a, QGraphicsItem* b) {
-    auto* layerA = dynamic_cast<LayerItem*>(a);
-    auto* layerB = dynamic_cast<LayerItem*>(b);
-    if ( !layerA || !layerB ) return false;
-    long areaA = (long)layerA->image().width() * layerA->image().height();
-    long areaB = (long)layerB->image().width() * layerB->image().height();
-    return areaA > areaB;
-  });
-
+  const bool grayscale = result.format() == QImage::Format_Grayscale8;
+  QList<LayerItem*> overlays;
+  for (auto* layer : m_layers) {
+    if (layer && layer->id() != 0 && !layer->isDeleted() && !layer->image().isNull())
+      overlays.append(layer);
+  }
+  if (overlays.isEmpty())
+    return result;
+  // Project loading in the editor stacks layers by ID and blends in ARGB32.
+  std::stable_sort(overlays.begin(), overlays.end(),
+                   [](const LayerItem* a, const LayerItem* b) { return a->id() < b->id(); });
+  result.convertTo(QImage::Format_ARGB32);
   QPainter painter(&result);
   painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-  for ( auto* item : sortedLayers ) {
-    auto* layer = dynamic_cast<LayerItem*>(item);
-    if ( layer && layer->id() != 0 ) {
-      QImage overlayImage = layer->image();
-      if ( !overlayImage.isNull() ) {
-        int x = static_cast<int>(layer->pos().x());
-        int y = static_cast<int>(layer->pos().y());
-        painter.drawImage(x, y, overlayImage);
-      }
-    }
+  for (auto* layer : overlays) {
+    painter.drawImage(int(layer->pos().x()), int(layer->pos().y()), layer->image());
   }
   painter.end();
+  if (grayscale) {
+    // Preserve the batch grayscale output without converting its sample values.
+    result.setColorSpace(QColorSpace());
+    result.convertTo(QImage::Format_Grayscale8);
+  }
   return result;
 }
 
@@ -363,6 +366,45 @@ void ImageProcessor::setIntermediatePath( const QString& templateFile )
     m_saveIntermediate = true;
 }
 
+static bool compactPolygonLayer(QJsonObject& layer, QJsonArray& history, const QImage& source,
+                                const PolygonLayerData::Recipe& recipe,
+                                const QImage& layerImage, const QImage& embeddedMask)
+{
+    if (layerImage.isNull())
+        return false;
+
+    const QImage expected = layerImage.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const auto matches = [&](const QPolygonF& points) {
+        const QImage rebuilt = PolygonLayerData::extract(source, points, recipe.bounds);
+        return PolygonLayerData::samePixels(rebuilt, expected) &&
+               (embeddedMask.isNull() || PolygonLayerData::samePixels(
+                    PolygonLayerData::binaryMask(rebuilt), embeddedMask));
+    };
+
+    QJsonObject polygon = history[recipe.polygonIndex].toObject();
+    const QPolygonF points = PolygonLayerData::cutPoints(polygon);
+    if (!matches(points)) {
+        const QJsonArray edits = polygon["undo"].toArray();
+        if (points.size() < 3 || edits.isEmpty() || polygon.contains("layerPoints"))
+            return false;
+        EditablePolygon model("ImageProcessor::process()");
+        model.setPolygon(points);
+        model.undoStackFromJson(edits);
+        const QPolygonF edited = model.polygon();
+        if (edited == points || !matches(edited))
+            return false;
+        polygon["layerPoints"] = PolygonLayerData::pointsToJson(edited);
+        history[recipe.polygonIndex] = polygon;
+    }
+
+    layer.remove("data");
+    layer.remove("x");
+    layer.remove("y");
+    layer["rebuildFromPolygon"] = true;
+    layer["binaryMask"] = true; // --save-json exports ordinary cut layers as binary masks.
+    return true;
+}
+
 bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, bool processHistory ) 
 {
  qDebug() << "ImageProcessor::process(): filePath='" << filePath << "', forcedAlphaMasking =" << forcedAlphaMasking << ", processHistory =" << processHistory;
@@ -397,16 +439,31 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
            buildMainImageLayer();
           } else {
             qDebug() << LogColor::Red << "ImageProcessor::process(): Cannot find '" << fullfilename << "'!" << LogColor::Reset;
-            return false;
+            if (processHistory)
+                return false;
           }
           haveMainImage = true;
         }
       }
-      if ( haveMainImage == false ) {
+      if ( !haveMainImage && processHistory ) {
         qDebug() << LogColor::Red << "ImageProcessor::process(): The main image is missing from the project file. Use the --file option to specify it.";
         return false;
       }
     }
+    QHash<int, PolygonLayerData::Cut> polygonCuts;
+    int invalidPolygonLayer = -1;
+    if (!PolygonLayerData::rebuild(root, m_image, polygonCuts, invalidPolygonLayer)) {
+        qWarning() << "Could not rebuild polygon layer from the project history:" << invalidPolygonLayer;
+        return false;
+    }
+
+    QJsonArray undoStack = root["undoStack"].toArray();
+    const bool compact = EditorStyle::instance().compactPolygonLayers();
+    const auto cutRecipes = (processHistory || compact) && !m_image.isNull()
+        ? PolygonLayerData::recipes(undoStack, m_image.size())
+        : QHash<int, PolygonLayerData::Recipe>();
+    QHash<int, QImage> polygonCutImages;
+
     // loading layers
     qInfo() << "Processing layer stack...";
     int nCreatedLayers = m_layers.size();
@@ -418,12 +475,39 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
       int id = layerObj["id"].toInt();
       qInfo() << " " << name << ": id =" << id;
       if ( id != 0 ) {
-        if ( layerObj.contains("data") ) {
+        const auto polygonCut = polygonCuts.constFind(id);
+        if (polygonCut != polygonCuts.cend()) {
+          auto* layer = new LayerItem(name, polygonCut->image);
+          layer->setIndex(id);
+          layer->setUndoStack(m_undoStack);
+          m_layers << layer;
+          ++nCreatedLayers;
+          if (processHistory)
+              polygonCutImages.insert(id, polygonCut->image);
+          if (!processHistory && !compact) {
+              const bool binary = layerObj["binaryMask"].toBool();
+              const QImage image = binary ? PolygonLayerData::binaryMask(polygonCut->image) : polygonCut->image;
+              QByteArray bytes;
+              QBuffer buffer(&bytes);
+              if (!buffer.open(QIODevice::WriteOnly) || !image.save(&buffer, "PNG")) {
+                  qWarning() << "Could not encode polygon layer:" << id;
+                  return false;
+              }
+              layerObj.remove("rebuildFromPolygon");
+              layerObj["data"] = QString::fromLatin1(bytes.toBase64());
+              layerObj["x"] = polygonCut->bounds.x();
+              layerObj["y"] = polygonCut->bounds.y();
+          }
+          updatedLayers.append(layerObj);
+        } else if ( layerObj.contains("data") ) {
          LayerItem* newLayer = nullptr;
          QString imgBase64 = layerObj["data"].toString();
          QByteArray ba = QByteArray::fromBase64(imgBase64.toUtf8());
          QImage mask;
-         mask.loadFromData(ba,"PNG");
+         if (!mask.loadFromData(ba, "PNG") && !processHistory) {
+             qWarning() << "Could not decode embedded image for layer:" << id;
+             return false;
+         }
          bool isBinaryMask = layerObj.value("binaryMask").toBool(false);
          int x = layerObj.value("x").toInt(-1);
          int y = layerObj.value("y").toInt(-1);
@@ -442,7 +526,7 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
            }
          }
          QRect rect = QRect(x,y,mask.width(), mask.height());
-         if ( isBinaryMask && x >= 0 && y >= 0 ) {
+         if ( isBinaryMask && x >= 0 && y >= 0 && !m_image.isNull() ) {
           QImage subImage = m_image.copy(x, y, mask.width(), mask.height());
           subImage = subImage.convertToFormat(QImage::Format_ARGB32);
           int backgroundPixelColor = Config::isWhiteBackgroundImage ? 255 : 0;
@@ -459,7 +543,7 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
             }
           }
           newLayer = new LayerItem("SubImage",subImage);
-         } else if ( forcedAlphaMasking ) {
+         } else if ( forcedAlphaMasking && !m_image.isNull() ) {
           if ( mask.format() != QImage::Format_ARGB32 && mask.format() != QImage::Format_ARGB32_Premultiplied ) {
             mask = mask.convertToFormat(QImage::Format_ARGB32);
           }
@@ -491,6 +575,20 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
          newLayer->setUndoStack(m_undoStack);
          m_layers << newLayer;
          nCreatedLayers += 1;
+         const auto recipe = cutRecipes.constFind(id);
+         if (recipe != cutRecipes.cend() && creator != "Inpainting" && !layerObj.contains("srcLayerId")) {
+             if (processHistory) {
+                 // Keep the cut alpha and discard hidden RGB just as reconstruction does.
+                 const auto cut = newLayer->image().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+                 newLayer->setOriginalImage(cut);
+                 newLayer->setImage(cut);
+                 polygonCutImages.insert(id, cut);
+             } else if (compactPolygonLayer(layerObj, undoStack, m_image, recipe.value(), newLayer->image(),
+                                           isBinaryMask ? mask.convertToFormat(QImage::Format_Grayscale8) : QImage())) {
+                 updatedLayers.append(layerObj);
+                 continue;
+             }
+         }
          // build new json stack
          if ( !isBinaryMask && creator != "Inpainting" ) {
           layerObj["data"] = newLayer->getAlphaMaskData();
@@ -498,8 +596,12 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
           layerObj["x"] = x;
           layerObj["y"] = y;
          }
-         updatedLayers.append(layerObj);  
+         updatedLayers.append(layerObj);
+        } else {
+         updatedLayers.append(layerObj);
         }
+      } else {
+        updatedLayers.append(layerObj);
       }
      } else {
       updatedLayers.append(v);
@@ -508,7 +610,7 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
     // loading undoStack
     qInfo() << "Processing undo stack...";
     QJsonArray updateUndoStack;
-    QJsonArray undoStack = root["undoStack"].toArray();
+    const bool stripWarpCache = !processHistory && !EditorStyle::instance().saveCageWarpCache();
     for ( const QJsonValue& v : undoStack ) {
      if ( v.isObject() ) {
       QJsonObject layerObj = v.toObject();
@@ -539,6 +641,10 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
       } else {
        qInfo() << " " << name << ": type =" << type;
       }
+      if (stripWarpCache && (type == "CageWarp" || type == "CageWarpCommand")) {
+        layerObj.remove("warpedPhysicalImageData");
+        layerObj.remove("warpedPhysicalImageVersion");
+      }
       updateUndoStack.append(layerObj);
      }
     }
@@ -553,6 +659,9 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
     // --- Restore Undo/Redo Stack ---
     int nStep = 1;
     QString infoTextLines = "";
+    QVector<QRgb> identityLut(256);
+    for (int i = 0; i < identityLut.size(); ++i)
+        identityLut[i] = qRgb(i, i, i);
     QJsonArray undoArray = root["undoStack"].toArray();
     if ( Config::concatenate )
         undoArray = concatenateTransforms(undoArray);
@@ -566,7 +675,8 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
         if ( type == "PaintStroke" || type == "PaintStrokeCommand" ) {
            cmd = PaintStrokeCommand::fromJson(cmdObj, m_layers);
         } else if ( type == "LassoCut" || type == "LassoCutCommand" ) {
-           cmd = LassoCutCommand::fromJson(cmdObj, m_layers);
+           const QImage cutImage = polygonCutImages.value(cmdObj["newLayerId"].toInt(-1));
+           cmd = LassoCutCommand::fromJson(cmdObj, m_layers, nullptr, cutImage);
         } else if ( type == "MoveLayer" || type == "MoveLayerCommand" ) {
            cmd = MoveLayerCommand::fromJson(cmdObj, m_layers);
         } else if ( type == "MirrorLayer" || type == "MirrorLayerCommand" ) {
@@ -586,7 +696,12 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
         }
         // ggf. weitere Command-Typen hier hinzufügen
         if ( cmd ) {
+            LayerItem* layer = cmd->layer();
+            const bool updateLayerAlpha = layer && !layer->alphaMask().isNull() &&
+                (dynamic_cast<TransformLayerCommand*>(cmd) || dynamic_cast<MirrorLayerCommand*>(cmd));
             m_undoStack->push(cmd);
+            if (updateLayerAlpha)
+                layer->applyLutWithTransform(identityLut);
             infoTextLines += saveIntermediate(cmd,type,nStep);
         } else {
             qDebug() << LogColor::Red << "ImageProcessor::process(): Invalid command." << LogColor::Reset;
@@ -606,62 +721,8 @@ bool ImageProcessor::process( const QString& filePath, bool forcedAlphaMasking, 
       }
     }
     
-    // ---  combine layer images ---
-    bool sizeLayerSorting = true;
-    if ( setOutputImage(0) ) {
-     qInfo() << "Creating output image...";
-     if ( sizeLayerSorting ) {
-      auto sortedLayers = m_layers;
-      std::sort(sortedLayers.begin(), sortedLayers.end(), [](QGraphicsItem* a, QGraphicsItem* b) {
-       auto* layerA = dynamic_cast<LayerItem*>(a);
-       auto* layerB = dynamic_cast<LayerItem*>(b);
-       if ( !layerA || !layerB ) return false;
-       auto rectA = layerA->image().size();
-       auto rectB = layerB->image().size();
-       long areaA = (long)rectA.width() * rectA.height();
-       long areaB = (long)rectB.width() * rectB.height();
-       return areaA > areaB;
-      });
-      QPainter painter(&m_outImage);
-       painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-       for ( auto* item : sortedLayers ) {
-        auto* layer = dynamic_cast<LayerItem*>(item);
-        if ( layer && layer->id() != 0 ) {
-         QImage overlayImage = layer->image();
-         if ( !overlayImage.isNull() ) {
-          int x = static_cast<int>(layer->pos().x());
-          int y = static_cast<int>(layer->pos().y());     
-          qInfo() << " + drawing layer =" << layer->name() << ": size =" 
-                    << overlayImage.width() << "x" << overlayImage.height();   
-          painter.drawImage(x, y, overlayImage);
-         }
-        }
-       }
-      painter.end();
-     } else {
-      QPainter painter(&m_outImage);
-       painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-       for ( auto* item : m_layers ) {
-        auto* layer = dynamic_cast<LayerItem*>(item);
-        if ( layer && layer->id() != 0 ) {
-         QImage overlayImage = layer->image();
-         if ( !overlayImage.isNull() ) {
-          int x = layer->pos().x();
-          int y = layer->pos().y();
-          qInfo() << " + drawing layer =" << layer->name() << ": id =" << layer->id( )<< ", pos =" 
-               << layer->pos() << ", rect =" << layer->boundingRect();
-          painter.drawImage(x, y, overlayImage);
-         }
-        }
-       }
-      painter.end();
-     }
-    } else {
-      qInfo() << "Warning: Malfunction in ImageProcessor::setOutputImage().";
-      return false;
-    }
-    
-    return true;
+    m_outImage = compositeLayers();
+    return !m_outImage.isNull();
  }
 }
 

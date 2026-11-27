@@ -64,6 +64,8 @@ private:
     QComboBox*  m_windowSize        = nullptr;
     QCheckBox*  m_perspective       = nullptr;
     QCheckBox*  m_binaryMasking     = nullptr;
+    QCheckBox*  m_compactPolygonLayers = nullptr;
+    QCheckBox*  m_saveCageWarpCache  = nullptr;
     QCheckBox*  m_crosshair         = nullptr;
     QCheckBox*  m_showDocksAtStartup = nullptr;
     QSpinBox*   m_cursorSize        = nullptr;

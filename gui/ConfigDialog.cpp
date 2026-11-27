@@ -199,6 +199,14 @@ QWidget* ConfigDialog::buildMainTab()
     row(tr("Binary masking"), m_binaryMasking,
         tr("Restricts mask values to 0 or 1 (binary on/off) instead of continuous values."));
 
+    m_compactPolygonLayers = new QCheckBox;
+    row(tr("Compact polygon layers"), m_compactPolygonLayers,
+        tr("Save eligible polygon layers without embedded image data. Loading rebuilds them from the main image and polygon history."));
+
+    m_saveCageWarpCache = new QCheckBox;
+    row(tr("Save Cage Warp cache"), m_saveCageWarpCache,
+        tr("Store the calculated warp images for faster project loading. Disable to save disk space and recalculate the warps when opening the project."));
+
     m_crosshair = new QCheckBox;
     row(tr("Crosshair"), m_crosshair,
         tr("Shows a crosshair overlay at the cursor position in the image view."));
@@ -570,6 +578,8 @@ void ConfigDialog::loadFromStyle()
     }
     m_perspective->setChecked(s.hasPerspective());
     m_binaryMasking->setChecked(s.binaryMasking());
+    m_compactPolygonLayers->setChecked(s.compactPolygonLayers());
+    m_saveCageWarpCache->setChecked(s.saveCageWarpCache());
     m_crosshair->setChecked(s.crosshair());
     m_showDocksAtStartup->setChecked(s.showDocksAtStartup());
     m_cursorSize->setValue(s.cursorSize());
@@ -659,6 +669,8 @@ void ConfigDialog::applyToStyle()
     s.setWindowSize(m_windowSize->currentText());
     s.setHasPerspective(m_perspective->isChecked());
     s.setBinaryMasking(m_binaryMasking->isChecked());
+    s.setCompactPolygonLayers(m_compactPolygonLayers->isChecked());
+    s.setSaveCageWarpCache(m_saveCageWarpCache->isChecked());
     s.setCrosshair(m_crosshair->isChecked());
     s.setShowDocksAtStartup(m_showDocksAtStartup->isChecked());
     s.setCursorSize(m_cursorSize->value());

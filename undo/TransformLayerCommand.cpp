@@ -205,10 +205,8 @@ void TransformLayerCommand::redo()
     const QRectF oldSceneRect = m_layer->sceneBoundingRect();
     m_totalTransform *= m_newTransform;
     if ( m_trafoType == LayerTransformType::Rotate && m_layer->hasPivot() ) {
-      // Capture the image center in scene coords BEFORE the transform changes the pixmap.
-      // setImageTransform() preserves pixmap().rect().center() in scene space after the
-      // transform, so using it as our reference is consistent regardless of starting state.
-      const QPointF center = m_layer->mapToScene(QRectF(m_layer->pixmap().rect()).center());
+      // Use the raster center even when project loading defers updating the pixmap.
+      const QPointF center = m_layer->mapToScene(QRectF(m_layer->image().rect()).center());
       m_layer->setImageTransform(m_newTransform);
       // Rotate `center` around the pivot by m_newTransform's angle to get the correct posAdj.
       // This is always computed from the actual current state, so accumulated posAdj values

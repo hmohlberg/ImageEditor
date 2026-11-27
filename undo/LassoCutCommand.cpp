@@ -209,7 +209,8 @@ QJsonObject LassoCutCommand::toJson() const
    return obj;
 }
 
-LassoCutCommand* LassoCutCommand::fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent )
+LassoCutCommand* LassoCutCommand::fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers,
+                                          QUndoCommand* parent, const QImage& cutImage )
 {
   qCDebug(logEditor) << "LassoCutCommand::fromJson(): Processing...";
   {
@@ -250,8 +251,25 @@ LassoCutCommand* LassoCutCommand::fromJson( const QJsonObject& obj, const QList<
     if ( name == "Inpainting" ) {
         backup = QImage(rect.size(), QImage::Format_ARGB32);
         backup.fill(Qt::transparent);
+    } else if (!cutImage.isNull()) {
+        backup = cutImage;
     } else {
-        backup = newLayer->originalImage();
+        const QImage& gray = newLayer->originalImage();
+        const QImage& alpha = newLayer->alphaMask();
+        backup = gray;
+        if (!alpha.isNull() && alpha.size() == gray.size()) {
+            // Preserve the cut mask in the same source-space grayscale used by the layer.
+            backup = QImage(gray.size(), QImage::Format_ARGB32);
+            if (backup.isNull())
+                return nullptr;
+            for (int y = 0; y < gray.height(); ++y) {
+                const uchar* values = gray.constScanLine(y);
+                const uchar* coverage = alpha.constScanLine(y);
+                auto* dest = reinterpret_cast<QRgb*>(backup.scanLine(y));
+                for (int x = 0; x < gray.width(); ++x)
+                    dest[x] = qRgba(values[x], values[x], values[x], coverage[x]);
+            }
+        }
     }
     return new LassoCutCommand(originalLayer,newLayer,rect,backup,newLayerId,name);
   }

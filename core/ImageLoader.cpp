@@ -90,9 +90,16 @@ bool ImageLoader::load( const QString& filePath, bool asImage )
    }
   } else {
    if ( asImage ) {
-    m_image.load(filePath);
-    if ( m_image.format() != QImage::Format_Grayscale8 )
-     m_image = m_image.convertToFormat(QImage::Format_Grayscale8);
+    if (m_image.load(filePath) && filePath.endsWith(".png", Qt::CaseInsensitive)) {
+     // Match the editor's QPixmap -> ARGB32 -> grayscale path. In particular,
+     // a PNG with a color profile may already be Grayscale8, but the RGB
+     // round trip can change its gray values.
+     if (m_image.hasAlphaChannel())
+      m_image.convertTo(QImage::Format_ARGB32_Premultiplied);
+     m_image.convertTo(QImage::Format_ARGB32);
+    }
+    if (m_image.format() != QImage::Format_Grayscale8)
+     m_image.convertTo(QImage::Format_Grayscale8);
     m_hasImage = true;
    } else {
     m_pixmap.load(filePath);

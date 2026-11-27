@@ -176,6 +176,7 @@ set(SOURCES
     main.cpp
     core/ImageLoader.cpp
     core/ImageProcessor.cpp
+    core/PolygonLayerData.cpp
     core/Updater.cpp
     gui/MainWindow.cpp
     gui/ImageView.cpp
@@ -238,6 +239,7 @@ endif()
 set(HEADERS
     core/ImageLoader.h
     core/ImageProcessor.h
+    core/PolygonLayerData.h
     gui/MainWindow.h
     gui/ImageView.h
     gui/ConfigDialog.h

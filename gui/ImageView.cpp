@@ -1016,8 +1016,10 @@ void ImageView::rotateLayer(LayerItem& layer, double angleDelta)
 {
     const QScopedValueRollback<bool> allowHistoryRefresh(m_suppressIndexChangedAdjustments, false);
     viewport()->setUpdatesEnabled(false);
-    if (qAbs(angleDelta) > 1e-6)
+    if (qAbs(angleDelta) > 1e-6) {
+        layer.resetDragStartPos();
         layer.setRotationAngle(angleDelta);
+    }
     if (!m_applyDATimer->isActive())
         viewport()->setUpdatesEnabled(true);
 }
@@ -3626,13 +3628,12 @@ void ImageView::createPolygonLayer()
     qCDebug(logEditor) << "ImageView::createPolygonLayer(): polygon name =" << polyCmd->name();
     EditablePolygon *editablePolygon = polyCmd->model();
     if ( editablePolygon != nullptr ) {
-      int index = m_layers.size()+1;
       LassoCutCommand *layerCut = createNewLayer(editablePolygon->polygon(),
                                                   QString("%1 Layer").arg(polyCmd->name()));
       if ( layerCut != nullptr ) {
         layerCut->setController(polyCmd);
         editablePolygon->setVisible(false);
-        polyCmd->setChildLayerId(index);
+        polyCmd->setChildLayerId(layerCut->layerId());
         connect(editablePolygon, &EditablePolygon::changed, this, [this, polyCmd](){
           if ( polyCmd->childLayerId() >= 0 )
             emit polygonNeedsUpdate(true);

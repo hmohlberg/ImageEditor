@@ -50,7 +50,8 @@ class LassoCutCommand : public AbstractCommand
     void printMessage( bool isUndo=false );
     
     QJsonObject toJson() const override;
-    static LassoCutCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers, QUndoCommand* parent = nullptr );
+    static LassoCutCommand* fromJson( const QJsonObject& obj, const QList<LayerItem*>& layers,
+                                     QUndoCommand* parent = nullptr, const QImage& cutImage = {} );
     
     const QRect&  rect()   const { return m_bounds; }
     int           layerId() const { return m_newLayerId; }

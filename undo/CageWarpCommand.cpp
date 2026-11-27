@@ -199,7 +199,7 @@ QJsonObject CageWarpCommand::toJson() const
     obj["topLeft_after"] = topLeftObj;
 
     // Cache the uncolored result together with the mapping version.
-    if (!m_warpedImage.isNull()) {
+    if (EditorStyle::instance().saveCageWarpCache() && !m_warpedImage.isNull()) {
         QByteArray ba;
         QBuffer buf(&ba);
         buf.open(QIODevice::WriteOnly);

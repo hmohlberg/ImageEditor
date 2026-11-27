@@ -15,6 +15,8 @@
 */
 
 #include "BigTiffProjectApply.h"
+#include "ImageLoader.h"
+#include "PolygonLayerData.h"
 
 #include <tiffio.h>
 
@@ -147,7 +149,8 @@ struct LevelInpaintPatch {
 
 // ── parsing ───────────────────────────────────────────────────────────────────
 
-static QVector<PasteOp> parseOps(const QJsonObject& project)
+static QVector<PasteOp> parseOps(const QJsonObject& project,
+                                const QHash<int, PolygonLayerData::Cut>& polygonCuts)
 {
     struct LayerInfo { QImage mask; };
     QHash<int, LayerInfo> layerMasks;
@@ -163,12 +166,16 @@ static QVector<PasteOp> parseOps(const QJsonObject& project)
         int id = layer["id"].toInt(-1);
         if (id < 0) continue;
 
-        QByteArray raw = QByteArray::fromBase64(
-            layer["data"].toString().toLatin1());
         QImage img;
-        if (!img.loadFromData(raw, "PNG")) continue;
-        if (img.format() != QImage::Format_Grayscale8)
-            img = img.convertToFormat(QImage::Format_Grayscale8);
+        const auto cut = polygonCuts.constFind(id);
+        if (cut != polygonCuts.cend()) {
+            img = PolygonLayerData::binaryMask(cut->image);
+        } else {
+            const QByteArray raw = QByteArray::fromBase64(layer["data"].toString().toLatin1());
+            if (!img.loadFromData(raw, "PNG")) continue;
+            if (img.format() != QImage::Format_Grayscale8)
+                img = img.convertToFormat(QImage::Format_Grayscale8);
+        }
 
         layerMasks[id] = { img };
     }
@@ -960,7 +967,28 @@ bool bigTiffApplyProject(
         return false;
     };
 
-    QVector<PasteOp> ops = parseOps(project);
+    QJsonObject mainLayer;
+    bool hasCompactLayers = false;
+    for (const QJsonValue& value : project["layers"].toArray()) {
+        const QJsonObject layer = value.toObject();
+        if (layer["id"].toInt() == 0)
+            mainLayer = layer;
+        if (PolygonLayerData::isCompact(layer) && layer["binaryMask"].toBool())
+            hasCompactLayers = true;
+    }
+
+    QHash<int, PolygonLayerData::Cut> polygonCuts;
+    if (hasCompactLayers) {
+        ImageLoader loader;
+        const QString path = mainLayer["pathname"].toString() + "/" + mainLayer["filename"].toString();
+        if (!loader.load(path, true))
+            return fail("Cannot load the project main image for polygon layers: " + path);
+        int invalidId = -1;
+        if (!PolygonLayerData::rebuild(project, loader.getImage(), polygonCuts, invalidId))
+            return fail(QString("Could not rebuild polygon layer %1 from the project history.").arg(invalidId));
+    }
+    QVector<PasteOp> ops = parseOps(project, polygonCuts);
+    polygonCuts.clear();
 
     TIFFSetWarningHandler(nullptr);
 

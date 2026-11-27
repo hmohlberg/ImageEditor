@@ -81,6 +81,8 @@
       }
       m_hasPerspective = settings.value("Main/perspective", true).toBool();
       m_binaryMasking = settings.value("Main/binaryMasking", true).toBool();
+      m_compactPolygonLayers = settings.value("Main/compactPolygonLayers", true).toBool();
+      m_saveCageWarpCache = settings.value("Main/saveCageWarpCache", false).toBool();
       m_crosshair = settings.value("Main/crosshair", true).toBool();
       m_showDocksAtStartup = settings.value("Main/showDocksAtStartup", false).toBool();
       m_showOverviewMap    = settings.value("Main/showOverviewMap",    false).toBool();
@@ -234,6 +236,8 @@
     bool useClaudeQuads() const { return m_useClaudeQuads; }
     bool hasPerspective() const { return m_hasPerspective; }
     bool binaryMasking() const { return m_binaryMasking; }
+    bool compactPolygonLayers() const { return m_compactPolygonLayers; }
+    bool saveCageWarpCache() const { return m_saveCageWarpCache; }
     bool allowIntegerMoveOnly() const { return m_allowIntegerMoveOnly; }
     double rotationSingleStep() const { return m_rotationSingleStep; }
     double layerOverlayOpacity() const { return m_layerOverlayOpacity; }
@@ -250,6 +254,8 @@
     void setWindowSize(const QString& v) { m_windowSize = v; }
     void setHasPerspective(bool v) { m_hasPerspective = v; }
     void setBinaryMasking(bool v) { m_binaryMasking = v; }
+    void setCompactPolygonLayers(bool v) { m_compactPolygonLayers = v; }
+    void setSaveCageWarpCache(bool v) { m_saveCageWarpCache = v; }
     void setCrosshair(bool v) { m_crosshair = v; }
     void setShowDocksAtStartup(bool v) { m_showDocksAtStartup = v; }
     void setShowOverviewMap(bool v)    { m_showOverviewMap = v; }
@@ -322,6 +328,8 @@
       m_useClaudeQuads    = true;
       m_hasPerspective    = true;
       m_binaryMasking     = true;
+      m_compactPolygonLayers = true;
+      m_saveCageWarpCache = false;
       m_crosshair         = true;
       m_showDocksAtStartup = false;
       m_showOverviewMap    = false;
@@ -381,6 +389,10 @@
           "Enables perspective transformation mode for image layers.");
       val("binaryMasking",     b(m_binaryMasking),
           "Restricts mask values to 0 or 1 (binary on/off) instead of continuous values.");
+      val("compactPolygonLayers", b(m_compactPolygonLayers),
+          "Rebuild eligible polygon layers from the main image and undo history instead of embedding their PNG data.");
+      val("saveCageWarpCache", b(m_saveCageWarpCache),
+          "Store calculated Cage Warp images to speed up opening projects in the editor.");
       val("crosshair",         b(m_crosshair),
           "Shows a crosshair overlay at the cursor position in the image view.");
       val("showDocksAtStartup", b(m_showDocksAtStartup),
@@ -598,6 +610,8 @@
     bool m_useClaudeQuads;
     bool m_hasPerspective;
     bool m_binaryMasking;
+    bool m_compactPolygonLayers = true;
+    bool m_saveCageWarpCache = false;
     bool m_allowIntegerMoveOnly;
     bool m_usegpu;
     bool m_gpuCatmullRom;
